@@ -1,0 +1,18 @@
+---
+description: Naming and architectural standards for Cactus Logistics
+globs: "**/*"
+alwaysApply: true
+---
+
+# 🌵 Cactus Logistics Rules
+
+## 1. Naming Conventions
+- **Development Files:** Always use kebab-case (e.g., `rating-engine.ts`, `user-profile.tsx`).
+- **Business/Asset References:** When mentioning or linking to branding/legal assets from the `cactus_business` hub, use snake_case (e.g., `brand_logo_v1.png`).
+
+## 2. Strategic Context
+- **Market:** Scale from SMB to Enterprise clients.
+- **Evolution:** Rating Engine ➔ Billing Suite ➔ Full WMS.
+
+## 3. Tech Stack
+- Use Next.js 16, TypeScript, Tailwind CSS, and Supabase.
