@@ -1,7 +1,7 @@
 # CACTUS: The Resilient Logistics OS
 
 ## 1. Vision & Soul
-Cactus is an AI-powered logistics middleware designed for 3PLs and merchants. We act as a high-integrity "Market Maker," providing sub-500ms rating, proactive tracking, and automated financial reconciliation.
+Cactus is an AI-assisted logistics middleware designed for 3PLs and merchants. We act as a high-integrity "Market Maker," providing sub-500ms rating, proactive tracking, and automated financial reconciliation.
 
 ## 2. Product Architecture
 - **Cactus Portal (Client):** Organization dashboard for label production, AI tracking, and automated invoice payments.
