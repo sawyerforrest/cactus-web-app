@@ -1,29 +1,39 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: seed-data.sql
--- DESCRIPTION: Initial test data to bring the DB to life.
+-- PURPOSE: Testing Single-Ceiling & Parent/Child Logic
 -- ==========================================================
 
--- 1. Create a Test Organization
--- We use a 'Variable' called @test_org_id to keep track of the random ID
--- so we can link the Meter to it in the next step.
+-- 1. Create the Parent 3PL
+INSERT INTO Organizations (name, org_type, terms_days)
+VALUES ('Cactus 3PL Headquarters', '3PL', 7);
 
-INSERT INTO Organizations (name, terms_days)
-VALUES ('Cactus Test 3PL', 7);
+-- 2. Create a Child Merchant linked to that 3PL
+INSERT INTO Organizations (name, org_type, parent_org_id)
+SELECT 'Desert Boutique', 'SUB_CLIENT', id 
+FROM Organizations 
+WHERE name = 'Cactus 3PL Headquarters' 
+LIMIT 1;
 
--- 2. Create a Meter for that Organization
--- Note: In a real database tool, we'd grab the ID from above.
--- For this "Seed" file, we are just telling the computer:
--- "Find the Org we just made and give them a wallet."
-
+-- 3. Give the Parent 3PL a Metered Wallet
 INSERT INTO Meters (org_id, current_balance, min_threshold, reload_amount)
 SELECT id, 500.0000, 100.0000, 500.0000 
 FROM Organizations 
-WHERE name = 'Cactus Test 3PL' 
+WHERE name = 'Cactus 3PL Headquarters' 
 LIMIT 1;
 
--- 3. Create a Sample Mapping (DHL eCommerce Fuel)
--- This "Teaches" Cactus how to read a DHL Fuel Surcharge.
+-- 4. Create a Test Shipment with Single-Ceiling Math
+-- Scenario: Carrier cost is $12.3456. Markup is 15% (0.15).
+-- Math: 12.3456 * 1.15 = 14.19744. 
+-- Ceiling should round this to $14.20.
 
-INSERT INTO Carrier_Invoice_Mappings (carrier_code, raw_header_name, cactus_standard_field)
-VALUES ('DHL_ECOM', 'Fuel Surcharge', 'fuel_surcharge');
+INSERT INTO Shipment_Ledger (org_id, tracking_number, raw_carrier_cost, markup_rate, final_merchant_rate)
+SELECT 
+    id, 
+    '1Z-CACTUS-TEST-001', 
+    12.3456, 
+    0.1500, 
+    14.20 -- Manually calculated for this seed to verify logic later
+FROM Organizations 
+WHERE name = 'Desert Boutique' 
+LIMIT 1;
