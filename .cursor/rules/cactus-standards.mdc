@@ -1,25 +1,28 @@
 # Cactus Development Standards
 
-## 1. Naming Conventions (The "Cactus" Map)
-- **Project Files & Folders:** Always use `kebab-case` (e.g., `database-setup.sql`, `payment-worker.js`).
-- **Database Tables & Columns:** Always use `snake_case` (e.g., `org_id`, `shipment_ledger`). This avoids the SQL "subtraction problem."
-- **Application Code (JS/TS):** Always use `camelCase` for variables and functions (e.g., `finalCactusRate`, `calculateMarkup()`).
+## 1. Core Values & Vision
+- **Motto:** "End-to-End Logistics with Soul."
+- **Core Values:** Gratitude | Curiosity | Creation
+- **Focus:** E-commerce Small Parcel Logistics (Phases 1 & 2).
 
-## 2. Financial Integrity (The "Double-Ceiling" Pipeline)
+## 2. Naming Conventions (The "Cactus" Map)
+- **Project Files & Folders:** Always use `kebab-case` (e.g., `database-setup.sql`, `rating-engine.js`).
+- **Database Tables & Columns:** Always use `snake_case` (e.g., `org_id`, `shipment_ledger`). This prevents SQL reserved character conflicts.
+- **Application Code (JS/TS):** Always use `camelCase` for variables and functions (e.g., `finalMerchantRate`, `calculateMarkup()`).
+
+## 3. Financial OS: The "Single-Ceiling" Pipeline
 - **Data Types:** Never use `Float` or `Double` for currency. Use high-precision `Decimal` (e.g., `DECIMAL(18, 4)` in SQL).
-- **Calculation Sequence:** 1. Apply **primary-markup** to raw carrier cost.
-    2. Immediately **Round Up** (Ceiling) to the next whole cent.
-    3. Apply **secondary-markup** to that rounded subtotal.
-    4. **Round Up** (Ceiling) again to the next whole cent for the Final Rate.
-- **Auditability:** Every intermediate rounding step must be stored in the database.
+- **Calculation Sequence:** 1. Apply the Organization-specific **markup-rate** to the fully-loaded, normalized carrier cost.
+    2. Immediately **Round Up (Ceiling)** the result to the next whole cent to determine the final Merchant Rate.
+- **Formula:** `Math.ceil(normalizedCost * (1 + markupRate) * 100) / 100`
 
-## 3. Architecture Pillars
-- **Bifurcated Billing:** - USPS = Pre-paid (Metered Wallet).
-    - All Others = Post-paid (Consolidated Weekly Invoice).
-- **Auto-Pull:** Payments for post-paid invoices are triggered automatically on the `due_date`.
-- **Normalization:** Map all various carrier invoice fields to a standardized "FedEx-style" format.
+## 4. Architecture Pillars
+- **Bifurcated Billing:** - **USPS:** Pre-paid via Metered Wallet (Initial Load → Threshold → Reload).
+    - **All Others:** Post-paid via Consolidated Weekly Invoice with automated **Auto-Pull** on the `due_date`.
+- **Normalization Layer:** Consolidate diverse carrier invoice fields into a standardized "FedEx-style" gold standard.
+- **Cactus-to-Client Invoicing:** A core Phase 1 requirement for immediate revenue generation.
 
-## 4. Coding Philosophy
-- **Human-First/AI-Assisted:** Code should be readable and include descriptive comments. 
-- **Error Handling:** Always prioritize "Safe Fallbacks." If a rate card lookup fails, the system must fallback to a carrier API call to ensure label production never stops.
-- **Terminology:** Refer to Cactus customers as "Organizations" or "Orgs."
+## 5. Coding Philosophy
+- **Human-First/AI-Assisted:** Code must be readable, modular, and include descriptive comments for future human-led intervention.
+- **Error Handling:** Prioritize "Safe Fallbacks." If a rate card lookup fails, the system must fallback to a carrier API call to ensure label production never halts.
+- **Privacy:** Internal carrier costs, specific markup, and markup percentages must be strictly hidden from the Client Portal.
