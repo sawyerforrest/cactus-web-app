@@ -1,65 +1,73 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
+-- FOCUS: Phase 1 (Single-Ceiling & Billing)
 -- ==========================================================
 
--- 1. THE ORGANIZATIONS (The Parent Table)
--- We build this first because everything else needs to "look" at it.
+-- 1. ORGANIZATIONS (Small Parcel Merchants & 3PLs)
 CREATE TABLE Organizations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- A unique, unguessable ID
-    name TEXT NOT NULL,                           -- The name of the 3PL or Merchant
-    terms_days INT DEFAULT 7,                     -- How many days they have to pay
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    parent_org_id UUID REFERENCES Organizations(id), -- Phase 2: Sub-client support
+    name TEXT NOT NULL,
+    org_type TEXT DEFAULT 'MERCHANT',               -- '3PL', 'MERCHANT', 'SUB_CLIENT'
+    terms_days INT DEFAULT 7,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 2. THE METER (The Wallet)
--- This table "points" to the Organizations table via the org_id.
+-- 2. METERS (Phase 1: Pre-paid USPS Wallet)
 CREATE TABLE Meters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id UUID REFERENCES Organizations(id),    -- This is the "Link" to the parent
-    current_balance DECIMAL(18, 4) DEFAULT 0.0000, -- 4 decimal places for precision
+    org_id UUID REFERENCES Organizations(id),
+    current_balance DECIMAL(18, 4) DEFAULT 0.0000,
     min_threshold DECIMAL(18, 4) DEFAULT 100.0000,
     reload_amount DECIMAL(18, 4) DEFAULT 500.0000,
-    primary_pm_id TEXT,                          -- Primary Payment Method ID
-    backup_pm_id TEXT                            -- Backup Payment Method ID
+    primary_pm_id TEXT,
+    backup_pm_id TEXT
 );
 
--- 3. THE NORMALIZATION LAYER (The Translator)
--- This tells Cactus how to read messy carrier invoices.
+-- 3. CARRIER MAPPINGS (Phase 1: Normalization Layer)
 CREATE TABLE Carrier_Invoice_Mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     carrier_code TEXT NOT NULL,           -- e.g., 'DHL_ECOM'
-    raw_header_name TEXT NOT NULL,        -- The name in the carrier's CSV file
-    cactus_standard_field TEXT NOT NULL,   -- The name in our standardized Cactus system
-    UNIQUE(carrier_code, raw_header_name) -- Prevents duplicate rules
+    raw_header_name TEXT NOT NULL,        -- e.g., 'Fuel Surcharge'
+    cactus_standard_field TEXT NOT NULL,   -- e.g., 'fuel_surcharge'
+    UNIQUE(carrier_code, raw_header_name)
 );
 
--- 4. THE SHIPMENT LEDGER (The Math Engine)
--- This is where the "Double-Ceiling" markup lives.
+-- 4. SHIPMENT LEDGER (The Single-Ceiling Math Engine)
 CREATE TABLE Shipment_Ledger (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES Organizations(id),
     tracking_number TEXT UNIQUE NOT NULL,
-    
-    -- STAGE 1 & 2: Primary Markup
     raw_carrier_cost DECIMAL(18, 4),
-    primary_markup_rate DECIMAL(7, 4),
-    primary_subtotal_rounded DECIMAL(12, 2), -- First "Ceiling" round-up
-    
-    -- STAGE 3 & 4: Secondary Markup
-    secondary_markup_rate DECIMAL(7, 4),
-    final_cactus_rate DECIMAL(12, 2),        -- Final "Ceiling" round-up
-    
+    markup_rate DECIMAL(7, 4),           -- e.g., 0.15 for 15%
+    final_merchant_rate DECIMAL(12, 2), -- The result of the Single-Ceiling Round
     reconciled_at TIMESTAMP DEFAULT NOW()
 );
 
--- 5. CACTUS INVOICES (The Billing Output)
+-- 5. CACTUS INVOICES (Phase 1: Cactus-to-Client Invoicing)
 CREATE TABLE Cactus_Invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID REFERENCES Organizations(id),
-    qbo_invoice_id TEXT,                    -- Our link to QuickBooks Online
     total_amount DECIMAL(12, 2),
-    due_date DATE NOT NULL,                 -- When the "Auto-Pull" happens
-    status TEXT DEFAULT 'UNPAID'
+    due_date DATE NOT NULL,
+    status TEXT DEFAULT 'UNPAID',        -- UNPAID, PAID, FAILED, VOID
+    qbo_invoice_id TEXT
+);
+
+-- 6. PHASE 3 FOUNDATIONS (WMS & Integrity)
+CREATE TABLE Locations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID REFERENCES Organizations(id),
+    name TEXT NOT NULL,
+    location_type TEXT DEFAULT 'STORAGE'
+);
+
+CREATE TABLE Audit_Logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id UUID REFERENCES Organizations(id),
+    action_type TEXT NOT NULL,           -- e.g., 'RATE_LOOKUP', 'MANUAL_INVOICE'
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
 );
