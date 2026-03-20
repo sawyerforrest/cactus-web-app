@@ -1,39 +1,64 @@
 # CACTUS: The Resilient Logistics OS
+**End-to-End Logistics | Small Parcel Focus**
 
-## 1. Vision & Soul
-Cactus is an **AI-assisted** logistics middleware designed for 3PLs and high-volume merchants. We believe people are the soul of business; our technology empowers human expertise to protect merchant reputations.
+## 1. Vision, Soul & Core Values
+Cactus is an **AI-assisted** logistics ecosystem designed to serve 3PLs and brands in the small parcel e-commerce industry.
 
-## 2. Product Architecture
-- **Cactus Portal (Client):** Dashboard for labels, tracking, and automated invoice payments.
-- **Alamo (Internal):** Admin mission control for rate card management and the Reconciliation Engine.
-- **Cactus API:** High-performance integration layer for WMS/OMS platforms.
+**Our Core Values:**
+> **Gratitude | Curiosity | Creation**
 
-## 3. Financial OS: Bifurcated Settlement
-### A. Pre-Paid (USPS Only)
-- **Metered Wallet:** Automated reloads (Initial Load → Min Threshold → Reload Amount).
-- **Redundancy:** Primary and Backup payment methods on file.
+---
 
-### B. Post-Paid (Non-USPS Carriers)
-- **Reconciliation Engine:** Ingests raw carrier invoices and maps shipments to Organizations with precision.
-- **Consolidated Invoicing:** One weekly invoice across all carriers, synced with QBO.
-- **The "Auto-Pull":** Automated payment processing triggered on the Invoice **due_date**.
+## 2. The Three-Phase Roadmap
 
-## 4. Strict Calculation Sequence (The Markup Pipeline)
-- **Calculation Type:** All currency math must use high-precision Decimal types.
-- **Stage 1: Primary-Markup:** Applied to the fully-loaded carrier cost.
-- **Stage 2: Primary Rounding:** IMMEDIATELY round up (Ceiling) the Primary subtotal to the next whole cent.
-- **Stage 3: Secondary-Markup:** Applied to the rounded result of Stage 2.
-- **Stage 4: Final Rounding:** Round up (Ceiling) the Secondary subtotal to the next whole cent to create the Final Cactus Rate.
-- **Audit Integrity:** Store the results of both Stage 2 and Stage 4 to ensure the "Penny-Path" is 100% auditable.
+### Phase 1: The Billing & Rating Engine (CORE)
+* **Focus:** E-commerce Small Parcel Logistics.
+* **World-Class Rating Engine:** Secure middleware integrating with national/regional carriers and WMS, TMS, and OMS platforms.
+* **Normalization Layer:** Consolidating diverse carrier invoice formats into a "FedEx-Style" gold standard.
+* **Financial Bedrock:** Implementation of "Single-Ceiling" shipment-level markup and Cactus-to-Client invoicing.
+* **Cactus Portal:** Merchant dashboard for shipments, meter transactions, and funding control.
 
-## 5. Margin & Pricing (Internal Only)
-- **Arbitrage Support:** Captures spread between internal NSA rates and external Merchant Rate Cards.
-- **Invisible Data:** All internal costs and markup titles (Primary/Secondary) are hidden from the Client Portal.
+### Phase 2: Client-Facing Billing & Analytics
+* **Sub-Client Suite:** Allowing Cactus Orgs to invoice *their* clients directly from the portal with custom downstream markups.
+* **Analytics Dashboard:** Visually digestible data showing shipping trends, cost-per-package, and margin health.
 
-## 6. Cactus Pulse: AI-Assisted Resilience
-- **Proactive Monitoring:** AI flags "At-Risk" shipments for human-led intervention.
-- **Frictionless Claims:** One-click claim filing for late/lost shipments based on reconciled carrier data.
+### Phase 3: Full WMS & B2B Expansion
+* **Full WMS Suite:** Warehouse management for small parcel fulfillment (aisles, bins, shelves).
+* **B2B Logistics:** Strategic expansion into LTL (Less Than Truckload) and FTL (Full Truckload) retail fulfillment.
 
-## 7. Technical Guardrails
-- **Performance:** Sub-500ms rating responses.
-- **Failover:** Dual payment processors (Primary + Warm Backup).
+---
+
+## 3. Product Architecture
+* **Cactus Portal (Client):** The interface for label generation, tracking, and financial management.
+* **Alamo (Internal):** The "Mission Control" for Cactus admins to manage rate cards, normalization mappings, and audit logs.
+* **Cactus API:** High-performance integration layer for external software (WMS/OMS).
+
+---
+
+## 4. Financial OS: The Markup Pipeline
+
+### A. Bifurcated Settlement
+* **Pre-Paid (USPS Only):** Metered wallet with automated reloads (Initial Load → Min Threshold → Reload Amount).
+* **Post-Paid (National/Regional):** Consolidated weekly invoicing with an automated "Auto-Pull" on the **due_date**.
+
+### B. The "Single-Ceiling" Pipeline
+All currency math must use high-precision **Decimal** types to prevent floating-point errors.
+1.  **Stage 1 (Shipment Markup):** Apply the organization's specific markup percentage to the fully-loaded, normalized carrier cost.
+2.  **Stage 2 (Final Rounding):** Immediately round up (Ceiling) to the next whole cent to determine the final "Merchant Rate."
+
+---
+
+## 5. Cactus Pulse: AI-Assisted Resilience
+* **Proactive Monitoring:** AI flags "At-Risk" shipments for human-led intervention before the customer notices a delay.
+* **Frictionless Claims:** One-click claim filing for late or lost shipments based on verified carrier data.
+* **Financial Integrity:** Internal carrier costs and specific markup percentages are strictly hidden from the Client Portal to maintain competitive integrity.
+
+---
+
+## 6. Technical Guardrails & Standards
+* **Performance:** Sub-500ms rating responses for frictionless e-commerce checkout.
+* **Failover:** Dual payment processors (Primary + Warm Backup) to ensure meter reloads never fail.
+* **Naming Conventions:**
+    * **Files & Folders:** `kebab-case` (e.g., `database-setup.sql`)
+    * **Database (SQL):** `snake_case` (e.g., `org_id`)
+    * **Application Code:** `camelCase` (e.g., `finalCactusRate`)
