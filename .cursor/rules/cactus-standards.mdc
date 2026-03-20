@@ -1,18 +1,25 @@
----
-description: Naming and architectural standards for Cactus Logistics
-globs: "**/*"
-alwaysApply: true
----
+# Cactus Development Standards
 
-# 🌵 Cactus Logistics Rules
+## 1. Naming Conventions (The "Cactus" Map)
+- **Project Files & Folders:** Always use `kebab-case` (e.g., `database-setup.sql`, `payment-worker.js`).
+- **Database Tables & Columns:** Always use `snake_case` (e.g., `org_id`, `shipment_ledger`). This avoids the SQL "subtraction problem."
+- **Application Code (JS/TS):** Always use `camelCase` for variables and functions (e.g., `finalCactusRate`, `calculateMarkup()`).
 
-## 1. Naming Conventions
-- **Development Files:** Always use kebab-case (e.g., `rating-engine.ts`, `user-profile.tsx`).
-- **Business/Asset References:** When mentioning or linking to branding/legal assets from the `cactus_business` hub, use snake_case (e.g., `brand_logo_v1.png`).
+## 2. Financial Integrity (The "Double-Ceiling" Pipeline)
+- **Data Types:** Never use `Float` or `Double` for currency. Use high-precision `Decimal` (e.g., `DECIMAL(18, 4)` in SQL).
+- **Calculation Sequence:** 1. Apply **primary-markup** to raw carrier cost.
+    2. Immediately **Round Up** (Ceiling) to the next whole cent.
+    3. Apply **secondary-markup** to that rounded subtotal.
+    4. **Round Up** (Ceiling) again to the next whole cent for the Final Rate.
+- **Auditability:** Every intermediate rounding step must be stored in the database.
 
-## 2. Strategic Context
-- **Market:** Scale from SMB to Enterprise clients.
-- **Evolution:** Rating Engine ➔ Billing Suite ➔ Full WMS.
+## 3. Architecture Pillars
+- **Bifurcated Billing:** - USPS = Pre-paid (Metered Wallet).
+    - All Others = Post-paid (Consolidated Weekly Invoice).
+- **Auto-Pull:** Payments for post-paid invoices are triggered automatically on the `due_date`.
+- **Normalization:** Map all various carrier invoice fields to a standardized "FedEx-style" format.
 
-## 3. Tech Stack
-- Use Next.js 16, TypeScript, Tailwind CSS, and Supabase.
+## 4. Coding Philosophy
+- **Human-First/AI-Assisted:** Code should be readable and include descriptive comments. 
+- **Error Handling:** Always prioritize "Safe Fallbacks." If a rate card lookup fails, the system must fallback to a carrier API call to ensure label production never stops.
+- **Terminology:** Refer to Cactus customers as "Organizations" or "Orgs."
