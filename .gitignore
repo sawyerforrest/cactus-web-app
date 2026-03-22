@@ -1,0 +1,100 @@
+# ==========================================================
+# PROJECT: CACTUS Logistics OS
+# FILENAME: .gitignore
+# PURPOSE: Tells Git which files to NEVER upload to GitHub.
+#
+# WHAT THIS FILE DOES:
+# Every line below is a file or folder pattern that Git will
+# completely ignore. This protects your secrets, keeps your
+# repository clean, and prevents sensitive credentials from
+# ever being exposed publicly.
+# ==========================================================
+
+
+# ----------------------------------------------------------
+# SECRETS & ENVIRONMENT VARIABLES
+# The most important section. These files contain your
+# Supabase keys, API keys, and passwords. If these ever
+# reached GitHub, your accounts could be compromised.
+# ----------------------------------------------------------
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+*.pem
+
+
+# ----------------------------------------------------------
+# NODE.JS (Your backend runtime environment)
+# "node_modules" is a folder that gets auto-created when you
+# run "npm install". It can contain 100,000+ files and is
+# enormous. It never belongs in GitHub because anyone can
+# recreate it by running "npm install" themselves.
+# ----------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# ----------------------------------------------------------
+# NEXT.JS (Your frontend framework)
+# These are auto-generated build folders that Next.js creates
+# when compiling your code. Never commit these.
+# ----------------------------------------------------------
+.next/
+out/
+build/
+
+
+# ----------------------------------------------------------
+# OPERATING SYSTEM FILES
+# Mac and Windows create hidden files automatically for their
+# own internal use. These have no place in your codebase.
+# ----------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+
+# ----------------------------------------------------------
+# CODE EDITORS & IDEs
+# (Integrated Development Environment — your coding app)
+# Cursor and VS Code create personal settings folders.
+# These are specific to your machine and should not be shared.
+# ----------------------------------------------------------
+.vscode/
+.cursor/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+
+# ----------------------------------------------------------
+# LOGS & DIAGNOSTICS
+# Log files are generated automatically when things run or
+# crash. They are temporary and machine-specific.
+# ----------------------------------------------------------
+logs/
+*.log
+
+
+# ----------------------------------------------------------
+# TESTING & COVERAGE REPORTS
+# Auto-generated when you run tests. Recreatable anytime.
+# ----------------------------------------------------------
+coverage/
+.nyc_output/
+
+
+# ----------------------------------------------------------
+# PACKAGE MANAGER LOCK CONFLICTS
+# Keep package-lock.json (npm) but ignore yarn if you're
+# only using npm, to avoid lock file conflicts.
+# ----------------------------------------------------------
+yarn.lock
