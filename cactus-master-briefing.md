@@ -255,30 +255,66 @@ Never update shipment status. Always append new event rows.
 ---
 
 ## 9. CURRENT BUILD STATE
-# ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
 - [x] Supabase project created (RLS + Data API enabled)
-- [x] database-setup.sql v1.3.0 — 16 tables ready to run fresh
-- [x] .env file — Supabase keys loaded
+- [x] database-setup.sql v1.3.0 — 16 tables live and verified in Supabase
+- [x] seed-data.sql v1.3.0 — all seed data loaded
+- [x] verify-data.sql v1.3.0 — 3x PASS ✓ on Single-Ceiling (lassoed + dark)
+- [x] .env file — Supabase keys + Anthropic API key loaded
 - [x] .gitignore — .env protected
 - [x] README.md v1.3.0
 - [x] cactus-standards.mdc v1.3.0 — in .cursor/rules/
 - [x] cactus-master-briefing.md v1.3.0
 - [x] Node.js v24 + npm v11 installed on Mac
-- [x] npm init — package.json created
+- [x] package.json initialized
 - [x] Dependencies installed: @supabase/supabase-js, dotenv,
       decimal.js, typescript, @types/node, ts-node
 - [x] tsconfig.json configured for Node.js TypeScript
-- [x] Folder structure created: src/lib, src/core/ai,
-      src/core/rating, src/core/billing, src/core/normalization,
-      src/adapters, src/alamo, src/portal, database/
-- [x] SQL files moved to database/ folder
-- [x] src/lib/supabase.ts — anon + admin clients created
-- [x] Supabase connection verified — both seed orgs returned ✅
+- [x] Folder structure: src/lib, src/core/ai, src/core/rating,
+      src/core/billing, src/core/normalization, src/adapters,
+      src/alamo, src/portal, database/
+- [x] src/lib/supabase.ts — anon + admin Supabase clients
+- [x] Supabase connection verified from code — both seed orgs returned
 - [x] GitHub repo pushed: github.com/sawyerforrest/cactus-web-app
-- [x] Phase 1 execution plan aligned and documented
+- [x] Phase 1 execution plan aligned (8 stages)
 - [x] Lassoed vs dark carrier account architecture locked in
 - [x] Invoice pipeline billing brain rules locked in
 - [x] Carrier account hierarchy finalized
+- [x] All architectural decisions documented in standards
 
+### Next task — START HERE next session
+Begin Stage 2: The Alamo shell
+  - Scaffold Next.js app in src/alamo/
+  - Supabase Auth — admin login only
+  - Basic sidebar navigation
+  - Protected routes (no public access)
+
+### Key architectural decisions (record)
+- Carrier invoice is ALWAYS billing source of truth — never label print
+- lassoed_carrier_account = WMS integrated, full visibility
+- dark_carrier_account = credentials shared, invoice-only visibility
+- Markup lives at org_carrier_account level, not rate_cards
+- Rate cards are optional children of org_carrier_accounts
+- is_cactus_account flag on carrier account (not on invoices)
+- Dark accounts matched by ship_from_address_normalized → locations
+- Lassoed accounts matched by tracking_number → shipment_ledger
+- 3PL billing always to 3PL org — sub-client billing is Phase 2
+- Multiple locations per org — all checked for dark account matching
+- is_billing_address flag controls which locations are used for matching
+- dispute_threshold lives on org_carrier_accounts (per-account)
+- Variance above threshold: HELD, dispute_flag=TRUE, human review
+- shipment_source: RATING_ENGINE (lassoed) or INVOICE_IMPORT (dark)
+- All carrier accounts are Cactus/Buku master accounts
+- Single-Ceiling applied once to total — never per surcharge component
+- Shadow Ledger (rate_shop_log) logs ALL rate requests async
+- Event sourcing: always append shipment_events, never update status
+- AI is central nervous system — not a feature
+
+### Open questions / decisions still needed
+- Payment processor: Stripe vs. Fortis
+- Dispute threshold default ($2.00 currently in schema)
+- QuickBooks Online API integration approach
+- UPS + FedEx developer API access — apply now, approval takes time
+  UPS: developer.ups.com
+  FedEx: developer.fedex.com
