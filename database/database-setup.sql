@@ -1,57 +1,66 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.2.0
+-- VERSION: 1.3.0
 -- UPDATED: 2026-03-23
--- FOCUS: Phase 1 — Single-Ceiling, Billing & Rating Engine
---        + AI-Native Foundation (Shadow Ledger, Event Sourcing)
+-- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
--- STRUCTURE OF THIS FILE:
+-- STRUCTURE:
 --   Section 0: Enums
---   Section 1: All 12 tables (no RLS yet)
---   Section 2: All RLS policies (after all tables exist)
+--   Section 1: All 16 tables (no RLS yet)
+--   Section 2: All RLS policies
 --   Section 3: Indexes
 --   Section 4: Triggers
 --
--- NEW IN v1.2.0:
---   - rate_shop_log: The "Shadow Ledger." Logs every rate
---     request even if no label is purchased. Becomes the
---     AI training dataset for rate prediction and carrier
---     intelligence over time.
---   - shipment_events: Event Sourcing layer. Every status
---     change on a shipment is an immutable event row, not
---     an update. Gives AI the full timeline of every package.
---   - metadata JSONB added to shipment_ledger for unstructured
---     AI context storage.
+-- NEW IN v1.3.0:
+--   - org_carrier_accounts: carrier account profiles per org
+--     with lassoed/dark mode, markup, and is_cactus_account flag
+--   - carrier_invoices: tracks each uploaded carrier invoice batch
+--   - invoice_line_items: individual lines from carrier invoices
+--     with full matching, billing, and dispute tracking
+--   - rate_cards re-parented from organizations to
+--     org_carrier_accounts
+--   - locations updated: normalized_address, is_billing_address,
+--     multiple addresses per org supported
+--   - shipment_ledger updated: shipment_source column added
 --
--- WHY THIS ORDER?
---   RLS policies reference other tables. Creating ALL tables
---   first, then applying ALL policies prevents forward-reference
---   errors that would cause the script to fail mid-run.
+-- BILLING BRAIN RULES (enforced in application layer):
+--   1. Always bill from carrier invoice data, never label print
+--   2. lassoed accounts: match by tracking_number
+--   3. dark accounts: match by ship_from normalized address
+--   4. Markup lives at carrier account level
+--   5. Rate cards are optional children of carrier accounts
+--   6. If rate card exists: use rate card price, apply account
+--      markup on top (set to 0 if markup baked into rate card)
+--   7. Single-Ceiling applied once to shipment total
+--   8. Variance above dispute_threshold: flag, hold from billing
 -- ==========================================================
 
 
 -- ==========================================================
 -- SECTION 0: ENUMS
---
--- WHAT IS AN ENUM?
--- An enum (enumeration) is a column type that only accepts
--- a specific list of values. Like a dropdown menu — the
--- database rejects anything not on the list. This prevents
--- typos and inconsistent data from corrupting your records.
 -- ==========================================================
 
-CREATE TYPE org_type_enum AS ENUM ('3PL', 'MERCHANT', 'SUB_CLIENT');
+CREATE TYPE org_type_enum AS ENUM (
+    '3PL',
+    'MERCHANT',
+    'SUB_CLIENT'
+);
 
-CREATE TYPE invoice_status_enum AS ENUM ('UNPAID', 'PAID', 'FAILED', 'VOID');
+CREATE TYPE invoice_status_enum AS ENUM (
+    'UNPAID',
+    'PAID',
+    'FAILED',
+    'VOID'
+);
 
 CREATE TYPE meter_transaction_type_enum AS ENUM (
     'RELOAD',           -- Funds added to meter (ACH or CC)
     'LABEL_PURCHASE',   -- USPS label deduction
     'APV_ADJUSTMENT',   -- USPS Automated Package Verification correction
     'CC_FEE',           -- 3% merchant processing fee on CC reloads
-    'MANUAL_CREDIT',    -- Admin-issued credit (dispute resolution, etc.)
-    'MANUAL_DEBIT'      -- Admin-issued debit (correction)
+    'MANUAL_CREDIT',    -- Admin-issued credit
+    'MANUAL_DEBIT'      -- Admin-issued debit
 );
 
 CREATE TYPE markup_type_enum AS ENUM (
@@ -80,36 +89,77 @@ CREATE TYPE location_type_enum AS ENUM (
 );
 
 CREATE TYPE shipment_event_type_enum AS ENUM (
-    -- Pre-transit
-    'RATE_REQUESTED',       -- A rate was requested for this shipment
-    'LABEL_CREATED',        -- Label purchased and printed
-    'LABEL_VOIDED',         -- Label voided before carrier pickup
-    -- In transit
-    'PICKED_UP',            -- Carrier has the package
-    'IN_TRANSIT',           -- Package moving through carrier network
-    'OUT_FOR_DELIVERY',     -- On the delivery vehicle
-    'DELIVERY_ATTEMPTED',   -- Carrier attempted delivery, no success
-    -- Terminal states
-    'DELIVERED',            -- Successfully delivered
-    'RETURNED_TO_SENDER',   -- Package returned
-    'LOST',                 -- Carrier confirmed lost
-    -- Exceptions
-    'EXCEPTION',            -- General carrier exception
-    'APV_ADJUSTMENT',       -- USPS postage correction applied
-    'ADDRESS_CORRECTED',    -- Address correction fee applied
-    'DAMAGED'               -- Package reported damaged
+    'RATE_REQUESTED',
+    'LABEL_CREATED',
+    'LABEL_VOIDED',
+    'PICKED_UP',
+    'IN_TRANSIT',
+    'OUT_FOR_DELIVERY',
+    'DELIVERY_ATTEMPTED',
+    'DELIVERED',
+    'RETURNED_TO_SENDER',
+    'LOST',
+    'EXCEPTION',
+    'APV_ADJUSTMENT',
+    'ADDRESS_CORRECTED',
+    'DAMAGED'
+);
+
+-- carrier_account_mode_enum
+-- WHAT IS THIS?
+-- Every carrier account in Cactus is either "lassoed" or "dark."
+-- lassoed_carrier_account: WMS/OMS integrated. Cactus sees every
+--   label at print time. Full reconciliation available.
+-- dark_carrier_account: Client entered Cactus credentials directly
+--   into their platform (e.g. ShipStation). Cactus has no visibility
+--   until the carrier invoice arrives. Billing only, no reconciliation.
+CREATE TYPE carrier_account_mode_enum AS ENUM (
+    'lassoed_carrier_account',
+    'dark_carrier_account'
+);
+
+CREATE TYPE shipment_source_enum AS ENUM (
+    'RATING_ENGINE',    -- Came through Cactus at label print (lassoed)
+    'INVOICE_IMPORT'    -- Discovered from carrier invoice upload (dark)
+);
+
+CREATE TYPE carrier_invoice_status_enum AS ENUM (
+    'UPLOADED',       -- File received, not yet processed
+    'NORMALIZING',    -- AI is mapping headers to Cactus Standard
+    'REVIEW',         -- Awaiting human review of AI suggestions
+    'APPROVED',       -- Human approved, ready to process
+    'PROCESSING',     -- Matching lines to orgs, applying markup
+    'COMPLETE',       -- All lines processed, invoices generated
+    'FAILED'          -- Processing error, needs attention
+);
+
+CREATE TYPE match_method_enum AS ENUM (
+    'TRACKING_NUMBER',      -- lassoed accounts: matched via shipment_ledger
+    'SHIP_FROM_ADDRESS',    -- dark accounts: matched via locations table
+    'MANUAL'                -- manually assigned by Alamo admin
+);
+
+CREATE TYPE match_status_enum AS ENUM (
+    'AUTO_MATCHED',     -- System matched confidently
+    'FLAGGED',          -- Could not match or collision detected
+    'MANUAL_ASSIGNED'   -- Alamo admin manually assigned org
+);
+
+CREATE TYPE billing_status_enum AS ENUM (
+    'PENDING',      -- Matched, markup calculated, awaiting approval
+    'HELD',         -- Flagged for dispute review, not yet billable
+    'APPROVED',     -- Ready to include in client invoice
+    'INVOICED'      -- Included in a cactus_invoices record
 );
 
 
 -- ==========================================================
 -- SECTION 1: TABLES
--- All 12 tables created before any RLS policies are written.
+-- All 16 tables created before any RLS policies.
 -- ==========================================================
 
 -- ----------------------------------------------------------
 -- TABLE 1: organizations
--- The tenant root. Every record in every other table
--- must have an org_id that points to a row here.
 -- ----------------------------------------------------------
 
 CREATE TABLE organizations (
@@ -126,16 +176,13 @@ CREATE TABLE organizations (
 COMMENT ON TABLE organizations IS
     'Multi-tenant root. Every financial and shipment record scopes to an org_id here.';
 COMMENT ON COLUMN organizations.parent_org_id IS
-    'NULL = top-level org (Cactus client). Non-null = sub-client of a 3PL (Phase 2).';
+    'NULL = top-level org. Non-null = sub-client of a 3PL (Phase 2 billing).';
 COMMENT ON COLUMN organizations.terms_days IS
-    'Payment terms for post-paid (non-USPS) weekly invoices. Default Net-7.';
+    'Payment terms for post-paid weekly invoices. Default Net-7.';
 
 
 -- ----------------------------------------------------------
 -- TABLE 2: org_users
--- Maps Supabase auth users to organizations.
--- This is the anchor table that all RLS policies use to
--- answer: "which org does this logged-in user belong to?"
 -- ----------------------------------------------------------
 
 CREATE TABLE org_users (
@@ -149,48 +196,152 @@ CREATE TABLE org_users (
 
 COMMENT ON TABLE org_users IS
     'Maps auth users to orgs. The anchor for all RLS policies.';
-COMMENT ON COLUMN org_users.role IS
-    'ADMIN = full org access. MEMBER = standard access. READ_ONLY = view only.';
 
 
 -- ----------------------------------------------------------
--- TABLE 3: rate_cards
--- Defines org-specific markup rules per carrier and service.
--- Every shipment markup is sourced from a row here.
--- Versioned: deprecated_date marks old rules, never deleted.
+-- TABLE 3: locations
+--
+-- Stores all addresses for an org. Multiple locations per org
+-- are supported and required for invoice matching.
+--
+-- is_billing_address: when TRUE, this address is used as a
+-- valid ship-from match during carrier invoice line matching.
+-- Not every location needs to be a billing address (e.g. a
+-- returns address would have is_billing_address = FALSE).
+--
+-- normalized_address: a cleaned, standardized version of the
+-- address used for reliable matching against carrier invoice
+-- data. Carrier invoices don't always format addresses
+-- consistently (St vs Street, AZ vs Arizona, etc).
+-- The application layer normalizes before storing and before
+-- matching. Format: "1234 MAIN ST, PHOENIX, AZ, 85001, US"
+-- ----------------------------------------------------------
+
+CREATE TABLE locations (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name                    TEXT NOT NULL,
+    location_type           location_type_enum NOT NULL DEFAULT 'SHIP_FROM',
+    address_line1           TEXT NOT NULL,
+    address_line2           TEXT,
+    city                    TEXT NOT NULL,
+    state                   CHAR(2) NOT NULL,
+    postal_code             TEXT NOT NULL,
+    country                 CHAR(2) NOT NULL DEFAULT 'US',
+    normalized_address      TEXT,
+    is_billing_address      BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active               BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Phase 3 WMS hooks (NULL in Phase 1)
+    warehouse_zone          TEXT,
+    aisle                   TEXT,
+    bin                     TEXT,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE locations IS
+    'All addresses for an org. Multiple per org supported. Used for invoice line matching.';
+COMMENT ON COLUMN locations.normalized_address IS
+    'Uppercase, standardized address string. Format: "1234 MAIN ST, PHOENIX, AZ, 85001, US". Used for dark account invoice matching.';
+COMMENT ON COLUMN locations.is_billing_address IS
+    'When TRUE, this address is checked during carrier invoice line matching for dark accounts.';
+
+
+-- ----------------------------------------------------------
+-- TABLE 4: org_carrier_accounts
+--
+-- The carrier account profile for each org. This is the
+-- central table for Phase 1 — almost every billing and
+-- rating decision traces through here.
+--
+-- MARKUP LIVES HERE, not on rate_cards.
+-- Rate cards are optional children of this table.
+-- If a rate card exists for a service level, use it.
+-- Apply account-level markup on top.
+-- If markup is already baked into the rate card, set
+-- markup_percentage = 0.0000 on the account.
+--
+-- is_cactus_account:
+--   TRUE  = Cactus earns margin on this account (default)
+--   FALSE = No owned revenue. Process for records only.
+--           Used for pass-through or non-Cactus accounts.
+--
+-- carrier_account_mode:
+--   lassoed_carrier_account = WMS integrated, full visibility
+--   dark_carrier_account    = credentials shared, no visibility
+--                             until carrier invoice arrives
+-- ----------------------------------------------------------
+
+CREATE TABLE org_carrier_accounts (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    carrier_code            carrier_code_enum NOT NULL,
+    account_number          TEXT NOT NULL,
+    account_nickname        TEXT NOT NULL,
+    carrier_account_mode    carrier_account_mode_enum NOT NULL DEFAULT 'lassoed_carrier_account',
+    is_cactus_account       BOOLEAN NOT NULL DEFAULT TRUE,
+    markup_percentage       DECIMAL(7,4) NOT NULL DEFAULT 0.0000,
+    markup_flat_fee         DECIMAL(18,4) NOT NULL DEFAULT 0.0000,
+    -- Dispute threshold: variance above this amount triggers
+    -- a hold and human review before billing the client.
+    -- Set per account to allow flexibility per client agreement.
+    dispute_threshold       DECIMAL(18,4) NOT NULL DEFAULT 2.0000,
+    is_active               BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(org_id, carrier_code, account_number)
+);
+
+COMMENT ON TABLE org_carrier_accounts IS
+    'Carrier account profile per org. Primary markup lives here. Rate cards are optional children.';
+COMMENT ON COLUMN org_carrier_accounts.is_cactus_account IS
+    'TRUE = Cactus earns margin. FALSE = pass-through, no owned revenue, skip markup.';
+COMMENT ON COLUMN org_carrier_accounts.carrier_account_mode IS
+    'lassoed = WMS integrated, full visibility. dark = credentials shared, invoice-only visibility.';
+COMMENT ON COLUMN org_carrier_accounts.markup_percentage IS
+    'Primary markup for this carrier account. Set to 0.0000 if markup is baked into a rate card.';
+COMMENT ON COLUMN org_carrier_accounts.dispute_threshold IS
+    'Dollar variance above which an invoice line is flagged and held for human review.';
+
+
+-- ----------------------------------------------------------
+-- TABLE 5: rate_cards
+--
+-- Optional custom rate cards assigned to a specific carrier
+-- account and service level. When present, the rate card
+-- price is used instead of the raw carrier cost.
+-- Account-level markup is still applied on top unless
+-- markup_percentage on the account is set to 0.0000.
 -- ----------------------------------------------------------
 
 CREATE TABLE rate_cards (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    carrier_code        carrier_code_enum NOT NULL,
-    service_level       TEXT,
-    markup_type         markup_type_enum NOT NULL DEFAULT 'PERCENTAGE',
-    markup_percentage   DECIMAL(7,4),
-    markup_flat_fee     DECIMAL(18,4),
-    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-    effective_date      DATE NOT NULL DEFAULT CURRENT_DATE,
-    deprecated_date     DATE,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(org_id, carrier_code, service_level, effective_date)
+    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_carrier_account_id      UUID NOT NULL REFERENCES org_carrier_accounts(id) ON DELETE CASCADE,
+    org_id                      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    service_level               TEXT NOT NULL,
+    nickname                    TEXT NOT NULL,
+    effective_date              DATE NOT NULL DEFAULT CURRENT_DATE,
+    deprecated_date             DATE,
+    is_active                   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(org_carrier_account_id, service_level, effective_date)
 );
 
 COMMENT ON TABLE rate_cards IS
-    'Source of truth for org markup rules. Single-Ceiling pipeline reads from here.';
+    'Optional custom rate cards per carrier account and service level. Children of org_carrier_accounts.';
+COMMENT ON COLUMN rate_cards.org_carrier_account_id IS
+    'Parent carrier account. Rate card applies to this account + service_level combination.';
+COMMENT ON COLUMN rate_cards.org_id IS
+    'Denormalized for RLS scoping and query performance. Must match org_carrier_account.org_id.';
 COMMENT ON COLUMN rate_cards.service_level IS
-    'NULL applies to all services for the carrier. Specific service takes precedence.';
-COMMENT ON COLUMN rate_cards.markup_percentage IS
-    'Stored as a decimal fraction: 0.15 = 15%. Applied to raw_carrier_cost before ceiling.';
-COMMENT ON COLUMN rate_cards.deprecated_date IS
-    'When set, this rule is historical. Rate engine uses the active (NULL deprecated_date) rule.';
+    'e.g. GROUND_ADVANTAGE, PRIORITY_MAIL, UPS_GROUND. Rate card applies to this service only.';
+COMMENT ON COLUMN rate_cards.nickname IS
+    'Human-friendly label in The Alamo. e.g. "USPS GA Q1 2026 Custom Rates"';
 
 
 -- ----------------------------------------------------------
--- TABLE 4: meters
--- Pre-paid USPS postage wallet. One meter per org.
--- current_balance is a cache — source of truth is always
--- the sum of meter_transactions rows.
+-- TABLE 6: meters
 -- ----------------------------------------------------------
 
 CREATE TABLE meters (
@@ -209,20 +360,11 @@ CREATE TABLE meters (
 );
 
 COMMENT ON TABLE meters IS
-    'USPS pre-paid postage wallet. One per org. Balance is a cache — verify against meter_transactions.';
-COMMENT ON COLUMN meters.current_balance IS
-    'Cached running balance. Updated atomically with each meter_transactions insert.';
-COMMENT ON COLUMN meters.apply_cc_fee IS
-    'When TRUE, 3% CC fee is deducted from reload gross before crediting net postage balance.';
-COMMENT ON COLUMN meters.primary_pm_id IS
-    'Tokenized payment method from Stripe/Fortis. Raw card data never stored in Cactus.';
+    'USPS pre-paid postage wallet. One per org. current_balance is a cache — source of truth is meter_transactions sum.';
 
 
 -- ----------------------------------------------------------
--- TABLE 5: meter_transactions
--- Append-only ledger for all meter activity.
--- NEVER UPDATE OR DELETE rows here.
--- Corrections = new MANUAL_CREDIT or MANUAL_DEBIT rows.
+-- TABLE 7: meter_transactions
 -- ----------------------------------------------------------
 
 CREATE TABLE meter_transactions (
@@ -243,21 +385,10 @@ CREATE TABLE meter_transactions (
 
 COMMENT ON TABLE meter_transactions IS
     'Immutable ledger for all meter activity. Never update or delete rows here.';
-COMMENT ON COLUMN meter_transactions.net_amount IS
-    'The amount that affects the postage balance. gross_amount minus any CC processing fee.';
-COMMENT ON COLUMN meter_transactions.balance_after IS
-    'Snapshot of balance after this transaction. Enables point-in-time balance reconstruction.';
-COMMENT ON COLUMN meter_transactions.idempotency_key IS
-    'Prevents double-charges from WMS retry storms. Set by the calling service.';
 
 
 -- ----------------------------------------------------------
--- TABLE 6: carrier_invoice_mappings
--- Normalization layer. Translates messy carrier invoice
--- headers into Cactus Standard fields.
--- Versioned: old mappings are deprecated, never deleted.
--- Phase 2: vector embeddings will be added to this table
--- for AI-assisted semantic mapping suggestions.
+-- TABLE 8: carrier_invoice_mappings
 -- ----------------------------------------------------------
 
 CREATE TABLE carrier_invoice_mappings (
@@ -276,29 +407,25 @@ CREATE TABLE carrier_invoice_mappings (
 
 COMMENT ON TABLE carrier_invoice_mappings IS
     'Carrier invoice normalization. Versioned. AI suggestion columns ready for Phase 2.';
-COMMENT ON COLUMN carrier_invoice_mappings.raw_header_name IS
-    'Copied verbatim from carrier invoice. Carrier renames it = new row, old gets deprecated_date.';
-COMMENT ON COLUMN carrier_invoice_mappings.ai_suggested IS
-    'TRUE if this mapping was suggested by the AI normalization engine (Phase 2).';
-COMMENT ON COLUMN carrier_invoice_mappings.ai_confidence_score IS
-    'AI confidence in the suggested mapping (0.0000 to 1.0000). NULL for human-created mappings.';
 
 
 -- ----------------------------------------------------------
--- TABLE 7: shipment_ledger
--- The Single-Ceiling math engine output.
--- One row per shipment. Append-only.
--- metadata JSONB column stores AI context and carrier-specific
--- data that doesn't fit neatly into typed columns.
+-- TABLE 9: shipment_ledger
+--
+-- shipment_source tells us how this row was created:
+--   RATING_ENGINE: came through Cactus at label print (lassoed)
+--   INVOICE_IMPORT: created when carrier invoice was processed (dark)
 -- ----------------------------------------------------------
 
 CREATE TABLE shipment_ledger (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    org_carrier_account_id  UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
     rate_card_id            UUID REFERENCES rate_cards(id) ON DELETE SET NULL,
     tracking_number         TEXT NOT NULL UNIQUE,
     carrier_code            carrier_code_enum,
     service_level           TEXT,
+    shipment_source         shipment_source_enum NOT NULL DEFAULT 'RATING_ENGINE',
     -- Single-Ceiling pipeline columns
     raw_carrier_cost        DECIMAL(18,4) NOT NULL,
     markup_percentage       DECIMAL(7,4),
@@ -317,19 +444,53 @@ CREATE TABLE shipment_ledger (
 );
 
 COMMENT ON TABLE shipment_ledger IS
-    'Immutable shipment record. Single-Ceiling output lives here. Source of truth for billing.';
-COMMENT ON COLUMN shipment_ledger.pre_ceiling_amount IS
-    'raw_carrier_cost * (1 + markup_percentage) + markup_flat_fee. Input to CEILING function.';
+    'One row per shipment. Single-Ceiling output. Immutable. Source of truth for billing.';
+COMMENT ON COLUMN shipment_ledger.shipment_source IS
+    'RATING_ENGINE = came through Cactus at label print. INVOICE_IMPORT = created from carrier invoice upload.';
 COMMENT ON COLUMN shipment_ledger.final_merchant_rate IS
-    'CEILING(pre_ceiling_amount * 100) / 100. Applied once per shipment. What the client is billed.';
-COMMENT ON COLUMN shipment_ledger.metadata IS
-    'JSONB store for carrier-specific fields, WMS context, and AI-generated insights.';
+    'CEILING(pre_ceiling_amount * 100) / 100. What the client is billed. Always from carrier invoice data.';
 
 
 -- ----------------------------------------------------------
--- TABLE 8: cactus_invoices
--- Weekly post-paid invoices for non-USPS carriers.
--- Auto-pull triggered on due_date by background job.
+-- TABLE 10: carrier_invoices
+--
+-- Tracks each uploaded carrier invoice file as a batch.
+-- One row per uploaded file. Individual line items live
+-- in invoice_line_items.
+-- ----------------------------------------------------------
+
+CREATE TABLE carrier_invoices (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id                  UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    carrier_code            carrier_code_enum NOT NULL,
+    org_carrier_account_id  UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
+    invoice_file_name       TEXT NOT NULL,
+    invoice_period_start    DATE,
+    invoice_period_end      DATE,
+    status                  carrier_invoice_status_enum NOT NULL DEFAULT 'UPLOADED',
+    total_carrier_amount    DECIMAL(18,4),
+    total_line_items        INT,
+    matched_line_items      INT DEFAULT 0,
+    flagged_line_items      INT DEFAULT 0,
+    uploaded_by             UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    ai_processing_notes     TEXT,
+    processed_at            TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE carrier_invoices IS
+    'One row per uploaded carrier invoice file. Individual lines in invoice_line_items.';
+COMMENT ON COLUMN carrier_invoices.ai_processing_notes IS
+    'Summary of what the AI found during normalization — new headers, low confidence mappings, etc.';
+COMMENT ON COLUMN carrier_invoices.flagged_line_items IS
+    'Count of lines flagged for human review (unknown address, variance above threshold, etc).';
+
+
+-- ----------------------------------------------------------
+-- TABLE 11: cactus_invoices
+-- Created before invoice_line_items so the FK reference
+-- on invoice_line_items.cactus_invoice_id resolves correctly.
 -- ----------------------------------------------------------
 
 CREATE TABLE cactus_invoices (
@@ -349,49 +510,151 @@ CREATE TABLE cactus_invoices (
 );
 
 COMMENT ON TABLE cactus_invoices IS
-    'Weekly post-paid invoices for non-USPS shipments. Auto-pull fires on due_date.';
-COMMENT ON COLUMN cactus_invoices.total_amount IS
-    'Sum of final_merchant_rate from shipment_ledger rows in this billing period.';
-COMMENT ON COLUMN cactus_invoices.payment_attempt_count IS
-    'Incremented on each auto-pull attempt. Alamo alerts when this exceeds threshold.';
+    'Client-facing weekly invoices. Line items come from invoice_line_items where billing_status = APPROVED.';
 
 
 -- ----------------------------------------------------------
--- TABLE 9: locations
--- Phase 1: Ship-from addresses for rate shopping.
--- Phase 3: Expands to full warehouse mapping (aisles/bins).
+-- TABLE 12: invoice_line_items
+--
+-- The beating heart of the invoice pipeline.
+-- One row per line item on a carrier invoice.
+-- Tracks the full lifecycle: raw upload → normalization →
+-- org matching → markup → billing → client invoice.
+--
+-- MATCHING LOGIC:
+--   lassoed accounts: match_method = TRACKING_NUMBER
+--     → tracking_number links to shipment_ledger → org_id known
+--   dark accounts: match_method = SHIP_FROM_ADDRESS
+--     → ship_from_address_normalized matched against
+--       locations.normalized_address where is_billing_address = TRUE
+--
+-- BILLING RULE:
+--   Always bill from carrier_charge (what carrier invoiced).
+--   Never bill from shipment_ledger.final_merchant_rate.
+--   Reconcile the two and flag variances above dispute_threshold.
 -- ----------------------------------------------------------
 
-CREATE TABLE locations (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id          UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    name            TEXT NOT NULL,
-    location_type   location_type_enum NOT NULL DEFAULT 'SHIP_FROM',
-    address_line1   TEXT NOT NULL,
-    address_line2   TEXT,
-    city            TEXT NOT NULL,
-    state           CHAR(2) NOT NULL,
-    postal_code     TEXT NOT NULL,
-    country         CHAR(2) NOT NULL DEFAULT 'US',
-    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
-    -- Phase 3 WMS hooks (NULL in Phase 1)
-    warehouse_zone  TEXT,
-    aisle           TEXT,
-    bin             TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE invoice_line_items (
+    id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    carrier_invoice_id              UUID NOT NULL REFERENCES carrier_invoices(id) ON DELETE CASCADE,
+    org_id                          UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    org_carrier_account_id          UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
+    shipment_ledger_id              UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,
+    -- Raw carrier data
+    tracking_number                 TEXT,
+    carrier_account_number          TEXT,
+    ship_from_address_raw           TEXT,
+    ship_from_address_normalized    TEXT,
+    carrier_charge                  DECIMAL(18,4) NOT NULL,
+    -- Normalized surcharge fields (Cactus Standard)
+    base_charge                     DECIMAL(18,4),
+    fuel_surcharge                  DECIMAL(18,4),
+    residential_surcharge           DECIMAL(18,4),
+    address_correction              DECIMAL(18,4),
+    delivery_area_surcharge         DECIMAL(18,4),
+    additional_handling             DECIMAL(18,4),
+    dim_weight_adjustment           DECIMAL(18,4),
+    apv_adjustment                  DECIMAL(18,4),
+    other_surcharges                DECIMAL(18,4),
+    other_surcharges_detail         JSONB,
+    -- Matching
+    match_method                    match_method_enum,
+    match_status                    match_status_enum,
+    -- Billing calculation (populated after org match)
+    markup_percentage               DECIMAL(7,4),
+    markup_flat_fee                 DECIMAL(18,4),
+    pre_ceiling_amount              DECIMAL(18,4),
+    final_merchant_rate             DECIMAL(18,4),
+    -- Reconciliation
+    quoted_rate                     DECIMAL(18,4),
+    variance_amount                 DECIMAL(18,4),
+    dispute_flag                    BOOLEAN NOT NULL DEFAULT FALSE,
+    dispute_notes                   TEXT,
+    -- Billing status
+    billing_status                  billing_status_enum NOT NULL DEFAULT 'PENDING',
+    cactus_invoice_id               UUID REFERENCES cactus_invoices(id) ON DELETE SET NULL,
+    -- Metadata
+    raw_line_data                   JSONB,
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE locations IS
-    'Ship-from addresses in Phase 1. Expands to full warehouse mapping in Phase 3.';
-COMMENT ON COLUMN locations.warehouse_zone IS
-    'Phase 3 WMS field. NULL in Phase 1. Do not populate until WMS module is active.';
+COMMENT ON TABLE invoice_line_items IS
+    'One row per carrier invoice line. Full lifecycle from raw upload to client invoice.';
+COMMENT ON COLUMN invoice_line_items.carrier_charge IS
+    'What the carrier actually billed. This is ALWAYS the basis for client billing.';
+COMMENT ON COLUMN invoice_line_items.quoted_rate IS
+    'What the Cactus rating engine quoted at label print (from shipment_ledger). NULL for dark accounts.';
+COMMENT ON COLUMN invoice_line_items.variance_amount IS
+    'carrier_charge minus quoted_rate. Positive = carrier charged more than quoted.';
+COMMENT ON COLUMN invoice_line_items.dispute_flag IS
+    'TRUE when ABS(variance_amount) exceeds org_carrier_account.dispute_threshold.';
+COMMENT ON COLUMN invoice_line_items.ship_from_address_raw IS
+    'Address exactly as it appears on the carrier invoice. Never modified.';
+COMMENT ON COLUMN invoice_line_items.ship_from_address_normalized IS
+    'Uppercase, standardized version used for matching against locations table.';
+COMMENT ON COLUMN invoice_line_items.raw_line_data IS
+    'Full raw carrier invoice row stored as JSONB for auditability and re-processing.';
+COMMENT ON COLUMN invoice_line_items.other_surcharges_detail IS
+    'JSONB breakdown of any surcharges that do not map to a named Cactus Standard column.';
 
 
 -- ----------------------------------------------------------
--- TABLE 10: audit_logs
--- Append-only integrity log for all meaningful system actions.
--- Never update or delete rows here.
+-- TABLE 13: rate_shop_log (Shadow Ledger)
+-- ----------------------------------------------------------
+
+CREATE TABLE rate_shop_log (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    org_carrier_account_id UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
+    origin_postal       TEXT NOT NULL,
+    destination_postal  TEXT NOT NULL,
+    destination_country CHAR(2) NOT NULL DEFAULT 'US',
+    is_residential      BOOLEAN,
+    weight_oz           DECIMAL(10,4) NOT NULL,
+    length_in           DECIMAL(8,4),
+    width_in            DECIMAL(8,4),
+    height_in           DECIMAL(8,4),
+    carrier_code        carrier_code_enum NOT NULL,
+    service_level       TEXT NOT NULL,
+    quoted_rate         DECIMAL(18,4) NOT NULL,
+    final_merchant_rate DECIMAL(18,4) NOT NULL,
+    transit_days        INT,
+    was_selected        BOOLEAN NOT NULL DEFAULT FALSE,
+    shipment_ledger_id  UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,
+    metadata            JSONB,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE rate_shop_log IS
+    'Shadow Ledger. Logs every rate request including unselected options. Primary AI training dataset.';
+
+
+-- ----------------------------------------------------------
+-- TABLE 14: shipment_events (Event Sourcing)
+-- ----------------------------------------------------------
+
+CREATE TABLE shipment_events (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shipment_ledger_id  UUID NOT NULL REFERENCES shipment_ledger(id) ON DELETE RESTRICT,
+    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    event_type          shipment_event_type_enum NOT NULL,
+    carrier_code        carrier_code_enum,
+    carrier_timestamp   TIMESTAMPTZ,
+    carrier_location    TEXT,
+    carrier_message     TEXT,
+    ai_flagged          BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_flag_reason      TEXT,
+    metadata            JSONB,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE shipment_events IS
+    'Event sourcing layer. Immutable timeline of everything that happens to a shipment. Never update or delete.';
+
+
+-- ----------------------------------------------------------
+-- TABLE 15: audit_logs
 -- ----------------------------------------------------------
 
 CREATE TABLE audit_logs (
@@ -409,158 +672,32 @@ CREATE TABLE audit_logs (
 
 COMMENT ON TABLE audit_logs IS
     'Append-only integrity log. Every meaningful action leaves a trace here. Never update or delete.';
-COMMENT ON COLUMN audit_logs.metadata IS
-    'Flexible JSONB payload: {old_value, new_value, request_context, ai_model_used, etc.}';
 
 
 -- ----------------------------------------------------------
--- TABLE 11: rate_shop_log  ← NEW IN v1.2.0
---
--- THE SHADOW LEDGER — AI Training Dataset
---
--- WHAT IS THIS?
--- Every time a WMS asks Cactus for a shipping rate, we log
--- that request here — even if no label is ever printed.
--- This builds a rich dataset over time that answers questions
--- like: "Which carrier is cheapest for packages under 1lb
--- going to a residential address in Texas on a Tuesday?"
---
--- WHY DOES THIS MATTER FOR AI?
--- An AI model cannot predict or optimize what it has never
--- seen. By logging every rate request from day one, Cactus
--- accumulates a proprietary dataset that no competitor has.
--- After 6 months of real traffic, this table will contain
--- millions of rows that teach the AI:
---   - Rate volatility patterns by lane and carrier
---   - Which service level clients actually choose vs. shop
---   - Seasonal surcharge behavior
---   - Carrier performance by geography
---
--- This is the foundation for future features like:
---   - "AI recommends FedEx today — fuel surcharge spike
---     predicted for UPS on this lane tomorrow"
---   - Carrier scorecards by client and lane
---   - Proactive cost-saving alerts for clients
+-- TABLE 16: cactus_invoice_line_items
+-- Junction table linking cactus_invoices to invoice_line_items.
+-- Allows one client invoice to aggregate multiple carrier
+-- invoice line items across carriers and billing periods.
 -- ----------------------------------------------------------
 
-CREATE TABLE rate_shop_log (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-    -- Request context
-    origin_postal       TEXT NOT NULL,
-    destination_postal  TEXT NOT NULL,
-    destination_country CHAR(2) NOT NULL DEFAULT 'US',
-    is_residential      BOOLEAN,
-    weight_oz           DECIMAL(10,4) NOT NULL,
-    length_in           DECIMAL(8,4),
-    width_in            DECIMAL(8,4),
-    height_in           DECIMAL(8,4),
-    -- Rate response
-    carrier_code        carrier_code_enum NOT NULL,
-    service_level       TEXT NOT NULL,
-    quoted_rate         DECIMAL(18,4) NOT NULL,
-    final_merchant_rate DECIMAL(18,4) NOT NULL,
-    transit_days        INT,
-    -- Outcome tracking (did the client pick this rate?)
-    was_selected        BOOLEAN NOT NULL DEFAULT FALSE,
-    shipment_ledger_id  UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,
-    -- AI context
-    metadata            JSONB,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE cactus_invoice_line_items (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cactus_invoice_id       UUID NOT NULL REFERENCES cactus_invoices(id) ON DELETE CASCADE,
+    invoice_line_item_id    UUID NOT NULL REFERENCES invoice_line_items(id) ON DELETE RESTRICT,
+    org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    final_merchant_rate     DECIMAL(18,4) NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(cactus_invoice_id, invoice_line_item_id)
 );
 
-COMMENT ON TABLE rate_shop_log IS
-    'Shadow Ledger. Logs every rate request including unselected options. AI training dataset.';
-COMMENT ON COLUMN rate_shop_log.was_selected IS
-    'TRUE if the client chose this rate and printed a label. FALSE = shopped but not selected.';
-COMMENT ON COLUMN rate_shop_log.shipment_ledger_id IS
-    'Links to shipment_ledger if a label was purchased for this rate. NULL if not selected.';
-COMMENT ON COLUMN rate_shop_log.weight_oz IS
-    'Package weight stored in ounces for precision. Convert to lbs in application layer.';
-COMMENT ON COLUMN rate_shop_log.metadata IS
-    'AI context: {wms_source, requested_service_levels, surcharges_applied, model_version, etc.}';
-
-
--- ----------------------------------------------------------
--- TABLE 12: shipment_events  ← NEW IN v1.2.0
---
--- EVENT SOURCING LAYER — The Full Story of Every Package
---
--- WHAT IS EVENT SOURCING?
--- Instead of updating a single "status" column on a shipment
--- (which destroys history), we append a new row every time
--- something happens. The shipment's current state is always
--- the sum of all its events.
---
--- EXAMPLE — A Normal Delivery:
---   Row 1: LABEL_CREATED    — 2026-03-22 09:14 AM
---   Row 2: PICKED_UP        — 2026-03-22 05:30 PM
---   Row 3: IN_TRANSIT       — 2026-03-23 02:11 AM
---   Row 4: OUT_FOR_DELIVERY — 2026-03-24 08:45 AM
---   Row 5: DELIVERED        — 2026-03-24 02:17 PM
---
--- EXAMPLE — An Exception:
---   Row 1: LABEL_CREATED       — 2026-03-22 09:14 AM
---   Row 2: PICKED_UP           — 2026-03-22 05:30 PM
---   Row 3: IN_TRANSIT          — 2026-03-23 02:11 AM
---   Row 4: EXCEPTION           — 2026-03-24 08:00 AM
---   Row 5: DELIVERY_ATTEMPTED  — 2026-03-24 11:00 AM
---   Row 6: DELIVERED           — 2026-03-25 01:30 PM
---
--- WHY DOES THIS MATTER FOR AI?
--- An AI can read the event stream and:
---   - Flag "at-risk" shipments before the customer notices
---   - Identify which carriers have more exceptions on which
---     lanes (carrier scorecard intelligence)
---   - Detect patterns: "shipments going to this ZIP code
---     have a 34% exception rate with UPS — recommend FedEx"
---   - Power the "Cactus Pulse" proactive monitoring feature
---
--- WHY DOES THIS MATTER FOR OCEAN FREIGHT / LTL (Phase 3)?
--- A container sitting at a port for 10 days has a complex
--- event timeline. This exact same table structure handles it
--- without any schema changes — just new event_type values.
--- ----------------------------------------------------------
-
-CREATE TABLE shipment_events (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    shipment_ledger_id  UUID NOT NULL REFERENCES shipment_ledger(id) ON DELETE RESTRICT,
-    org_id              UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-    event_type          shipment_event_type_enum NOT NULL,
-    -- Carrier-reported data at the time of this event
-    carrier_code        carrier_code_enum,
-    carrier_timestamp   TIMESTAMPTZ,
-    carrier_location    TEXT,
-    carrier_message     TEXT,
-    -- AI context
-    ai_flagged          BOOLEAN NOT NULL DEFAULT FALSE,
-    ai_flag_reason      TEXT,
-    metadata            JSONB,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-COMMENT ON TABLE shipment_events IS
-    'Event sourcing layer. Immutable timeline of everything that happens to a shipment.';
-COMMENT ON COLUMN shipment_events.carrier_timestamp IS
-    'The timestamp the carrier reported this event. May differ from created_at.';
-COMMENT ON COLUMN shipment_events.ai_flagged IS
-    'TRUE if the AI flagged this event as requiring attention (e.g. unexpected exception).';
-COMMENT ON COLUMN shipment_events.ai_flag_reason IS
-    'Human-readable explanation from the AI of why this event was flagged.';
-COMMENT ON COLUMN shipment_events.metadata IS
-    'Raw carrier webhook payload and AI analysis context stored for full auditability.';
+COMMENT ON TABLE cactus_invoice_line_items IS
+    'Links client invoices to individual carrier invoice line items. One-to-many aggregation.';
 
 
 -- ==========================================================
--- SECTION 2: ROW LEVEL SECURITY (RLS)
---
--- WHAT IS RLS?
--- Row Level Security means the database itself enforces which
--- rows each user can see. Even if a bug in your code asks for
--- all shipments, Postgres only returns that user's org's rows.
---
--- All tables created first above. Policies applied here after.
--- This prevents forward-reference errors.
+-- SECTION 2: ROW LEVEL SECURITY
+-- All tables created above. Policies applied here.
 -- ==========================================================
 
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
@@ -575,6 +712,20 @@ CREATE POLICY "service_role_all_org_users"
     ON org_users FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "users_read_own_membership"
     ON org_users FOR SELECT USING (user_id = auth.uid());
+
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_locations"
+    ON locations FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "org_members_read_own_locations"
+    ON locations FOR SELECT
+    USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
+
+ALTER TABLE org_carrier_accounts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_org_carrier_accounts"
+    ON org_carrier_accounts FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "org_members_read_own_carrier_accounts"
+    ON org_carrier_accounts FOR SELECT
+    USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
 ALTER TABLE rate_cards ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all_rate_cards"
@@ -610,6 +761,17 @@ CREATE POLICY "org_members_read_own_shipments"
     ON shipment_ledger FOR SELECT
     USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
+ALTER TABLE carrier_invoices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_carrier_invoices"
+    ON carrier_invoices FOR ALL USING (auth.role() = 'service_role');
+
+ALTER TABLE invoice_line_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_invoice_line_items"
+    ON invoice_line_items FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "org_members_read_own_invoice_line_items"
+    ON invoice_line_items FOR SELECT
+    USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
+
 ALTER TABLE cactus_invoices ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all_cactus_invoices"
     ON cactus_invoices FOR ALL USING (auth.role() = 'service_role');
@@ -617,18 +779,11 @@ CREATE POLICY "org_members_read_own_invoices"
     ON cactus_invoices FOR SELECT
     USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
-ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_all_locations"
-    ON locations FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "org_members_read_own_locations"
-    ON locations FOR SELECT
-    USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
-
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_all_audit_logs"
-    ON audit_logs FOR ALL USING (auth.role() = 'service_role');
-CREATE POLICY "org_members_read_own_audit_logs"
-    ON audit_logs FOR SELECT
+ALTER TABLE cactus_invoice_line_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_cactus_invoice_line_items"
+    ON cactus_invoice_line_items FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "org_members_read_own_cactus_invoice_line_items"
+    ON cactus_invoice_line_items FOR SELECT
     USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
 ALTER TABLE rate_shop_log ENABLE ROW LEVEL SECURITY;
@@ -645,14 +800,16 @@ CREATE POLICY "org_members_read_own_shipment_events"
     ON shipment_events FOR SELECT
     USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_audit_logs"
+    ON audit_logs FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "org_members_read_own_audit_logs"
+    ON audit_logs FOR SELECT
+    USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
+
 
 -- ==========================================================
 -- SECTION 3: INDEXES
---
--- WHAT IS AN INDEX?
--- Like the index at the back of a book — lets Postgres jump
--- straight to the right rows instead of reading every row.
--- Critical for performance at high shipment volumes.
 -- ==========================================================
 
 -- organizations
@@ -661,14 +818,38 @@ CREATE INDEX idx_organizations_parent
 CREATE INDEX idx_organizations_active
     ON organizations(is_active) WHERE is_active = TRUE;
 
--- org_users (critical for RLS policy performance)
+-- org_users
 CREATE INDEX idx_org_users_user_id ON org_users(user_id);
 CREATE INDEX idx_org_users_org_id  ON org_users(org_id);
 
--- rate_cards (rate engine hot path)
-CREATE INDEX idx_rate_cards_org_carrier ON rate_cards(org_id, carrier_code);
+-- locations
+CREATE INDEX idx_locations_org_id
+    ON locations(org_id);
+CREATE INDEX idx_locations_billing
+    ON locations(org_id, is_billing_address)
+    WHERE is_billing_address = TRUE AND is_active = TRUE;
+CREATE INDEX idx_locations_normalized_address
+    ON locations(normalized_address)
+    WHERE is_billing_address = TRUE AND is_active = TRUE;
+
+-- org_carrier_accounts
+CREATE INDEX idx_org_carrier_accounts_org_id
+    ON org_carrier_accounts(org_id);
+CREATE INDEX idx_org_carrier_accounts_carrier
+    ON org_carrier_accounts(carrier_code);
+CREATE INDEX idx_org_carrier_accounts_account_number
+    ON org_carrier_accounts(account_number);
+CREATE INDEX idx_org_carrier_accounts_active
+    ON org_carrier_accounts(org_id, carrier_code)
+    WHERE is_active = TRUE;
+
+-- rate_cards
+CREATE INDEX idx_rate_cards_carrier_account
+    ON rate_cards(org_carrier_account_id);
+CREATE INDEX idx_rate_cards_org_id
+    ON rate_cards(org_id);
 CREATE INDEX idx_rate_cards_active
-    ON rate_cards(org_id, carrier_code, service_level)
+    ON rate_cards(org_carrier_account_id, service_level)
     WHERE deprecated_date IS NULL AND is_active = TRUE;
 
 -- meters
@@ -680,50 +861,74 @@ CREATE INDEX idx_meter_tx_org_id   ON meter_transactions(org_id);
 CREATE INDEX idx_meter_tx_created  ON meter_transactions(created_at DESC);
 CREATE INDEX idx_meter_tx_type     ON meter_transactions(transaction_type);
 
--- carrier_invoice_mappings (normalization engine hot path)
+-- carrier_invoice_mappings
 CREATE INDEX idx_carrier_mappings_active
     ON carrier_invoice_mappings(carrier_code, raw_header_name)
     WHERE deprecated_date IS NULL;
 
--- shipment_ledger (most queried table)
+-- shipment_ledger
 CREATE INDEX idx_shipment_ledger_org_id
     ON shipment_ledger(org_id);
 CREATE INDEX idx_shipment_ledger_tracking
     ON shipment_ledger(tracking_number);
-CREATE INDEX idx_shipment_ledger_carrier
-    ON shipment_ledger(carrier_code);
+CREATE INDEX idx_shipment_ledger_carrier_account
+    ON shipment_ledger(org_carrier_account_id);
 CREATE INDEX idx_shipment_ledger_unreconciled
     ON shipment_ledger(org_id, reconciled) WHERE reconciled = FALSE;
+CREATE INDEX idx_shipment_ledger_source
+    ON shipment_ledger(shipment_source);
 CREATE INDEX idx_shipment_ledger_created
     ON shipment_ledger(created_at DESC);
 
+-- carrier_invoices
+CREATE INDEX idx_carrier_invoices_org_id
+    ON carrier_invoices(org_id);
+CREATE INDEX idx_carrier_invoices_carrier
+    ON carrier_invoices(carrier_code);
+CREATE INDEX idx_carrier_invoices_status
+    ON carrier_invoices(status);
+CREATE INDEX idx_carrier_invoices_created
+    ON carrier_invoices(created_at DESC);
+
+-- invoice_line_items
+CREATE INDEX idx_invoice_line_items_carrier_invoice
+    ON invoice_line_items(carrier_invoice_id);
+CREATE INDEX idx_invoice_line_items_org_id
+    ON invoice_line_items(org_id);
+CREATE INDEX idx_invoice_line_items_tracking
+    ON invoice_line_items(tracking_number);
+CREATE INDEX idx_invoice_line_items_normalized_address
+    ON invoice_line_items(ship_from_address_normalized);
+CREATE INDEX idx_invoice_line_items_billing_status
+    ON invoice_line_items(billing_status);
+CREATE INDEX idx_invoice_line_items_dispute
+    ON invoice_line_items(dispute_flag) WHERE dispute_flag = TRUE;
+CREATE INDEX idx_invoice_line_items_match_status
+    ON invoice_line_items(match_status);
+
 -- cactus_invoices
-CREATE INDEX idx_cactus_invoices_org_id ON cactus_invoices(org_id);
+CREATE INDEX idx_cactus_invoices_org_id  ON cactus_invoices(org_id);
 CREATE INDEX idx_cactus_invoices_due
     ON cactus_invoices(due_date) WHERE status = 'UNPAID';
-CREATE INDEX idx_cactus_invoices_status ON cactus_invoices(status);
+CREATE INDEX idx_cactus_invoices_status  ON cactus_invoices(status);
 
--- locations
-CREATE INDEX idx_locations_org_id ON locations(org_id);
+-- cactus_invoice_line_items
+CREATE INDEX idx_cactus_invoice_line_items_invoice
+    ON cactus_invoice_line_items(cactus_invoice_id);
+CREATE INDEX idx_cactus_invoice_line_items_org
+    ON cactus_invoice_line_items(org_id);
 
--- audit_logs
-CREATE INDEX idx_audit_logs_org_id  ON audit_logs(org_id);
-CREATE INDEX idx_audit_logs_entity  ON audit_logs(entity_type, entity_id);
-CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
-
--- rate_shop_log (AI queries — lane analysis, carrier comparison)
+-- rate_shop_log
 CREATE INDEX idx_rate_shop_log_org_id
     ON rate_shop_log(org_id);
 CREATE INDEX idx_rate_shop_log_lane
     ON rate_shop_log(origin_postal, destination_postal, carrier_code);
-CREATE INDEX idx_rate_shop_log_carrier
-    ON rate_shop_log(carrier_code, service_level);
 CREATE INDEX idx_rate_shop_log_selected
     ON rate_shop_log(org_id, was_selected);
 CREATE INDEX idx_rate_shop_log_created
     ON rate_shop_log(created_at DESC);
 
--- shipment_events (event sourcing queries)
+-- shipment_events
 CREATE INDEX idx_shipment_events_ledger_id
     ON shipment_events(shipment_ledger_id);
 CREATE INDEX idx_shipment_events_org_id
@@ -735,14 +940,14 @@ CREATE INDEX idx_shipment_events_ai_flagged
 CREATE INDEX idx_shipment_events_created
     ON shipment_events(created_at DESC);
 
+-- audit_logs
+CREATE INDEX idx_audit_logs_org_id  ON audit_logs(org_id);
+CREATE INDEX idx_audit_logs_entity  ON audit_logs(entity_type, entity_id);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
+
 
 -- ==========================================================
 -- SECTION 4: TRIGGERS
---
--- WHAT IS A TRIGGER?
--- A function that runs automatically when something happens
--- to a table. Our trigger auto-sets updated_at on every row
--- update so you never have to remember to do it in code.
 -- ==========================================================
 
 CREATE OR REPLACE FUNCTION set_updated_at()
@@ -757,6 +962,14 @@ CREATE TRIGGER trg_organizations_updated_at
     BEFORE UPDATE ON organizations
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TRIGGER trg_locations_updated_at
+    BEFORE UPDATE ON locations
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_org_carrier_accounts_updated_at
+    BEFORE UPDATE ON org_carrier_accounts
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE TRIGGER trg_rate_cards_updated_at
     BEFORE UPDATE ON rate_cards
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -765,10 +978,14 @@ CREATE TRIGGER trg_meters_updated_at
     BEFORE UPDATE ON meters
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER trg_cactus_invoices_updated_at
-    BEFORE UPDATE ON cactus_invoices
+CREATE TRIGGER trg_carrier_invoices_updated_at
+    BEFORE UPDATE ON carrier_invoices
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER trg_locations_updated_at
-    BEFORE UPDATE ON locations
+CREATE TRIGGER trg_invoice_line_items_updated_at
+    BEFORE UPDATE ON invoice_line_items
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_cactus_invoices_updated_at
+    BEFORE UPDATE ON cactus_invoices
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

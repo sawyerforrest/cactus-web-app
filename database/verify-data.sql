@@ -1,142 +1,181 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: verify-data.sql
--- VERSION: 1.1.0
--- PURPOSE: Confirm the database is set up correctly after
---          running database-setup.sql and seed-data.sql.
+-- VERSION: 1.3.0
+-- PURPOSE: Confirm the database is set up correctly.
 --
--- HOW TO USE THIS FILE:
--- Run each query block one at a time in the Supabase SQL Editor.
--- Each query has a comment explaining what you should see.
--- If the results match the expected output, that section passes.
---
--- WHAT IS A JOIN?
--- A JOIN is a way to combine data from two tables into one result.
--- For example, shipments have an org_id but not the org name.
--- A JOIN lets us pull both at once: "show me shipments AND the
--- name of the org they belong to."
+-- HOW TO USE:
+-- Run each query block one at a time in Supabase SQL Editor.
+-- Each check has an EXPECTED result listed above it.
+-- Run all checks after database-setup.sql and seed-data.sql.
 -- ==========================================================
 
 
 -- ==========================================================
--- CHECK 1: Organizations
+-- CHECK 1: Table Inventory
+-- EXPECTED: 16 tables, all with correct row counts
+--
+--   audit_logs:                0
+--   carrier_invoice_mappings:  21
+--   carrier_invoices:          1
+--   cactus_invoice_line_items: 0
+--   cactus_invoices:           0
+--   invoice_line_items:        2
+--   locations:                 3
+--   meter_transactions:        1
+--   meters:                    1
+--   org_carrier_accounts:      4
+--   org_users:                 0
+--   organizations:             2
+--   rate_cards:                1
+--   rate_shop_log:             0
+--   shipment_events:           1
+--   shipment_ledger:           3
+-- ==========================================================
+
+SELECT table_name, 0 AS row_count
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name NOT IN (
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+  )
+UNION ALL
+SELECT 'audit_logs',                (SELECT COUNT(*)::int FROM audit_logs)
+UNION ALL
+SELECT 'carrier_invoice_mappings',  (SELECT COUNT(*)::int FROM carrier_invoice_mappings)
+UNION ALL
+SELECT 'carrier_invoices',          (SELECT COUNT(*)::int FROM carrier_invoices)
+UNION ALL
+SELECT 'cactus_invoice_line_items', (SELECT COUNT(*)::int FROM cactus_invoice_line_items)
+UNION ALL
+SELECT 'cactus_invoices',           (SELECT COUNT(*)::int FROM cactus_invoices)
+UNION ALL
+SELECT 'invoice_line_items',        (SELECT COUNT(*)::int FROM invoice_line_items)
+UNION ALL
+SELECT 'locations',                 (SELECT COUNT(*)::int FROM locations)
+UNION ALL
+SELECT 'meter_transactions',        (SELECT COUNT(*)::int FROM meter_transactions)
+UNION ALL
+SELECT 'meters',                    (SELECT COUNT(*)::int FROM meters)
+UNION ALL
+SELECT 'org_carrier_accounts',      (SELECT COUNT(*)::int FROM org_carrier_accounts)
+UNION ALL
+SELECT 'org_users',                 (SELECT COUNT(*)::int FROM org_users)
+UNION ALL
+SELECT 'organizations',             (SELECT COUNT(*)::int FROM organizations)
+UNION ALL
+SELECT 'rate_cards',                (SELECT COUNT(*)::int FROM rate_cards)
+UNION ALL
+SELECT 'rate_shop_log',             (SELECT COUNT(*)::int FROM rate_shop_log)
+UNION ALL
+SELECT 'shipment_events',           (SELECT COUNT(*)::int FROM shipment_events)
+UNION ALL
+SELECT 'shipment_ledger',           (SELECT COUNT(*)::int FROM shipment_ledger)
+ORDER BY 1;
+
+
+-- ==========================================================
+-- CHECK 2: Organization Hierarchy
 -- EXPECTED: 2 rows
---   - "Cactus 3PL Headquarters" with org_type = '3PL'
---   - "Desert Boutique" with org_type = 'MERCHANT'
---     and a non-null parent_org_id pointing to the 3PL
+--   Cactus 3PL Headquarters — 3PL — Top-level org
+--   Desert Boutique — MERCHANT — Child of: Cactus 3PL Headquarters
 -- ==========================================================
 
 SELECT
-    name,
-    org_type,
-    terms_days,
+    o.name,
+    o.org_type,
+    o.terms_days,
     CASE
-        WHEN parent_org_id IS NULL THEN 'Top-level org'
+        WHEN o.parent_org_id IS NULL THEN 'Top-level org'
         ELSE 'Child of: ' || (
-            SELECT name FROM organizations parent
-            WHERE parent.id = o.parent_org_id
+            SELECT name FROM organizations p WHERE p.id = o.parent_org_id
         )
     END AS hierarchy
 FROM organizations o
-ORDER BY created_at;
+ORDER BY o.created_at;
 
 
 -- ==========================================================
--- CHECK 2: Meter & Opening Balance
+-- CHECK 3: Locations with Billing Address Flag
+-- EXPECTED: 3 rows, all is_billing_address = TRUE
+--   Cactus 3PL Main Warehouse — Phoenix AZ
+--   Cactus 3PL Dallas Hub — Dallas TX
+--   Desert Boutique Fulfillment Center — Scottsdale AZ
+-- ==========================================================
+
+SELECT
+    o.name AS org_name,
+    l.name AS location_name,
+    l.city,
+    l.state,
+    l.normalized_address,
+    l.is_billing_address
+FROM locations l
+INNER JOIN organizations o ON l.org_id = o.id
+ORDER BY o.name, l.name;
+
+
+-- ==========================================================
+-- CHECK 4: Carrier Account Profiles
+-- EXPECTED: 4 rows
+--   Cactus 3PL — UPS lassoed — 15% markup — is_cactus = TRUE
+--   Cactus 3PL — FedEx lassoed — 15% markup — is_cactus = TRUE
+--   Cactus 3PL — USPS lassoed — 12% markup — is_cactus = TRUE
+--   Desert Boutique — UPS dark — 18% markup — is_cactus = TRUE
+-- ==========================================================
+
+SELECT
+    o.name                          AS org_name,
+    oca.carrier_code,
+    oca.account_nickname,
+    oca.carrier_account_mode,
+    oca.markup_percentage,
+    oca.dispute_threshold,
+    oca.is_cactus_account
+FROM org_carrier_accounts oca
+INNER JOIN organizations o ON oca.org_id = o.id
+ORDER BY o.name, oca.carrier_code;
+
+
+-- ==========================================================
+-- CHECK 5: Meter Balance
 -- EXPECTED: 1 row
---   - org_name = "Cactus 3PL Headquarters"
---   - wallet_balance = 500.0000
---   - min_threshold = 100.0000
---   - reload_amount = 500.0000
+--   Cactus 3PL Headquarters — balance: 500.0000
+-- ==========================================================
+
+SELECT
+    o.name          AS org_name,
+    m.current_balance,
+    m.min_threshold,
+    m.reload_amount,
+    m.apply_cc_fee,
+    mt.transaction_type,
+    mt.net_amount,
+    mt.balance_after,
+    mt.description
+FROM meters m
+INNER JOIN organizations o ON m.org_id = o.id
+INNER JOIN meter_transactions mt ON mt.meter_id = m.id
+ORDER BY mt.created_at;
+
+
+-- ==========================================================
+-- CHECK 6: Single-Ceiling Math Verification (Lassoed)
+-- EXPECTED: 1 row with ceiling_verified = 'PASS ✓'
+--
+-- Math:
+--   raw_carrier_cost:   $12.3456
+--   markup (15%):       × 1.15 = $14.19744
+--   pre_ceiling:        $14.1974
+--   final_merchant_rate: $14.20 (ceiling)
 -- ==========================================================
 
 SELECT
     o.name                  AS org_name,
-    m.current_balance       AS wallet_balance,
-    m.min_threshold         AS reload_trigger,
-    m.reload_amount         AS reload_amount,
-    m.apply_cc_fee          AS cc_fee_enabled
-FROM organizations o
-INNER JOIN meters m ON o.id = m.org_id;
-
-
--- ==========================================================
--- CHECK 3: Meter Transactions (Opening Ledger Entry)
--- EXPECTED: 1 row
---   - transaction_type = 'RELOAD'
---   - gross_amount = 500.0000
---   - fee_amount = 0.0000
---   - net_amount = 500.0000
---   - balance_after = 500.0000
--- ==========================================================
-
-SELECT
-    mt.transaction_type,
-    mt.gross_amount,
-    mt.fee_amount,
-    mt.net_amount,
-    mt.balance_after,
-    mt.description
-FROM meter_transactions mt
-INNER JOIN organizations o ON mt.org_id = o.id
-WHERE o.name = 'Cactus 3PL Headquarters';
-
-
--- ==========================================================
--- CHECK 4: Rate Cards
--- EXPECTED: 4 rows — one for each carrier seeded
---   UPS: 15%, FedEx: 15%, USPS: 12%, DHL_ECOM: 18%
--- ==========================================================
-
-SELECT
-    o.name              AS org_name,
-    rc.carrier_code,
-    rc.markup_type,
-    rc.markup_percentage,
-    rc.is_active
-FROM rate_cards rc
-INNER JOIN organizations o ON rc.org_id = o.id
-ORDER BY rc.carrier_code;
-
-
--- ==========================================================
--- CHECK 5: Carrier Invoice Mappings (Normalization Layer)
--- EXPECTED: Multiple rows, grouped by carrier.
---   Each row shows a raw carrier header mapped to a
---   Cactus standard field name.
--- ==========================================================
-
-SELECT
-    carrier_code,
-    raw_header_name,
-    cactus_standard_field,
-    effective_date,
-    deprecated_date
-FROM carrier_invoice_mappings
-ORDER BY carrier_code, raw_header_name;
-
-
--- ==========================================================
--- CHECK 6: Single-Ceiling Math Verification
--- This is the most important check. It verifies the core
--- financial logic of Cactus is calculating correctly.
---
--- EXPECTED:
---   tracking_number     = '1Z-CACTUS-TEST-001'
---   raw_carrier_cost    = 12.3456
---   markup_percentage   = 0.1500
---   pre_ceiling_amount  = 14.1974
---   final_merchant_rate = 14.2000
---   ceiling_verified    = 'PASS'
---
--- The ceiling_verified column recalculates the math live and
--- confirms it matches what was stored. If it shows 'FAIL',
--- the Single-Ceiling pipeline has a bug.
--- ==========================================================
-
-SELECT
-    o.name                      AS org_name,
     sl.tracking_number,
+    sl.shipment_source,
     sl.carrier_code,
     sl.service_level,
     sl.raw_carrier_cost,
@@ -148,47 +187,72 @@ SELECT
             (CEIL(sl.raw_carrier_cost * (1 + sl.markup_percentage) * 100) / 100)
         THEN 'PASS ✓'
         ELSE 'FAIL ✗ — check Single-Ceiling pipeline'
-    END                         AS ceiling_verified
+    END                     AS ceiling_verified
 FROM shipment_ledger sl
-INNER JOIN organizations o ON sl.org_id = o.id;
+INNER JOIN organizations o ON sl.org_id = o.id
+WHERE sl.shipment_source = 'RATING_ENGINE';
 
 
 -- ==========================================================
--- CHECK 7: Full Table Inventory
--- EXPECTED: Shows row counts for all 10 tables.
--- Use this as a quick health check any time you want to
--- confirm the database is populated.
---
--- Approximate expected counts after seed:
---   audit_logs: 0
---   carrier_invoice_mappings: 14
---   cactus_invoices: 0
---   locations: 1
---   meter_transactions: 1
---   meters: 1
---   org_users: 0
---   organizations: 2
---   rate_cards: 4
---   shipment_ledger: 1
+-- CHECK 7: Dark Account Invoice Pipeline Verification
+-- EXPECTED: 2 rows — both ceiling_verified = 'PASS ✓'
+--   both billing_status = 'APPROVED'
+--   both match_method = 'SHIP_FROM_ADDRESS'
+--   both match_status = 'AUTO_MATCHED'
 -- ==========================================================
 
-SELECT 'audit_logs'                 AS table_name, COUNT(*) AS row_count FROM audit_logs
-UNION ALL
-SELECT 'carrier_invoice_mappings',               COUNT(*) FROM carrier_invoice_mappings
-UNION ALL
-SELECT 'cactus_invoices',                        COUNT(*) FROM cactus_invoices
-UNION ALL
-SELECT 'locations',                              COUNT(*) FROM locations
-UNION ALL
-SELECT 'meter_transactions',                     COUNT(*) FROM meter_transactions
-UNION ALL
-SELECT 'meters',                                 COUNT(*) FROM meters
-UNION ALL
-SELECT 'org_users',                              COUNT(*) FROM org_users
-UNION ALL
-SELECT 'organizations',                          COUNT(*) FROM organizations
-UNION ALL
-SELECT 'rate_cards',                             COUNT(*) FROM rate_cards
-UNION ALL
-SELECT 'shipment_ledger',                        COUNT(*) FROM shipment_ledger
-ORDER BY table_name;
+SELECT
+    o.name                          AS org_name,
+    ili.tracking_number,
+    ili.ship_from_address_normalized,
+    ili.carrier_charge,
+    ili.markup_percentage,
+    ili.final_merchant_rate,
+    ili.match_method,
+    ili.match_status,
+    ili.billing_status,
+    ili.dispute_flag,
+    sl.shipment_source,
+    CASE
+        WHEN ili.final_merchant_rate =
+            (CEIL(ili.carrier_charge * (1 + ili.markup_percentage) * 100) / 100)
+        THEN 'PASS ✓'
+        ELSE 'FAIL ✗'
+    END                             AS ceiling_verified
+FROM invoice_line_items ili
+INNER JOIN organizations o ON ili.org_id = o.id
+INNER JOIN shipment_ledger sl ON ili.shipment_ledger_id = sl.id
+ORDER BY ili.tracking_number;
+
+
+-- ==========================================================
+-- CHECK 8: Shipment Events (Event Sourcing)
+-- EXPECTED: 1 row
+--   event_type = LABEL_CREATED for 1Z-CACTUS-TEST-001
+-- ==========================================================
+
+SELECT
+    o.name          AS org_name,
+    sl.tracking_number,
+    se.event_type,
+    se.carrier_code,
+    se.carrier_message,
+    se.ai_flagged,
+    se.created_at
+FROM shipment_events se
+INNER JOIN shipment_ledger sl ON se.shipment_ledger_id = sl.id
+INNER JOIN organizations o ON se.org_id = o.id
+ORDER BY se.created_at;
+
+
+-- ==========================================================
+-- CHECK 9: Carrier Invoice Mappings
+-- EXPECTED: 21 rows across UPS, FEDEX, USPS, DHL_ECOM
+-- ==========================================================
+
+SELECT
+    carrier_code,
+    COUNT(*) AS mapping_count
+FROM carrier_invoice_mappings
+GROUP BY carrier_code
+ORDER BY carrier_code;
