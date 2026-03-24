@@ -1,9 +1,14 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# For use at the start of any new Claude chat session.
-# Paste this entire document as your first message, then
-# describe what you want to work on in that session.
-# Keep the "Current Build State" section updated as you build.
-# Last updated: 2026-03-22
+# VERSION: 1.2.0 | UPDATED: 2026-03-23
+#
+# HOW TO USE:
+# Paste this entire document as the first message in any new
+# Claude chat session. Then describe what you want to work on.
+# Claude will have full context and can pick up immediately.
+#
+# KEEP UPDATED: After each session, update Section 9
+# (Current Build State) to reflect what was completed and
+# what comes next.
 
 ---
 
@@ -21,16 +26,21 @@ or business model concerns you notice along the way.
 
 ## 1. WHAT IS CACTUS?
 
-Cactus Logistics OS is an AI-assisted, end-to-end logistics
-platform for e-commerce 3PLs (Third-Party Logistics providers)
-and brands shipping 500+ small parcel orders per day.
+Cactus Logistics OS is an AI-native, end-to-end logistics platform
+for e-commerce 3PLs (Third-Party Logistics providers) and brands
+shipping 500+ small parcel orders per day. Built to expand into
+B2B freight, full WMS (Warehouse Management System), Ocean Freight,
+and beyond.
 
 **Motto:** "Logistics with Soul."
 **Core Values:** Gratitude | Curiosity | Creation
-**Solo founder:** Caleb (bootstrap/self-funded)
+**AI Philosophy:** AI is the central nervous system of Cactus —
+not a feature. Every architectural decision asks: "Does this make
+Cactus smarter over time?"
+**Solo founder:** Caleb (bootstrap/self-funded, learning to code)
 **Tech stack:** TypeScript/Node.js backend, Next.js frontend,
-PostgreSQL via Supabase, hosted on Vercel, GitHub for version
-control, Cursor IDE for development.
+PostgreSQL via Supabase, Anthropic Claude API for AI, GitHub for
+version control, Cursor IDE for development.
 
 ---
 
@@ -38,118 +48,141 @@ control, Cursor IDE for development.
 
 **Phase 1 — Rating & Billing Engine (CURRENT)**
 - Multi-carrier rate shopping engine
-- WMS (Warehouse Management System), TMS (Transportation
-  Management System), and OMS (Order Management System)
-  integration layer via the Adapter Pattern
-- Single-Ceiling markup pipeline (see Financial OS below)
+- WMS/TMS/OMS integration via the Adapter Pattern
+- Single-Ceiling markup pipeline
 - Pre-paid USPS metered wallet with auto-reload
-- Post-paid weekly invoicing for all non-USPS carriers
-- Carrier invoice normalization layer
+- Post-paid weekly invoicing for non-USPS carriers
+- Carrier invoice normalization with AI-assisted mapping
+- Shadow Ledger (rate_shop_log): every rate request logged
+- Event Sourcing (shipment_events): full shipment timeline
 - Cactus Portal: client-facing dashboard
 - The Alamo: internal Cactus admin dashboard
 
 **Phase 2 — Client-Facing Billing Suite & Analytics**
-- Sub-client markup support (3PLs billing their own merchants)
-- Invoice reconciliation: carrier invoice vs. label print data
-- Analytics dashboard: shipping trends, cost-per-package, margin
-- APV (Automated Package Verification) dispute workflow
+- Sub-client markup (3PLs billing their own merchants)
+- Invoice reconciliation with AI-flagged discrepancies
+- Analytics dashboard
+- Vector embeddings for semantic carrier code normalization
+- Rate volatility predictions from Shadow Ledger dataset
 
 **Phase 3 — Full WMS & B2B Expansion**
-- Warehouse management: aisles, bins, pick/pack workflows
-- Inventory and SKU (Stock Keeping Unit)-level tracking
-- LTL (Less Than Truckload) and FTL (Full Truckload) support
+- Warehouse management, inventory, SKU tracking
+- LTL/FTL freight support
+- Ocean freight container event tracking
+- Carrier scorecard intelligence by lane
 
 ---
 
 ## 3. PRODUCT ARCHITECTURE
 
 ### The Two Portals
-**Cactus Portal** — client-facing interface. Shows shipments,
-tracking, meter balance, transaction history, invoices.
-Never exposes raw carrier costs or Cactus markup rates.
+**Cactus Portal** — client-facing. Shows shipments, tracking,
+meter balance, transaction history, invoices, AI insights.
+NEVER shows: raw_carrier_cost, markup_percentage, markup_flat_fee,
+pre_ceiling_amount, or any rate_cards data.
 
-**The Alamo** — internal Cactus admin only. Manages rate cards,
-carrier credentials, normalization mappings, audit logs,
-billing overrides, and global meter health.
+**The Alamo** — internal Cactus admin only. Rate cards, carrier
+credentials, normalization mappings, AI flag review queue,
+audit logs, billing overrides, global meter health.
 
 ### Revenue Model
-Cactus earns margin on the spread between negotiated carrier
-rates and marked-up client rates. Primary Phase 1 revenue source.
+Margin on the spread between negotiated carrier rates and
+marked-up client rates. Primary Phase 1 revenue source.
 
 ### Supported Carriers (Phase 1)
 UPS | FedEx | USPS | DHL eCommerce | DHL Express |
 UniUni | Landmark Global | OnTrac | LSO (Lone Star Overnight)
 
-### Integration Strategy — The Adapter Pattern
-Never build direct integrations. Every WMS/OMS/TMS connects
-through an adapter that translates their data format into the
-Cactus Canonical Payload (internal standard format). Adding a
-new integration = write one adapter. Core engine never changes.
+### The Adapter Pattern
+Every WMS/OMS/TMS connects through a dedicated adapter:
+External System → Adapter → CactusCanonicalPayload → Engine
+Adding a new integration = write one adapter. Core never changes.
+
+### The AI Service Module
+All AI calls route through `src/core/ai/ai-service.ts`.
+Phase 1: normalization assistance + exception flagging via
+Anthropic Claude API. Interface designed so any model can
+be swapped without changing business logic.
 
 ---
 
 ## 4. FINANCIAL OS — NON-NEGOTIABLE RULES
 
 ### Rule 1: No floats. Ever.
-All currency uses DECIMAL(18,4) in the database and decimal.js
-in application code. JavaScript's default number type cannot
-represent decimals precisely. Never use it for money.
+Database: `DECIMAL(18,4)`. Application: `decimal.js` library.
+Never use JavaScript's default `number` type for money.
 
-### Rule 2: The Single-Ceiling Pipeline
+### Rule 2: Single-Ceiling Pipeline
 Applied ONCE to the shipment total. Never per component.
-
 ```
-Step 1: raw_carrier_cost × (1 + markup_percentage) = pre_ceiling_amount
-Step 2: CEILING(pre_ceiling_amount to next whole cent) = final_merchant_rate
-
-Formula: Math.ceil(rawCarrierCost * (1 + markupPercentage) * 100) / 100
+raw_carrier_cost × (1 + markup_percentage) = pre_ceiling_amount
+CEILING(pre_ceiling_amount to next whole cent) = final_merchant_rate
 
 Example:
-  raw_carrier_cost:   $12.3456
-  markup (15%):       $12.3456 × 1.15 = $14.19744
-  after ceiling:      $14.20 ← what the client is billed
+  $12.3456 × 1.15 = $14.19744 → CEILING → $14.20 (billed to client)
 ```
 
 ### Rule 3: Bifurcated Settlement
-- **USPS only → Pre-paid Metered Wallet**
-  Balance depletes with each label. Auto-reloads when balance
-  drops below min_threshold. CC reloads incur 3% processing fee.
-  ACH reloads have no fee.
-- **All other carriers → Post-paid Weekly Invoice**
-  Shipments accumulate, consolidated invoice generated weekly,
-  auto-pull fires on due_date.
+- USPS → Pre-paid Metered Wallet. Auto-reload on min_threshold.
+  CC reloads = 3% processing fee. ACH = no fee.
+- All others → Post-paid Weekly Invoice. Auto-pull on due_date.
 
 ### Rule 4: Immutable Financial Records
 Never UPDATE or DELETE rows in:
-- shipment_ledger
-- meter_transactions
-- audit_logs
+shipment_ledger | meter_transactions | audit_logs |
+rate_shop_log | shipment_events
 All corrections = new rows (MANUAL_CREDIT / MANUAL_DEBIT).
 
 ---
 
-## 5. DATABASE SCHEMA (v1.1.1 — LIVE IN SUPABASE)
+## 5. AI ARCHITECTURE
 
-PostgreSQL via Supabase. RLS (Row Level Security) enabled on
-all tables. All currency columns DECIMAL(18,4). All timestamps
-TIMESTAMPTZ (timezone-aware).
+### The Shadow Ledger (rate_shop_log)
+Every rate request logged — even rates never selected.
+Builds proprietary AI training dataset over time.
+Future features: rate volatility prediction, carrier
+recommendations, lane-level cost optimization.
 
-### The 10 Tables
+### Event Sourcing (shipment_events)
+Every status change = new immutable row. Never update status.
+Full timeline gives AI context to flag at-risk shipments,
+build carrier scorecards, power proactive alerts.
 
-| Table | Purpose |
-|---|---|
-| `organizations` | Multi-tenant root. Every record traces to an org_id here. |
-| `org_users` | Maps Supabase auth users to orgs. RLS anchor table. |
-| `rate_cards` | Org-specific markup rules per carrier. Single-Ceiling reads here. |
-| `meters` | USPS pre-paid postage wallet. One per org. |
-| `meter_transactions` | Immutable ledger of all meter activity. |
-| `carrier_invoice_mappings` | Normalization layer. Versioned with effective/deprecated dates. |
-| `shipment_ledger` | One row per shipment. Single-Ceiling output. Immutable. |
-| `cactus_invoices` | Weekly post-paid invoices for non-USPS carriers. |
-| `locations` | Ship-from addresses (Phase 3: expands to warehouse bins). |
-| `audit_logs` | Append-only integrity log for all system actions. |
+### Phase 1 AI Features
+1. Normalization assistance: Claude suggests cactus_standard_field
+   for unknown carrier header names. Flagged for human review.
+2. Exception flagging: AI sets ai_flagged = TRUE with reason
+   when unexpected events occur on shipments.
 
-### Key Enums (database-enforced value constraints)
+### Phase 2 AI Features (design for, build later)
+- Vector embeddings on carrier_invoice_mappings
+- Rate volatility prediction from rate_shop_log
+- Autonomous reconciliation (human-in-the-loop)
+- Carrier scorecard by lane and geography
+
+---
+
+## 6. DATABASE SCHEMA (v1.2.0 — LIVE IN SUPABASE)
+
+12 tables. All RLS enabled. All currency DECIMAL(18,4).
+All timestamps TIMESTAMPTZ.
+
+| Table | Purpose | AI Role |
+|---|---|---|
+| `organizations` | Tenant root | Scoping |
+| `org_users` | Auth → org mapping | RLS anchor |
+| `rate_cards` | Markup rules | Margin analysis |
+| `meters` | USPS wallet | — |
+| `meter_transactions` | Meter ledger | Cash flow patterns |
+| `carrier_invoice_mappings` | Normalization | AI suggestion target |
+| `shipment_ledger` | Single-Ceiling output | Billing truth |
+| `cactus_invoices` | Post-paid invoices | Auto-pull target |
+| `locations` | Ship-from addresses | Phase 3 WMS hook |
+| `audit_logs` | Action log | Compliance + AI audit |
+| `rate_shop_log` | Shadow Ledger | **Primary AI dataset** |
+| `shipment_events` | Event timeline | **Carrier intelligence** |
+
+### Key Enums
 - `org_type_enum`: 3PL | MERCHANT | SUB_CLIENT
 - `invoice_status_enum`: UNPAID | PAID | FAILED | VOID
 - `meter_transaction_type_enum`: RELOAD | LABEL_PURCHASE |
@@ -158,14 +191,14 @@ TIMESTAMPTZ (timezone-aware).
 - `carrier_code_enum`: UPS | FEDEX | USPS | DHL_ECOM |
   DHL_EXPRESS | UNIUNI | LANDMARK | ONTRAC | LSO
 - `location_type_enum`: WAREHOUSE | SHIP_FROM | STORAGE | RETURNS
-
-### RLS Policy Pattern (applied to every table)
-1. `service_role` bypass — backend API key, unrestricted access
-2. `org_members_read_own_*` — users see only their org's data
+- `shipment_event_type_enum`: RATE_REQUESTED | LABEL_CREATED |
+  LABEL_VOIDED | PICKED_UP | IN_TRANSIT | OUT_FOR_DELIVERY |
+  DELIVERY_ATTEMPTED | DELIVERED | RETURNED_TO_SENDER | LOST |
+  EXCEPTION | APV_ADJUSTMENT | ADDRESS_CORRECTED | DAMAGED
 
 ---
 
-## 6. NAMING CONVENTIONS
+## 7. NAMING CONVENTIONS
 
 | Context | Convention | Example |
 |---|---|---|
@@ -177,44 +210,15 @@ TIMESTAMPTZ (timezone-aware).
 
 ---
 
-## 7. CODING PHILOSOPHY
+## 8. CODING PHILOSOPHY
 
-- **Human-First, AI-Assisted:** Code must be readable. Every
-  non-obvious block needs a comment explaining WHY, not just what.
-- **Safe Fallbacks:** If a rate card lookup fails, never halt
-  label production. Log the failure and return a clear error.
+- **Human-First:** Every non-obvious block needs a WHY comment.
+- **Safe Fallbacks:** Rate card failure never halts label production.
 - **Privacy:** raw_carrier_cost, markup_percentage, markup_flat_fee,
-  pre_ceiling_amount, and all rate_cards data are NEVER returned
-  to the Cactus Portal. Clients see only final_merchant_rate.
-- **Performance targets:** Rating API < 500ms. Label purchase
-  < 2000ms. Dashboard queries < 1000ms.
-- **Idempotency keys** on all label purchase and meter reload
-  requests to prevent double-charges from WMS retry storms.
-
----
-
-## 8. PROJECT FILE STRUCTURE
-
-```
-cactus-logistics/
-├── .env                         ← secrets (never commit to GitHub)
-├── .gitignore                   ← protects .env and node_modules
-├── README.md                    ← project overview
-├── cactus-standards.mdc         ← Cursor reads this for code standards
-├── database/
-│   ├── database-setup.sql       ← v1.1.1 schema (run once on fresh DB)
-│   ├── seed-data.sql            ← test data
-│   └── verify-data.sql         ← post-run verification queries
-├── src/
-│   ├── core/
-│   │   ├── rating/              ← carrier API integrations
-│   │   ├── billing/             ← Single-Ceiling pipeline
-│   │   └── normalization/       ← carrier invoice mapper
-│   ├── adapters/                ← WMS/OMS adapter layer
-│   ├── alamo/                   ← internal admin API
-│   └── portal/                  ← client-facing API
-└── package.json
-```
+  pre_ceiling_amount, rate_cards data never returned to portal.
+- **Idempotency keys** on all label purchases and meter reloads.
+- **Async AI writes:** Shadow Ledger writes never block responses.
+- **Performance:** Rating < 500ms, label < 2000ms, dashboards < 1s.
 
 ---
 
@@ -222,67 +226,59 @@ cactus-logistics/
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
-- [x] Supabase project created (fresh, with RLS + Data API enabled)
-- [x] database-setup.sql v1.1.1 — all 10 tables live in Supabase
-- [x] seed-data.sql — test data loaded and verified
-- [x] verify-data.sql — all checks passed including PASS ✓ on
-      Single-Ceiling math
+- [x] Supabase project created (RLS + Data API enabled)
+- [x] database-setup.sql v1.2.0 — 12 tables, ready to run
+- [x] seed-data.sql — updated for v1.2.0 schema
+- [x] verify-data.sql — 7 checks including PASS ✓ ceiling math
 - [x] .env file created in Cursor with Supabase keys
 - [x] .gitignore file created in Cursor
-- [x] README.md updated to v1.1.0
-- [x] cactus-standards.mdc updated to v1.1.0
-- [x] GitHub repo initialized and files pushed
+- [x] README.md updated to v1.2.0
+- [x] cactus-standards.mdc updated to v1.2.0
+- [x] cactus-master-briefing.md created (this file) v1.2.0
+- [x] AI-native architecture designed and documented
+- [x] Shadow Ledger (rate_shop_log) added to schema
+- [x] Event Sourcing (shipment_events) added to schema
+- [x] GitHub repo initialized: github.com/sawyerforrest/cactus-logistics
 
 ### Next task — START HERE next session
-Initialize the Node.js project in Cursor terminal:
-```bash
-npm init -y
-```
-Then install first dependencies:
-```bash
-npm install @supabase/supabase-js dotenv
-npm install -D typescript @types/node ts-node
-```
-Then create the first TypeScript configuration file and test
-the Supabase connection from code.
+1. Drop and recreate Supabase database with v1.2.0 schema
+   (adds rate_shop_log and shipment_events tables)
+2. Re-run seed-data.sql and verify-data.sql
+3. Initialize Node.js in Cursor terminal:
+   ```bash
+   npm init -y
+   ```
+4. Install first dependencies:
+   ```bash
+   npm install @supabase/supabase-js dotenv decimal.js
+   npm install -D typescript @types/node ts-node
+   ```
+5. Create tsconfig.json and test Supabase connection from code
 
-### Key decisions made (architectural record)
+### Key architectural decisions (record)
+- AI is central nervous system — not a feature
 - Single-Ceiling applied once to shipment total, not per component
-- meter_transactions is the source of truth for balance;
-  meters.current_balance is a cache only
-- carrier_invoice_mappings uses effective_date/deprecated_date
-  versioning — never update or delete mapping rows
-- rate_card_id is stored as a snapshot on shipment_ledger so
-  billing history is preserved even if rate cards change later
+- rate_shop_log logs ALL rate requests (selected and unselected)
+- shipment_events is event sourcing — never update status columns
+- meter_transactions is source of truth; meters.current_balance is cache
+- carrier_invoice_mappings is versioned; ai_suggested + ai_confidence_score
+  columns ready for Phase 2 vector embeddings
+- rate_card_id snapshot on shipment_ledger preserves billing history
 - Markup percentage stored as decimal fraction (0.15 = 15%)
-- USPS meter CC fee (3%) stored separately from Cactus markup
-  — two distinct concepts, two distinct columns
-- The Alamo = internal admin portal name
-- Cactus Portal = client-facing portal name
+- CC fee (3%) is separate from Cactus markup — two distinct columns
+- All AI calls route through ai-service.ts module for swap-ability
+- The Alamo = internal admin portal
+- Cactus Portal = client-facing portal
 
 ### Open questions / decisions still needed
-- Payment processor choice: Stripe vs. Fortis for meter reloads
-- First WMS integration target: Warehouse (confirm spelling/name)
-- USPS integration approach: direct PC Postage or via licensed
-  reseller (Stamps.com / Endicia) — legal review recommended
-  before building meter wallet feature
+- Payment processor: Stripe vs. Fortis for meter reloads
+- First WMS integration: Warehouse (confirm correct spelling/name)
+- USPS integration: direct PC Postage or via licensed reseller
+  (Stamps.com / Endicia) — legal review recommended first
+- Anthropic API key: needs to be added to .env when ready to
+  build AI features
 
 ---
 
 ## 10. GITHUB REPOSITORY
 https://github.com/sawyerforrest/cactus-logistics
-
----
-
-## HOW TO USE THIS DOCUMENT
-
-Paste this entire file at the start of a new Claude chat.
-Then tell Claude what you want to work on in that session.
-Claude will have full context and can pick up exactly where
-you left off.
-
-After each session, update Section 9 (Current Build State):
-- Move completed items to the "Completed" list
-- Update "Next task" to reflect where you stopped
-- Add any new architectural decisions to the decisions log
-- Add any new open questions that came up
