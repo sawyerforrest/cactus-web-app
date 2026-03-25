@@ -284,7 +284,16 @@ Never update shipment status. Always append new event rows.
 - [x] All architectural decisions documented in standards
 
 ### Next task — START HERE next session
-Begin Stage 2: The Alamo shell
+BEGIN PHASE 0 THIS WEEK (non-coding, high priority):
+  □ Form Utah LLC at corporations.utah.gov ($54)
+  □ Open Mercury business bank account
+  □ Apply for UPS Developer API — developer.ups.com
+  □ Apply for FedEx Developer API — developer.fedex.com
+  □ Contact UniUni for API access
+  □ Book 1hr Utah business attorney consult ($150-300)
+  □ Create Stripe account under LLC
+
+THEN resume Stage 2: The Alamo shell
   - Scaffold Next.js app in src/alamo/
   - Supabase Auth — admin login only
   - Basic sidebar navigation
