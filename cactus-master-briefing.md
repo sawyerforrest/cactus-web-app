@@ -282,16 +282,21 @@ Never update shipment status. Always append new event rows.
 - [x] Invoice pipeline billing brain rules locked in
 - [x] Carrier account hierarchy finalized
 - [x] All architectural decisions documented in standards
+- [x] FedEx Integrator Developer account created (ID: 70157774)
+- [x] FedEx billing account created (210682153)
+- [x] FedEx API documentation suite — complete
+- [x] docs/ folder organized inside cactus-web-app
+- [x] Pushed to GitHub
 
 ### Next task — START HERE next session
 BEGIN PHASE 0 THIS WEEK (non-coding, high priority):
-  □ Form Utah LLC at corporations.utah.gov ($54)
-  □ Open Mercury business bank account
-  □ Apply for UPS Developer API — developer.ups.com
-  □ Apply for FedEx Developer API — developer.fedex.com
-  □ Contact UniUni for API access
-  □ Book 1hr Utah business attorney consult ($150-300)
-  □ Create Stripe account under LLC
+- [ ] UPS Developer Portal signup — developer.ups.com
+      Select Technology Partner / Integrator profile
+- [ ] Form Utah LLC at corporations.utah.gov ($54)
+- [ ] Open Mercury business bank account
+- [ ] Contact UniUni for API access
+- [ ] Book 1hr Utah business attorney consult ($150-300)
+- [ ] Create Stripe account under LLC
 
 THEN resume Stage 2: The Alamo shell
   - Scaffold Next.js app in src/alamo/
