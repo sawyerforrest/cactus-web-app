@@ -1,24 +1,18 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: seed-data.sql
--- VERSION: 1.3.0
--- PURPOSE: Populate the database with realistic test data.
+-- VERSION: 1.4.0
+-- UPDATED: 2026-03-28
+--
+-- CHANGES IN v1.4.0:
+--   - No seed data changes. carrier_code_enum updated in
+--     database-setup.sql (LSO removed, GOFO/SHIPX/OSM added).
+--     Existing seed data uses UPS and FEDEX only — unaffected.
 --
 -- RUN ORDER:
---   1. database-setup.sql  (creates all tables)
---   2. seed-data.sql       (this file — inserts test data)
---   3. verify-data.sql     (confirms everything is correct)
---
--- WHAT THIS COVERS:
---   - One 3PL org + one merchant org
---   - Warehouse locations for both orgs
---   - Carrier accounts in both lassoed and dark modes
---   - Rate cards on specific carrier accounts
---   - USPS meter with opening balance
---   - Carrier invoice mappings (normalization layer)
---   - One test shipment via rating engine (lassoed)
---   - One test shipment via invoice import (dark)
---   - A test carrier invoice batch with two line items
+--   1. database-setup.sql
+--   2. seed-data.sql (this file)
+--   3. verify-data.sql
 -- ==========================================================
 
 
@@ -26,13 +20,9 @@
 -- SECTION 1: ORGANIZATIONS
 -- ==========================================================
 
--- Parent 3PL org
 INSERT INTO organizations (name, org_type, terms_days)
 VALUES ('Cactus 3PL Headquarters', '3PL', 7);
 
--- Child merchant org (linked to 3PL as parent)
--- Note: In Phase 1 we always bill the 3PL directly.
--- The parent_org_id here is for Phase 2 sub-client billing.
 INSERT INTO organizations (name, org_type, terms_days, parent_org_id)
 SELECT
     'Desert Boutique',
@@ -46,13 +36,6 @@ LIMIT 1;
 
 -- ==========================================================
 -- SECTION 2: LOCATIONS
---
--- Multiple locations per org are supported.
--- is_billing_address = TRUE means this address will be
--- checked during dark account invoice line matching.
--- normalized_address must match the format used during
--- carrier invoice normalization:
--- "1234 MAIN ST, PHOENIX, AZ, 85001, US"
 -- ==========================================================
 
 -- 3PL main warehouse (Phoenix)
@@ -66,17 +49,14 @@ SELECT
     'Cactus 3PL Main Warehouse',
     'WAREHOUSE',
     '1234 Desert Logistics Blvd',
-    'Phoenix',
-    'AZ',
-    '85001',
-    'US',
+    'Phoenix', 'AZ', '85001', 'US',
     '1234 DESERT LOGISTICS BLVD, PHOENIX, AZ, 85001, US',
     TRUE
 FROM organizations
 WHERE name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- 3PL second warehouse (Dallas) — tests multi-location support
+-- 3PL second warehouse (Dallas)
 INSERT INTO locations (
     org_id, name, location_type,
     address_line1, city, state, postal_code, country,
@@ -87,10 +67,7 @@ SELECT
     'Cactus 3PL Dallas Hub',
     'WAREHOUSE',
     '5678 Lone Star Pkwy',
-    'Dallas',
-    'TX',
-    '75201',
-    'US',
+    'Dallas', 'TX', '75201', 'US',
     '5678 LONE STAR PKWY, DALLAS, TX, 75201, US',
     TRUE
 FROM organizations
@@ -108,10 +85,7 @@ SELECT
     'Desert Boutique Fulfillment Center',
     'SHIP_FROM',
     '999 Saguaro Way',
-    'Scottsdale',
-    'AZ',
-    '85251',
-    'US',
+    'Scottsdale', 'AZ', '85251', 'US',
     '999 SAGUARO WAY, SCOTTSDALE, AZ, 85251, US',
     TRUE
 FROM organizations
@@ -121,94 +95,64 @@ LIMIT 1;
 
 -- ==========================================================
 -- SECTION 3: CARRIER ACCOUNTS
---
--- All accounts are Cactus/Buku master accounts.
--- is_cactus_account = TRUE means Cactus earns margin.
---
--- TWO MODES:
---   lassoed_carrier_account = WMS integrated, full visibility
---   dark_carrier_account    = credentials shared, invoice only
 -- ==========================================================
 
--- 3PL: UPS lassoed account (Warehance integrated)
--- This is the primary account for Phase 1 testing
+-- 3PL: UPS lassoed
 INSERT INTO org_carrier_accounts (
     org_id, carrier_code, account_number, account_nickname,
     carrier_account_mode, is_cactus_account,
     markup_percentage, markup_flat_fee, dispute_threshold
 )
 SELECT
-    id,
-    'UPS',
-    'CACTUS-UPS-001',
+    id, 'UPS', 'CACTUS-UPS-001',
     'Cactus 3PL UPS — Warehance',
-    'lassoed_carrier_account',
-    TRUE,
-    0.1500,   -- 15% markup
-    0.0000,
-    2.0000    -- flag variances over $2.00
+    'lassoed_carrier_account', TRUE,
+    0.1500, 0.0000, 2.0000
 FROM organizations
 WHERE name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- 3PL: FedEx lassoed account (Warehance integrated)
+-- 3PL: FedEx lassoed
 INSERT INTO org_carrier_accounts (
     org_id, carrier_code, account_number, account_nickname,
     carrier_account_mode, is_cactus_account,
     markup_percentage, markup_flat_fee, dispute_threshold
 )
 SELECT
-    id,
-    'FEDEX',
-    'CACTUS-FEDEX-001',
+    id, 'FEDEX', 'CACTUS-FEDEX-001',
     'Cactus 3PL FedEx — Warehance',
-    'lassoed_carrier_account',
-    TRUE,
-    0.1500,   -- 15% markup
-    0.0000,
-    2.0000
+    'lassoed_carrier_account', TRUE,
+    0.1500, 0.0000, 2.0000
 FROM organizations
 WHERE name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- 3PL: USPS lassoed account
+-- 3PL: USPS lassoed
 INSERT INTO org_carrier_accounts (
     org_id, carrier_code, account_number, account_nickname,
     carrier_account_mode, is_cactus_account,
     markup_percentage, markup_flat_fee, dispute_threshold
 )
 SELECT
-    id,
-    'USPS',
-    'CACTUS-USPS-001',
+    id, 'USPS', 'CACTUS-USPS-001',
     'Cactus 3PL USPS Meter',
-    'lassoed_carrier_account',
-    TRUE,
-    0.1200,   -- 12% markup on USPS
-    0.0000,
-    1.0000    -- tighter threshold for USPS (APV adjustments are common)
+    'lassoed_carrier_account', TRUE,
+    0.1200, 0.0000, 1.0000
 FROM organizations
 WHERE name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- Desert Boutique: UPS dark account
--- Client entered Cactus UPS credentials into ShipStation directly.
--- No label-print visibility. Invoice-only billing.
+-- Desert Boutique: UPS dark
 INSERT INTO org_carrier_accounts (
     org_id, carrier_code, account_number, account_nickname,
     carrier_account_mode, is_cactus_account,
     markup_percentage, markup_flat_fee, dispute_threshold
 )
 SELECT
-    id,
-    'UPS',
-    'CACTUS-UPS-001',   -- same Cactus master account number
+    id, 'UPS', 'CACTUS-UPS-001',
     'Desert Boutique UPS — ShipStation (Dark)',
-    'dark_carrier_account',
-    TRUE,
-    0.1800,   -- 18% markup for this dark account client
-    0.0000,
-    2.0000
+    'dark_carrier_account', TRUE,
+    0.1800, 0.0000, 2.0000
 FROM organizations
 WHERE name = 'Desert Boutique'
 LIMIT 1;
@@ -216,29 +160,14 @@ LIMIT 1;
 
 -- ==========================================================
 -- SECTION 4: RATE CARDS
---
--- Optional custom rate cards assigned to a specific carrier
--- account and service level. When a rate card exists for a
--- service level, the rate card price is used instead of the
--- raw carrier cost. Account markup is applied on top.
--- If markup is baked into the rate card, set account
--- markup_percentage = 0.0000.
 -- ==========================================================
 
--- USPS Ground Advantage custom rate card for the 3PL
--- Markup is baked into this rate card, so the USPS carrier
--- account markup will be set to 0 in a real scenario.
--- Here we just demonstrate the rate card exists.
 INSERT INTO rate_cards (
-    org_carrier_account_id,
-    org_id,
-    service_level,
-    nickname,
-    effective_date
+    org_carrier_account_id, org_id,
+    service_level, nickname, effective_date
 )
 SELECT
-    oca.id,
-    oca.org_id,
+    oca.id, oca.org_id,
     'GROUND_ADVANTAGE',
     'USPS GA Custom Rates — Q1 2026',
     '2026-01-01'
@@ -251,10 +180,6 @@ LIMIT 1;
 
 -- ==========================================================
 -- SECTION 5: METER
---
--- Pre-paid USPS postage wallet for the 3PL.
--- current_balance is a cache — meter_transactions is the
--- source of truth for the actual balance.
 -- ==========================================================
 
 INSERT INTO meters (
@@ -266,21 +191,15 @@ FROM organizations
 WHERE name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- Opening RELOAD transaction to back the meter balance
 INSERT INTO meter_transactions (
     meter_id, org_id, transaction_type,
     gross_amount, fee_amount, net_amount,
     balance_after, description
 )
 SELECT
-    m.id,
-    m.org_id,
-    'RELOAD',
-    500.0000,
-    0.0000,
-    500.0000,
-    500.0000,
-    'Seed data: initial USPS meter load — ACH, no processing fee'
+    m.id, m.org_id, 'RELOAD',
+    500.0000, 0.0000, 500.0000, 500.0000,
+    'Seed data: initial USPS meter load — ACH, no fee'
 FROM meters m
 INNER JOIN organizations o ON m.org_id = o.id
 WHERE o.name = 'Cactus 3PL Headquarters';
@@ -288,13 +207,8 @@ WHERE o.name = 'Cactus 3PL Headquarters';
 
 -- ==========================================================
 -- SECTION 6: CARRIER INVOICE MAPPINGS
---
--- Teaches Cactus how to read carrier invoice headers.
--- Different carriers use different names for the same charges.
--- These mappings translate them all to Cactus Standard fields.
 -- ==========================================================
 
--- UPS mappings
 INSERT INTO carrier_invoice_mappings
     (carrier_code, raw_header_name, cactus_standard_field)
 VALUES
@@ -303,32 +217,17 @@ VALUES
     ('UPS', 'Address Correction',       'address_correction'),
     ('UPS', 'Delivery Area Surcharge',  'delivery_area_surcharge'),
     ('UPS', 'Additional Handling',      'additional_handling'),
-    ('UPS', 'Transportation Charges',   'base_charge');
-
--- FedEx mappings
-INSERT INTO carrier_invoice_mappings
-    (carrier_code, raw_header_name, cactus_standard_field)
-VALUES
+    ('UPS', 'Transportation Charges',   'base_charge'),
     ('FEDEX', 'Fuel',                       'fuel_surcharge'),
     ('FEDEX', 'Residential Delivery',       'residential_surcharge'),
     ('FEDEX', 'Address Correction',         'address_correction'),
     ('FEDEX', 'Delivery Area Surcharge',    'delivery_area_surcharge'),
     ('FEDEX', 'Additional Handling Charge', 'additional_handling'),
-    ('FEDEX', 'Base Charge',                'base_charge');
-
--- USPS mappings
-INSERT INTO carrier_invoice_mappings
-    (carrier_code, raw_header_name, cactus_standard_field)
-VALUES
+    ('FEDEX', 'Base Charge',                'base_charge'),
     ('USPS', 'Nonmachinable Surcharge', 'additional_handling'),
     ('USPS', 'APV Adjustment',          'apv_adjustment'),
     ('USPS', 'Dim Weight Adjustment',   'dim_weight_adjustment'),
-    ('USPS', 'Postage',                 'base_charge');
-
--- DHL eCommerce mappings
-INSERT INTO carrier_invoice_mappings
-    (carrier_code, raw_header_name, cactus_standard_field)
-VALUES
+    ('USPS', 'Postage',                 'base_charge'),
     ('DHL_ECOM', 'FUE',                 'fuel_surcharge'),
     ('DHL_ECOM', 'Fuel_Surch',          'fuel_surcharge'),
     ('DHL_ECOM', 'Residential',         'residential_surcharge'),
@@ -339,43 +238,26 @@ VALUES
 -- ==========================================================
 -- SECTION 7: SHIPMENT LEDGER — LASSOED TEST SHIPMENT
 --
--- Simulates a shipment that came through the Cactus rating
--- engine at label print time (lassoed_carrier_account).
---
--- SINGLE-CEILING MATH:
---   raw_carrier_cost:   $12.3456
---   markup (15%):       $12.3456 × 1.15 = $14.19744
---   pre_ceiling:        $14.1974 (stored as DECIMAL(18,4))
---   final_merchant_rate: CEILING($14.19744 × 100) / 100 = $14.20
+-- Single-Ceiling math:
+--   raw_carrier_cost: $12.3456
+--   markup (15%):     × 1.15 = $14.19744
+--   pre_ceiling:      $14.1974
+--   final_rate:       CEILING → $14.20
 -- ==========================================================
 
 INSERT INTO shipment_ledger (
-    org_id,
-    org_carrier_account_id,
-    tracking_number,
-    carrier_code,
-    service_level,
-    shipment_source,
-    raw_carrier_cost,
-    markup_percentage,
-    pre_ceiling_amount,
-    final_merchant_rate,
-    reconciled,
-    label_printed_at
+    org_id, org_carrier_account_id,
+    tracking_number, carrier_code, service_level,
+    shipment_source, raw_carrier_cost, markup_percentage,
+    pre_ceiling_amount, final_merchant_rate,
+    reconciled, label_printed_at
 )
 SELECT
-    o.id,
-    oca.id,
-    '1Z-CACTUS-TEST-001',
-    'UPS',
-    'UPS_GROUND',
-    'RATING_ENGINE',
-    12.3456,
-    0.1500,
-    14.1974,
-    14.2000,
-    FALSE,
-    now()
+    o.id, oca.id,
+    '1Z-CACTUS-TEST-001', 'UPS', 'UPS_GROUND',
+    'RATING_ENGINE', 12.3456, 0.1500,
+    14.1974, 14.2000,
+    FALSE, now()
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
     ON o.id = oca.org_id
@@ -384,57 +266,31 @@ INNER JOIN org_carrier_accounts oca
 WHERE o.name = 'Cactus 3PL Headquarters'
 LIMIT 1;
 
--- Seed the LABEL_CREATED event for the lassoed shipment
 INSERT INTO shipment_events (
-    shipment_ledger_id,
-    org_id,
-    event_type,
-    carrier_code,
-    carrier_timestamp,
-    carrier_message
+    shipment_ledger_id, org_id, event_type,
+    carrier_code, carrier_timestamp, carrier_message
 )
 SELECT
-    sl.id,
-    sl.org_id,
-    'LABEL_CREATED',
-    'UPS',
-    now(),
-    'Label created via Cactus rating engine — seed data'
+    sl.id, sl.org_id, 'LABEL_CREATED', 'UPS',
+    now(), 'Label created via Cactus rating engine — seed data'
 FROM shipment_ledger sl
 WHERE sl.tracking_number = '1Z-CACTUS-TEST-001';
 
 
 -- ==========================================================
 -- SECTION 8: CARRIER INVOICE BATCH — DARK ACCOUNT TEST
---
--- Simulates a carrier invoice uploaded in The Alamo for
--- Desert Boutique's dark UPS account. This client used
--- Cactus UPS credentials in ShipStation — no label-print
--- visibility. Shipment_ledger rows are created at import.
 -- ==========================================================
 
--- Create the carrier invoice batch record
 INSERT INTO carrier_invoices (
-    org_id,
-    carrier_code,
-    org_carrier_account_id,
-    invoice_file_name,
-    invoice_period_start,
-    invoice_period_end,
-    status,
-    total_carrier_amount,
-    total_line_items
+    org_id, carrier_code, org_carrier_account_id,
+    invoice_file_name, invoice_period_start, invoice_period_end,
+    status, total_carrier_amount, total_line_items
 )
 SELECT
-    o.id,
-    'UPS',
-    oca.id,
+    o.id, 'UPS', oca.id,
     'ups-invoice-2026-03-15.csv',
-    '2026-03-09',
-    '2026-03-15',
-    'APPROVED',
-    45.7800,
-    2
+    '2026-03-09', '2026-03-15',
+    'APPROVED', 45.7800, 2
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
     ON o.id = oca.org_id
@@ -443,36 +299,20 @@ INNER JOIN org_carrier_accounts oca
 WHERE o.name = 'Desert Boutique'
 LIMIT 1;
 
--- Create shipment_ledger row for dark shipment 1
--- (created at invoice import time — shipment_source = INVOICE_IMPORT)
+-- Dark shipment 1
+-- 18.4500 × 1.18 = 21.771 → ceiling → 21.78
 INSERT INTO shipment_ledger (
-    org_id,
-    org_carrier_account_id,
-    tracking_number,
-    carrier_code,
-    service_level,
-    shipment_source,
-    raw_carrier_cost,
-    markup_percentage,
-    pre_ceiling_amount,
-    final_merchant_rate,
-    reconciled,
-    carrier_invoiced_amount
+    org_id, org_carrier_account_id,
+    tracking_number, carrier_code, service_level,
+    shipment_source, raw_carrier_cost, markup_percentage,
+    pre_ceiling_amount, final_merchant_rate,
+    reconciled, carrier_invoiced_amount
 )
 SELECT
-    o.id,
-    oca.id,
-    '1Z-DARK-TEST-001',
-    'UPS',
-    'UPS_GROUND',
-    'INVOICE_IMPORT',
-    18.4500,
-    0.1800,
-    -- 18.4500 × 1.18 = 21.771 → ceiling → 21.78
-    21.7710,
-    21.7800,
-    TRUE,
-    18.4500
+    o.id, oca.id,
+    '1Z-DARK-TEST-001', 'UPS', 'UPS_GROUND',
+    'INVOICE_IMPORT', 18.4500, 0.1800,
+    21.7710, 21.7800, TRUE, 18.4500
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
     ON o.id = oca.org_id
@@ -481,35 +321,20 @@ INNER JOIN org_carrier_accounts oca
 WHERE o.name = 'Desert Boutique'
 LIMIT 1;
 
--- Create shipment_ledger row for dark shipment 2
+-- Dark shipment 2
+-- 27.3300 × 1.18 = 32.2494 → ceiling → 32.25
 INSERT INTO shipment_ledger (
-    org_id,
-    org_carrier_account_id,
-    tracking_number,
-    carrier_code,
-    service_level,
-    shipment_source,
-    raw_carrier_cost,
-    markup_percentage,
-    pre_ceiling_amount,
-    final_merchant_rate,
-    reconciled,
-    carrier_invoiced_amount
+    org_id, org_carrier_account_id,
+    tracking_number, carrier_code, service_level,
+    shipment_source, raw_carrier_cost, markup_percentage,
+    pre_ceiling_amount, final_merchant_rate,
+    reconciled, carrier_invoiced_amount
 )
 SELECT
-    o.id,
-    oca.id,
-    '1Z-DARK-TEST-002',
-    'UPS',
-    'UPS_GROUND',
-    'INVOICE_IMPORT',
-    27.3300,
-    0.1800,
-    -- 27.3300 × 1.18 = 32.2494 → ceiling → 32.25
-    32.2494,
-    32.2500,
-    TRUE,
-    27.3300
+    o.id, oca.id,
+    '1Z-DARK-TEST-002', 'UPS', 'UPS_GROUND',
+    'INVOICE_IMPORT', 27.3300, 0.1800,
+    32.2494, 32.2500, TRUE, 27.3300
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
     ON o.id = oca.org_id
@@ -518,46 +343,25 @@ INNER JOIN org_carrier_accounts oca
 WHERE o.name = 'Desert Boutique'
 LIMIT 1;
 
--- Create invoice_line_items for the dark carrier invoice
+-- Invoice line items for dark carrier invoice
 INSERT INTO invoice_line_items (
-    carrier_invoice_id,
-    org_id,
-    org_carrier_account_id,
-    shipment_ledger_id,
-    tracking_number,
-    carrier_account_number,
-    ship_from_address_raw,
-    ship_from_address_normalized,
-    carrier_charge,
-    base_charge,
-    fuel_surcharge,
-    match_method,
-    match_status,
-    markup_percentage,
-    pre_ceiling_amount,
-    final_merchant_rate,
-    billing_status,
-    dispute_flag
+    carrier_invoice_id, org_id, org_carrier_account_id,
+    shipment_ledger_id, tracking_number, carrier_account_number,
+    ship_from_address_raw, ship_from_address_normalized,
+    carrier_charge, base_charge, fuel_surcharge,
+    match_method, match_status,
+    markup_percentage, pre_ceiling_amount, final_merchant_rate,
+    billing_status, dispute_flag
 )
 SELECT
-    ci.id,
-    o.id,
-    oca.id,
-    sl.id,
-    '1Z-DARK-TEST-001',
-    'CACTUS-UPS-001',
+    ci.id, o.id, oca.id, sl.id,
+    '1Z-DARK-TEST-001', 'CACTUS-UPS-001',
     '999 Saguaro Way, Scottsdale, AZ 85251',
     '999 SAGUARO WAY, SCOTTSDALE, AZ, 85251, US',
-    18.4500,
-    16.2000,
-    2.2500,
-    'SHIP_FROM_ADDRESS',
-    'AUTO_MATCHED',
-    0.1800,
-    21.7710,
-    21.7800,
-    'APPROVED',
-    FALSE
+    18.4500, 16.2000, 2.2500,
+    'SHIP_FROM_ADDRESS', 'AUTO_MATCHED',
+    0.1800, 21.7710, 21.7800,
+    'APPROVED', FALSE
 FROM carrier_invoices ci
 INNER JOIN organizations o ON ci.org_id = o.id
 INNER JOIN org_carrier_accounts oca ON ci.org_carrier_account_id = oca.id
@@ -566,46 +370,23 @@ WHERE o.name = 'Desert Boutique'
 LIMIT 1;
 
 INSERT INTO invoice_line_items (
-    carrier_invoice_id,
-    org_id,
-    org_carrier_account_id,
-    shipment_ledger_id,
-    tracking_number,
-    carrier_account_number,
-    ship_from_address_raw,
-    ship_from_address_normalized,
-    carrier_charge,
-    base_charge,
-    fuel_surcharge,
-    residential_surcharge,
-    match_method,
-    match_status,
-    markup_percentage,
-    pre_ceiling_amount,
-    final_merchant_rate,
-    billing_status,
-    dispute_flag
+    carrier_invoice_id, org_id, org_carrier_account_id,
+    shipment_ledger_id, tracking_number, carrier_account_number,
+    ship_from_address_raw, ship_from_address_normalized,
+    carrier_charge, base_charge, fuel_surcharge, residential_surcharge,
+    match_method, match_status,
+    markup_percentage, pre_ceiling_amount, final_merchant_rate,
+    billing_status, dispute_flag
 )
 SELECT
-    ci.id,
-    o.id,
-    oca.id,
-    sl.id,
-    '1Z-DARK-TEST-002',
-    'CACTUS-UPS-001',
+    ci.id, o.id, oca.id, sl.id,
+    '1Z-DARK-TEST-002', 'CACTUS-UPS-001',
     '999 Saguaro Way, Scottsdale, AZ 85251',
     '999 SAGUARO WAY, SCOTTSDALE, AZ, 85251, US',
-    27.3300,
-    23.5000,
-    2.8300,
-    1.0000,
-    'SHIP_FROM_ADDRESS',
-    'AUTO_MATCHED',
-    0.1800,
-    32.2494,
-    32.2500,
-    'APPROVED',
-    FALSE
+    27.3300, 23.5000, 2.8300, 1.0000,
+    'SHIP_FROM_ADDRESS', 'AUTO_MATCHED',
+    0.1800, 32.2494, 32.2500,
+    'APPROVED', FALSE
 FROM carrier_invoices ci
 INNER JOIN organizations o ON ci.org_id = o.id
 INNER JOIN org_carrier_accounts oca ON ci.org_carrier_account_id = oca.id

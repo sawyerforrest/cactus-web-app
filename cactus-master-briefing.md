@@ -1,10 +1,10 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.3.0 | UPDATED: 2026-03-23
+# VERSION: 1.4.0 | UPDATED: 2026-03-28
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
-# Claude chat session. Then describe what you want to work on.
-# Claude will have full context and can pick up immediately.
+# Claude chat session. Claude will have full context and can
+# pick up immediately without re-explaining the project.
 #
 # KEEP UPDATED: After each session update Section 9.
 
@@ -13,8 +13,8 @@
 ## YOUR ROLE
 
 You are the Senior Architect and lead developer for the Cactus
-Logistics OS project. The person you are working with is Caleb —
-the founder and solo builder of Cactus. Caleb is learning to
+Logistics OS project. The person you are working with is Sawyer —
+the founder and solo builder of Cactus. Sawyer is learning to
 program as he builds. Always explain what you are doing and why.
 Reveal the full name of any acronym the first time you use it.
 Teach as you build. Flag any architectural risks, logical friction,
@@ -22,19 +22,22 @@ or business model concerns you notice along the way.
 
 ---
 
-## 1. WHAT IS CACTUS?
+## 1. IDENTITY & VISION
 
-Cactus Logistics OS is an AI-native, end-to-end logistics platform
-for e-commerce 3PLs (Third-Party Logistics providers) and brands
-shipping 500+ small parcel orders per day. Built to expand into
-B2B freight, WMS (Warehouse Management System), Ocean Freight,
-and beyond.
+**Purpose Statement:**
+Rooted in gratitude, curiosity, faith, and creation, Cactus is an
+AI-native operating system pioneering e-commerce logistics in the
+age of abundance — harmonized data, friendly technology, and
+global delivery.
 
 **Motto:** "Logistics with Soul."
-**Core Values:** Gratitude | Curiosity | Creation
+**Core Values:** Gratitude | Curiosity | Faith | Creation
+**Legal Entity:** Cactus Logistics LLC (Utah — formed March 2026)
+**Brand Name:** Cactus
+**Future Brand:** Cactus OS (when full WMS vision is realized)
 **AI Philosophy:** AI is the central nervous system — not a feature.
-**Solo founder:** Caleb (bootstrap/self-funded, learning to code)
-**Tech stack:** TypeScript/Node.js, Next.js, PostgreSQL via Supabase,
+**Solo founder:** Sawyer (bootstrap, learning to code)
+**Stack:** TypeScript/Node.js, Next.js, PostgreSQL via Supabase,
 Anthropic Claude API, GitHub, Cursor IDE.
 
 ---
@@ -42,7 +45,7 @@ Anthropic Claude API, GitHub, Cursor IDE.
 ## 2. THREE-PHASE ROADMAP
 
 **Phase 1 — Rating & Billing Engine (CURRENT)**
-- Multi-carrier rate shopping (UPS, FedEx priority; USPS, UniUni post-launch)
+- Multi-carrier rate shopping (UPS, FedEx priority launch)
 - Carrier invoice ingestion with AI normalization
 - Lassoed and dark carrier account modes
 - Single-Ceiling markup pipeline
@@ -53,19 +56,78 @@ Anthropic Claude API, GitHub, Cursor IDE.
 - The Alamo: internal admin dashboard
 - Cactus Portal: client-facing dashboard
 
-**Phase 2 — Client Billing Suite & Analytics**
+**Phase 2 — Growth Carriers & Analytics**
+- USPS, UniUni, GOFO, ShipX, DHL eCommerce, DHL Express
 - Sub-client markup (3PLs billing their own merchants)
-- Analytics dashboard
+- Analytics dashboard: trends, cost-per-package, margin health
 - Vector embeddings for semantic normalization
 - Rate volatility predictions from Shadow Ledger
 
-**Phase 3 — Full WMS & B2B**
-- Warehouse management, inventory, SKU tracking
-- LTL/FTL, Ocean Freight
+**Phase 3 — Full WMS & B2B Expansion**
+- Cactus builds its own WMS — full end-to-end logistics OS
+- Warehouse management: aisles, bins, pick/pack, inventory, SKU tracking
+- LTL (Less-Than-Truckload) and FTL (Full Truckload) freight
+- Ocean freight container event tracking
+- Landmark Global, OSM, OnTrac carrier integrations
+- Carrier scorecard intelligence by lane and geography
 
 ---
 
-## 3. CARRIER ACCOUNT ARCHITECTURE
+## 3. PRODUCT EVOLUTION — MIDDLEWARE → FULL OS
+
+**Phase 1-2: Cactus as Middleware**
+WMS platforms (Warehance, etc.) call the Cactus Rating API.
+Cactus calls carriers, applies markup, returns marked-up rates.
+WMS handles display and selection UI.
+Cactus handles billing, invoicing, reconciliation.
+
+**Phase 3: Cactus as Full OS**
+Cactus builds its own WMS — complete end-to-end stack ownership.
+The Shadow Ledger accumulated during Phase 1-2 makes the
+Cactus WMS launch with years of AI intelligence built in.
+
+---
+
+## 4. CARRIER ROADMAP
+
+**Phase 1 — Launch**
+- FedEx: Integrator Developer account ✅
+  Integrator ID: 70157774 | Billing Account: 210682153
+- UPS: Developer portal submitted, pending approval ⏳
+
+**Phase 2 — Growth**
+- USPS: Path decision needed (direct vs licensed reseller)
+- UniUni: Regional last-mile. No residential/fuel surcharge.
+- GOFO (formerly Cirro): Regional gig drivers + USPS national.
+  No residential or fuel surcharge.
+- ShipX: Regional gig drivers + USPS national.
+  Fuel surcharge. No residential surcharge.
+- DHL eCommerce: Domestic + international. Sales relationship needed.
+  Requires daily manifest job — unique to DHL eCommerce.
+- DHL Express: International premium. Sales relationship needed.
+
+**Phase 3 — Scale**
+- Landmark Global: International
+- OSM: Postal consolidator (USPS final mile)
+- OnTrac: Regional
+
+**Last-Mile Carrier Notes (UniUni, GOFO, ShipX):**
+These carriers self-filter by ZIP coverage.
+No rate returned = not serviceable = excluded from results.
+No ZIP code lookup tables needed in Cactus.
+Coverage expansions are automatic — no code changes required.
+
+**All carrier contacts came through BukuShip.**
+Approach only after leaving BukuShip cleanly.
+
+**carrier_code_enum (v1.4.0):**
+UPS | FEDEX | USPS | UNIUNI | GOFO | SHIPX |
+DHL_ECOM | DHL_EXPRESS | LANDMARK | ONTRAC | OSM
+(LSO removed in v1.4.0)
+
+---
+
+## 5. CARRIER ACCOUNT ARCHITECTURE
 
 ### Two Modes — Official Cactus Terminology
 
@@ -82,10 +144,9 @@ Invoice matching: ship_from_address_normalized → locations table
 shipment_ledger rows created at invoice import time.
 
 ### is_cactus_account Flag
-Lives on `org_carrier_accounts`.
 TRUE (default) = Cactus earns margin, apply markup.
 FALSE = pass-through, no owned revenue, skip markup.
-This is a toggle on the carrier account profile in The Alamo.
+Lives on org_carrier_accounts — not on invoices.
 
 ### Carrier Account Hierarchy
 ```
@@ -108,7 +169,7 @@ No per-org carrier credentials to store or encrypt.
 
 ---
 
-## 4. FINANCIAL OS — NON-NEGOTIABLE RULES
+## 6. FINANCIAL OS — NON-NEGOTIABLE RULES
 
 ### Rule 1: No floats. Ever.
 Database: `DECIMAL(18,4)`. Application: `decimal.js`.
@@ -151,17 +212,48 @@ That is Phase 2. Never split a 3PL invoice by sub-client in Phase 1.
 
 ---
 
-## 5. INVOICE PIPELINE
+## 7. RATING ENGINE ARCHITECTURE
+
+### WMS Integration Flow
+```
+WMS sends rate request → Cactus Rating API
+  (org_id, origin, destination, weight, dimensions)
+Cactus looks up active carrier accounts for this org
+Cactus calls all carrier APIs simultaneously
+Carriers self-filter by ZIP coverage
+  (no rate = not serviceable = excluded automatically)
+Cactus applies markup + Single-Ceiling to each rate
+Cactus logs all rates to rate_shop_log (async)
+Cactus returns ALL rated options to WMS
+WMS displays and handles rate selection UI
+User selects → WMS calls Cactus Label Purchase API
+Cactus purchases label → returns tracking number
+WMS prints label
+```
+
+### Rate Sorting
+Default: `final_merchant_rate ASC` (cheapest first)
+Optional toggle: `transit_days ASC` then `final_merchant_rate ASC`
+Never: carrier-weighted or manually promoted results
+
+Residential and fuel surcharges already included in carrier
+API responses. Cheapest first IS the smartest sort.
+
+### Carrier API Error Handling
+If a carrier API returns an error (not just no rate):
+→ Silently exclude from results
+→ Log to audit_logs
+→ Never fail the entire rate shopping response
+
+---
+
+## 8. INVOICE PIPELINE
 
 ```
 Upload carrier CSV/XLSX in The Alamo
-        ↓
 AI normalizes headers → Cactus Standard fields
-        ↓
 Human review queue in The Alamo
-        ↓
-For each line item:
-  → Look up carrier account → check mode
+For each line item → check carrier_account_mode:
 
   IF lassoed:
     Match tracking_number → shipment_ledger → org_id
@@ -175,9 +267,8 @@ For each line item:
     IF one match → assign org → apply markup → Single-Ceiling
     IF zero/multiple → FLAGGED → manual Alamo review
     Create shipment_ledger row (shipment_source = INVOICE_IMPORT)
-        ↓
+
 Generate cactus_invoices from APPROVED line items
-        ↓
 Sync to QuickBooks Online
 ```
 
@@ -188,7 +279,15 @@ Applied consistently before storage and before matching.
 
 ---
 
-## 6. AI ARCHITECTURE
+## 9. AI ARCHITECTURE
+
+### FedEx Data Usage Restriction
+Per FedEx Integrator Agreement (Section 6k):
+FedEx End User Data may NOT be used to determine prices,
+estimate market prices, or develop predictive pricing analyses.
+Shadow Ledger stores FedEx rate data for reconciliation ONLY.
+AI price prediction features must use Cactus margin and
+client behavior data — not raw FedEx rate data.
 
 ### Phase 1 AI Features
 1. Invoice header normalization — Claude suggests mappings,
@@ -206,7 +305,7 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 7. DATABASE SCHEMA (v1.3.0 — 16 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.4.0 — 16 TABLES — LIVE IN SUPABASE)
 
 | Table | Purpose |
 |---|---|
@@ -236,12 +335,12 @@ Never update shipment status. Always append new event rows.
 - `billing_status_enum`: PENDING, HELD, APPROVED, INVOICED
 - `org_type_enum`: 3PL, MERCHANT, SUB_CLIENT
 - `invoice_status_enum`: UNPAID, PAID, FAILED, VOID
-- `carrier_code_enum`: UPS, FEDEX, USPS, DHL_ECOM, DHL_EXPRESS, UNIUNI, LANDMARK, ONTRAC, LSO
+- `carrier_code_enum`: UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX, DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM
 - `shipment_event_type_enum`: RATE_REQUESTED, LABEL_CREATED, LABEL_VOIDED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERY_ATTEMPTED, DELIVERED, RETURNED_TO_SENDER, LOST, EXCEPTION, APV_ADJUSTMENT, ADDRESS_CORRECTED, DAMAGED
 
 ---
 
-## 8. NAMING CONVENTIONS
+## 11. NAMING CONVENTIONS
 
 | Context | Convention |
 |---|---|
@@ -254,55 +353,60 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 9. CURRENT BUILD STATE
+## 12. CURRENT BUILD STATE
+# ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
-- [x] Supabase project created (RLS + Data API enabled)
-- [x] database-setup.sql v1.3.0 — 16 tables live and verified in Supabase
-- [x] seed-data.sql v1.3.0 — all seed data loaded
-- [x] verify-data.sql v1.3.0 — 3x PASS ✓ on Single-Ceiling (lassoed + dark)
-- [x] .env file — Supabase keys + Anthropic API key loaded
-- [x] .gitignore — .env protected
-- [x] README.md v1.3.0
-- [x] cactus-standards.mdc v1.3.0 — in .cursor/rules/
-- [x] cactus-master-briefing.md v1.3.0
+- [x] Cactus Logistics LLC formed in Utah
+- [x] EIN pending (Monday 8-9am MT)
+- [x] FedEx Integrator Developer account (ID: 70157774)
+- [x] FedEx billing account created (210682153)
+- [x] FedEx API documentation suite — complete (7 APIs)
+- [x] UPS Developer Portal submitted — pending approval
+- [x] docs/ folder organized inside cactus-web-app
+- [x] database-setup.sql v1.4.0 — carrier_code_enum updated
+- [x] seed-data.sql v1.4.0
+- [x] verify-data.sql v1.4.0 — 10 checks
+- [x] cactus-standards.mdc v1.4.0 — in .cursor/rules/
+- [x] README.md v1.4.0
+- [x] cactus-master-briefing.md v1.4.0
 - [x] Node.js v24 + npm v11 installed on Mac
 - [x] package.json initialized
-- [x] Dependencies installed: @supabase/supabase-js, dotenv,
-      decimal.js, typescript, @types/node, ts-node
+- [x] Dependencies: @supabase/supabase-js, dotenv, decimal.js,
+      typescript, @types/node, ts-node
 - [x] tsconfig.json configured for Node.js TypeScript
 - [x] Folder structure: src/lib, src/core/ai, src/core/rating,
       src/core/billing, src/core/normalization, src/adapters,
-      src/alamo, src/portal, database/
+      src/alamo, src/portal, database/, docs/
 - [x] src/lib/supabase.ts — anon + admin Supabase clients
-- [x] Supabase connection verified from code — both seed orgs returned
-- [x] GitHub repo pushed: github.com/sawyerforrest/cactus-web-app
-- [x] Phase 1 execution plan aligned (8 stages)
-- [x] Lassoed vs dark carrier account architecture locked in
-- [x] Invoice pipeline billing brain rules locked in
-- [x] Carrier account hierarchy finalized
-- [x] All architectural decisions documented in standards
-- [x] FedEx Integrator Developer account created (ID: 70157774)
-- [x] FedEx billing account created (210682153)
-- [x] FedEx API documentation suite — complete
-- [x] docs/ folder organized inside cactus-web-app
-- [x] Pushed to GitHub
+- [x] Supabase connection verified from code
+- [x] GitHub: github.com/sawyerforrest/cactus-web-app
+- [x] Purpose statement written
+- [x] Carrier roadmap v1.4.0 finalized
+- [x] Rating engine WMS architecture confirmed
+- [x] Product evolution (middleware → full OS) confirmed
 
-### Next task — START HERE next session
-BEGIN PHASE 0 THIS WEEK (non-coding, high priority):
-- [ ] UPS Developer Portal signup — developer.ups.com
-      Select Technology Partner / Integrator profile
-- [ ] Form Utah LLC at corporations.utah.gov ($54)
-- [ ] Open Mercury business bank account
-- [ ] Contact UniUni for API access
-- [ ] Book 1hr Utah business attorney consult ($150-300)
+### Pending Phase 0 items
+- [ ] Reset Supabase → run database-setup.sql v1.4.0
+- [ ] Run seed-data.sql + verify-data.sql (10 checks)
+- [ ] Push all v1.4.0 files to GitHub
+- [ ] EIN from irs.gov — Monday 8-9am MT (5am MT = 7am ET open)
+- [ ] Mercury business bank account — after EIN
+- [ ] UPS Developer Portal — waiting for approval
+- [ ] Contact UniUni, GOFO, ShipX — after leaving BukuShip
+- [ ] DHL eCommerce sales outreach — after leaving BukuShip
+- [ ] Book Utah business attorney consult
 - [ ] Create Stripe account under LLC
 
-THEN resume Stage 2: The Alamo shell
-  - Scaffold Next.js app in src/alamo/
-  - Supabase Auth — admin login only
-  - Basic sidebar navigation
-  - Protected routes (no public access)
+### Next task — START HERE next session
+1. Reset Supabase → run database-setup.sql v1.4.0
+2. Run seed-data.sql + verify-data.sql — confirm 10 checks pass
+3. Push all v1.4.0 files to GitHub
+4. Begin Stage 2: The Alamo shell
+   - Scaffold Next.js app in src/alamo/
+   - Supabase Auth — admin login only
+   - Basic sidebar navigation
+   - Protected routes (no public access)
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -324,11 +428,39 @@ THEN resume Stage 2: The Alamo shell
 - Shadow Ledger (rate_shop_log) logs ALL rate requests async
 - Event sourcing: always append shipment_events, never update status
 - AI is central nervous system — not a feature
+- WMS handles rate display/selection UI in Phase 1-2
+- Cactus builds own WMS in Phase 3
+- Rate sort: cheapest first (final_merchant_rate ASC)
+- Last-mile carriers self-filter by ZIP — no lookup tables needed
+- Carrier API errors: log + exclude, never fail full response
+- FedEx rate data: reconciliation only, not AI price prediction
+- DHL eCommerce: daily manifest job required
+- Phase 1-2: Cactus as middleware → Phase 3: Cactus as full OS
+- All carrier contacts came through BukuShip — approach post-departure
 
 ### Open questions / decisions still needed
-- Payment processor: Stripe vs. Fortis
-- Dispute threshold default ($2.00 currently in schema)
+- USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
+- Payment processor: Stripe vs Fortis
 - QuickBooks Online API integration approach
-- UPS + FedEx developer API access — apply now, approval takes time
-  UPS: developer.ups.com
-  FedEx: developer.fedex.com
+- Dispute threshold default ($2.00 currently in schema)
+- DHL eCommerce Americas: requires sales conversation
+
+---
+
+## 13. BUSINESS FORMATION STATUS
+
+| Item | Status |
+|---|---|
+| Utah LLC | ✅ Cactus Logistics LLC |
+| EIN | ⏳ Monday 8-9am MT |
+| Business bank account | ⏳ After EIN (Mercury) |
+| Business credit card | ⏳ After LLC + EIN |
+| Stripe account | ⏳ After LLC |
+| Attorney consult | ⏳ Schedule this week |
+| FedEx developer account | ✅ Integrator ID: 70157774 |
+| UPS developer account | ⏳ Pending 24hr approval |
+
+---
+
+## 14. GITHUB REPOSITORY
+https://github.com/sawyerforrest/cactus-web-app

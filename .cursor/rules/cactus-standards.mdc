@@ -1,33 +1,64 @@
 # Cactus Development Standards
-# VERSION: 1.3.0 | UPDATED: 2026-03-23
+# VERSION: 1.4.0 | UPDATED: 2026-03-28
 #
 # PURPOSE: This file is the "constitution" of the Cactus codebase.
-# Cursor's AI reads this file before writing any code so it always
-# follows Cactus conventions. Keep this file updated as the project
-# evolves — stale standards produce stale code.
+# Cursor reads this before every AI interaction in the project.
+# Keep it updated — stale standards produce stale code.
 #
 # LOCATION: .cursor/rules/cactus-standards.mdc
-# Cursor reads this automatically for every AI interaction.
 
 ---
 
-## 1. Vision, Soul & Core Values
+## 1. Vision, Soul & Identity
 
-- **Motto:** "Logistics with Soul."
-- **Core Values:** Gratitude | Curiosity | Creation
-- **Focus:** E-commerce small parcel logistics for 3PLs and brands
-  shipping 500+ orders/day. Built to expand into B2B, WMS, Ocean
-  Freight, and beyond.
-- **AI Philosophy:** AI is the central nervous system of Cactus —
-  not a feature. Every architectural decision should ask:
-  "Does this make Cactus smarter over time?"
+**Purpose Statement:**
+Rooted in gratitude, curiosity, faith, and creation, Cactus is an
+AI-native operating system pioneering e-commerce logistics in the
+age of abundance — harmonized data, friendly technology, and
+global delivery.
+
+**Motto:** "Logistics with Soul."
+**Core Values:** Gratitude | Curiosity | Faith | Creation
+**Legal Entity:** Cactus Logistics LLC (Utah)
+**Brand Name:** Cactus
+**Future Brand:** Cactus OS (when the full WMS vision is realized)
+
+**AI Philosophy:** AI is the central nervous system of Cactus —
+not a feature. Every architectural decision asks:
+"Does this make Cactus smarter over time?"
+
+**Focus:** E-commerce small parcel logistics for 3PLs and brands
+shipping 500+ orders/day. Built to expand into full WMS, B2B
+freight, and global delivery.
 
 ---
 
-## 2. Naming Conventions (The "Cactus Map")
+## 2. Product Evolution — Three Phases
+
+**Phase 1-2: Cactus as Middleware**
+WMS platforms (Warehance, etc.) call the Cactus Rating API.
+Cactus calls carriers, applies markup, returns rates.
+WMS handles the display and selection UI.
+Cactus handles billing, invoicing, reconciliation.
+
+**Phase 3: Cactus as Full OS**
+Cactus builds its own WMS — end-to-end ownership.
+No dependency on third-party WMS platforms.
+Full warehouse management: aisles, bins, pick/pack, inventory.
+Cactus owns the complete logistics stack.
+
+**The strategic advantage of this sequence:**
+By the time Cactus builds its own WMS, the Shadow Ledger will
+have accumulated millions of shipments worth of intelligence
+from third-party WMS integrations. The Cactus WMS launches
+with AI capabilities that took years to build — not months.
+
+---
+
+## 3. Naming Conventions (The "Cactus Map")
 
 - **Project Files & Folders:** `kebab-case`
-  - ✅ `database-setup.sql`, `rating-engine.ts`, `ai-service.ts`
+  - ✅ `database-setup.sql`, `rating-engine.ts`
 
 - **Database Tables & Columns:** `snake_case`
   - ✅ `org_id`, `shipment_ledger`, `final_merchant_rate`
@@ -35,46 +66,39 @@
 - **Application Code (TypeScript/JavaScript):** `camelCase`
   - ✅ `finalMerchantRate`, `calculateMarkup()`, `orgId`
 
-- **React Components & TypeScript Types/Interfaces:** `PascalCase`
+- **React Components & TypeScript Types:** `PascalCase`
   - ✅ `ShipmentCard`, `OrgType`, `RateCardProps`
 
 - **Constants:** `SCREAMING_SNAKE_CASE`
   - ✅ `MAX_RELOAD_AMOUNT`, `DEFAULT_DISPUTE_THRESHOLD`
 
-- **Carrier Account Modes:** use exact enum values
+- **Carrier Account Modes:** exact enum values only
   - ✅ `lassoed_carrier_account`, `dark_carrier_account`
 
 ---
 
-## 3. Financial OS — The "Single-Ceiling" Pipeline
+## 4. Financial OS — The "Single-Ceiling" Pipeline
 
 ### Rule 1: No floats. Ever.
 - **Database:** `DECIMAL(18,4)` on ALL currency columns
-- **Application code:** `decimal.js` library only
+- **Application:** `decimal.js` library only
 - **Never use:** JavaScript's default `number` type for money
 
-### Rule 2: Always bill from carrier invoice data
-The carrier invoice is ALWAYS the billing source of truth.
+### Rule 2: Carrier invoice is ALWAYS the billing source of truth
 Never bill from label print data or rating engine quotes.
-
 ```
 CORRECT: bill_amount = carrier_invoice_line.carrier_charge
 WRONG:   bill_amount = shipment_ledger.final_merchant_rate
 ```
 
-The rating engine quote is used ONLY for reconciliation comparison,
-never as the billing basis.
-
 ### Rule 3: Single-Ceiling applied ONCE per shipment total
 ```typescript
 import Decimal from 'decimal.js';
 
-// Applied to carrier_charge from the invoice, not quoted rate
 const preCeilingAmount = new Decimal(carrierCharge)
   .times(new Decimal(1).plus(markupPercentage))
   .plus(markupFlatFee ?? 0);
 
-// Ceiling applied ONCE to the total — never per surcharge component
 const finalMerchantRate = preCeilingAmount
   .times(100)
   .ceil()
@@ -83,24 +107,23 @@ const finalMerchantRate = preCeilingAmount
 
 ### Rule 4: Markup hierarchy
 ```
-org_carrier_accounts.markup_percentage  ← PRIMARY markup source
-rate_cards (optional child)             ← custom rate pricing
+org_carrier_accounts.markup_percentage  ← PRIMARY markup
+rate_cards (optional children)          ← custom rate pricing
   └── If rate card exists: use rate card price
       Apply account markup on top
-      If markup baked into rate card: set account markup = 0.0000
+      If markup baked into rate card: set account markup = 0
 ```
 
-### Rule 5: Bifurcated Settlement
+### Rule 5: Bifurcated settlement
 - **USPS → Pre-paid Metered Wallet**
-  Auto-reload when below min_threshold. CC reloads = 3% fee.
+  Auto-reload when below min_threshold. CC reloads = 3% fee. ACH = no fee.
 - **All others → Post-paid Weekly Invoice**
   Auto-pull on due_date.
 
 ### Rule 6: Immutable financial records
-Never `UPDATE` or `DELETE` rows in:
+Never UPDATE or DELETE:
 `shipment_ledger` | `meter_transactions` | `audit_logs` |
 `rate_shop_log` | `shipment_events` | `invoice_line_items`
-All corrections = new rows with full audit trail.
 
 ### Rule 7: Dispute threshold
 When `ABS(variance_amount) > org_carrier_account.dispute_threshold`:
@@ -109,223 +132,274 @@ When `ABS(variance_amount) > org_carrier_account.dispute_threshold`:
 - Log to `audit_logs`
 - Never auto-bill a disputed line item
 
+### Rule 8: 3PL billing
+Always bill the 3PL org directly. Sub-client billing is Phase 2.
+
 ---
 
-## 4. Carrier Account Architecture
+## 5. Carrier Account Architecture
 
-### The Two Modes — Official Cactus Terminology
+### The Two Modes
 
 **`lassoed_carrier_account`**
-WMS/OMS integrated. Cactus has full visibility at label print.
-Shipments flow through rating engine → `shipment_ledger` row created.
-Full reconciliation available.
-Invoice matching: PRIMARY = tracking_number → shipment_ledger
+WMS integrated. Full label-print visibility. shipment_ledger
+row created at print time. Full reconciliation available.
+Invoice matching: tracking_number → shipment_ledger → org_id
 
 **`dark_carrier_account`**
-Client entered Cactus credentials directly into their own platform
-(e.g. ShipStation). Zero Cactus visibility at label print.
-Shipments only enter system when carrier invoice is uploaded.
-No reconciliation — billing only.
-Invoice matching: PRIMARY = ship_from_address_normalized → locations
+Client entered Cactus credentials into their own platform.
+Zero visibility at label print. Invoice-only billing.
+Invoice matching: ship_from_address_normalized → locations
 
 ### The is_cactus_account Flag
-- `TRUE` (default): Cactus earns margin. Apply markup. Generate revenue.
-- `FALSE`: Pass-through account. No owned revenue. Process for
-  records only. Skip markup calculation entirely.
-This flag lives on `org_carrier_accounts`, not on invoices.
+- TRUE (default): Cactus earns margin. Apply markup.
+- FALSE: Pass-through. No owned revenue. Skip markup.
 
 ### Carrier Account Hierarchy
 ```
 organizations
-    └── org_carrier_accounts  (one per carrier the org uses)
+    └── org_carrier_accounts
             ├── markup_percentage  ← PRIMARY markup
-            ├── dispute_threshold  ← per-account variance limit
-            ├── carrier_account_mode (lassoed or dark)
+            ├── dispute_threshold
+            ├── carrier_account_mode
             ├── is_cactus_account
-            └── rate_cards (optional — zero or many)
-                    ├── service_level (e.g. GROUND_ADVANTAGE)
-                    ├── nickname
-                    └── custom rate pricing
+            └── rate_cards (optional children)
+                    ├── service_level
+                    └── nickname
 ```
+
+### All carrier accounts are Cactus/Buku master accounts.
+No per-org carrier credentials to store.
 
 ---
 
-## 5. Invoice Pipeline — The Billing Brain
+## 6. Rating Engine Architecture
+
+### WMS Integration Flow (lassoed accounts)
+```
+WMS sends rate request to Cactus API:
+  org_id, origin, destination, weight, dimensions
+        ↓
+Cactus looks up active carrier accounts for this org
+        ↓
+Cactus calls each carrier API simultaneously:
+  FedEx Comprehensive Rates API
+  UPS Rating API
+  (Phase 2: UniUni, GOFO, ShipX, USPS, etc.)
+        ↓
+Carriers self-filter by zip coverage
+  (no rate returned = not serviceable = excluded)
+        ↓
+Cactus applies org markup + Single-Ceiling to each rate
+        ↓
+Cactus logs all rates to rate_shop_log (async)
+        ↓
+Cactus returns ALL rated options to WMS
+        ↓
+WMS displays and handles rate selection UI
+        ↓
+User selects rate → WMS calls Cactus Label Purchase API
+        ↓
+Cactus purchases label → returns tracking number to WMS
+        ↓
+WMS prints label
+```
+
+### Rate Sorting
+```
+Default sort: final_merchant_rate ASC (cheapest first)
+Optional:     transit_days ASC then final_merchant_rate ASC
+Never:        carrier-weighted or manually promoted results
+```
+
+Residential and fuel surcharges are already included in
+carrier API rate responses. final_merchant_rate accounts
+for everything. Cheapest first IS the smartest sort.
+
+### Last-Mile Carrier ZIP Coverage
+UniUni, GOFO, and ShipX self-filter by ZIP code.
+If a ZIP is not serviceable, no rate is returned.
+No ZIP code lookup tables needed in Cactus.
+When a carrier expands their network, Cactus automatically
+reflects it without any code changes.
+
+### API Error Handling
+If a carrier API returns an error (not just no rate):
+→ Silently exclude that carrier from results
+→ Log error to audit_logs with full context
+→ Never fail the entire rate shopping response
+→ Return rates from all other carriers normally
+
+### DHL eCommerce — Daily Manifest Requirement
+Unlike FedEx and UPS, DHL eCommerce requires a daily manifest
+(Driver Summary Manifest) to close out shipments and trigger
+pickup. Build a daily manifest job in the DHL eCommerce adapter.
+Failure to manifest = packages not collected.
+
+---
+
+## 7. Invoice Pipeline — The Billing Brain
 
 ### Full Flow
 ```
-Carrier sends CSV/XLSX invoice weekly
-        ↓
-Caleb uploads in The Alamo
+Upload carrier CSV/XLSX in The Alamo
         ↓
 AI normalizes headers → Cactus Standard fields
         ↓
-Human review queue (approve/correct AI suggestions)
+Human review queue
         ↓
 For each line item:
-  Look up carrier account → check carrier_account_mode
-
-  IF lassoed_carrier_account:
+  IF lassoed:
     Match tracking_number → shipment_ledger → org_id
     Compare carrier_charge vs quoted_rate
-    IF variance > dispute_threshold → HELD + dispute_flag = TRUE
-    ELSE → apply markup → Single-Ceiling → billing_status = APPROVED
+    IF variance > dispute_threshold → HELD + dispute_flag
+    ELSE → apply markup → Single-Ceiling → APPROVED
 
-  IF dark_carrier_account:
+  IF dark:
     Normalize ship_from_address
-    Match → locations.normalized_address (is_billing_address = TRUE)
-    IF one match → assign org_id → apply markup → Single-Ceiling
-    IF zero matches → FLAGGED "Unknown address"
-    IF multiple matches → FLAGGED "Address collision"
+    Match → locations.normalized_address (is_billing_address=TRUE)
+    IF one match → assign org → markup → Single-Ceiling
+    IF zero/multiple → FLAGGED → manual review
     Create shipment_ledger row (shipment_source = INVOICE_IMPORT)
         ↓
-Generate cactus_invoices from APPROVED invoice_line_items
+Generate cactus_invoices from APPROVED line items
         ↓
-Sync to QuickBooks Online (qbo_invoice_id)
+Sync to QuickBooks Online
 ```
 
-### Address Normalization Standard
-All addresses must be normalized before storage and matching.
-Format: `"1234 MAIN ST, PHOENIX, AZ, 85001, US"`
-Rules: uppercase, abbreviate street type (ST not STREET),
-use state abbreviation, strip unit/suite for matching purposes.
-
-### 3PL Billing Rule
-Cactus always bills the 3PL org directly.
-3PLs bill their own merchants — that is Phase 2.
-Never attempt to split a 3PL invoice across sub-clients in Phase 1.
+### Address Normalization Format
+`"1234 MAIN ST, PHOENIX, AZ, 85001, US"`
+Uppercase. Abbreviated street type. State abbreviation.
 
 ---
 
-## 6. AI Architecture — The Central Nervous System
+## 8. AI Architecture
 
-### The AI Service Module
-All AI calls go through `src/core/ai/ai-service.ts`.
-Clean interface — any model can be swapped without changing
-business logic. Phase 1: Anthropic Claude API.
+### FedEx Data Usage Restriction
+Per the FedEx Integrator Agreement (Section 6k):
+FedEx End User Data (including rate data) may NOT be used to:
+- Determine prices or estimate market prices
+- Develop predictive pricing analyses
+
+The Shadow Ledger stores FedEx rate data for operational
+reconciliation ONLY. AI price prediction features must be
+built on Cactus margin data and client behavior patterns —
+not on raw FedEx rate data.
 
 ### Phase 1 AI Features
-1. **Invoice Header Normalization:** Claude maps unknown carrier
-   headers to `cactus_standard_field`. Stored with `ai_suggested = TRUE`
-   and `ai_confidence_score`. Flagged for human review before saving.
-2. **Exception Flagging:** When `shipment_events` receives EXCEPTION,
-   DAMAGED, or LOST, AI sets `ai_flagged = TRUE` with `ai_flag_reason`.
+1. Invoice header normalization — Claude suggests mappings
+2. Exception flagging — ai_flagged=TRUE on EXCEPTION/DAMAGED/LOST
 
-### The Shadow Ledger (rate_shop_log)
-Log EVERY rate request — including unselected options.
-Use async writes — never block the rating API response.
+### Shadow Ledger (rate_shop_log)
+Log EVERY rate request async. Never block rating response.
 
 ### Event Sourcing (shipment_events)
-Never update a shipment status. Always append a new event row.
+Never update shipment status. Always append new event rows.
 ```typescript
-// WRONG
-await supabase.from('shipment_ledger').update({ status: 'DELIVERED' })
+// WRONG — destroys history
+await supabase
+  .from('shipment_ledger')
+  .update({ status: 'DELIVERED' })
+  .eq('id', shipmentId);
 
-// RIGHT
-await supabase.from('shipment_events').insert({
-  shipment_ledger_id: id,
-  org_id: orgId,
-  event_type: 'DELIVERED',
-  carrier_timestamp: carrierData.timestamp,
-})
+// RIGHT — preserves full timeline
+await supabase
+  .from('shipment_events')
+  .insert({
+    shipment_ledger_id: shipmentId,
+    org_id: orgId,
+    event_type: 'DELIVERED',
+    carrier_timestamp: carrierData.timestamp,
+    carrier_location: carrierData.location,
+  });
 ```
 
 ---
 
-## 7. Database Standards (v1.3.0 — 16 Tables)
+## 9. Database Standards (v1.4.0 — 16 Tables)
 
 | Table | Purpose |
 |---|---|
 | `organizations` | Tenant root |
-| `org_users` | Auth → org mapping (RLS anchor) |
-| `locations` | Org addresses. Multiple per org. Billing match for dark accounts. |
-| `org_carrier_accounts` | Carrier account profile. Markup lives here. |
-| `rate_cards` | Optional custom rates. Children of org_carrier_accounts. |
+| `org_users` | Auth → org (RLS anchor) |
+| `locations` | Org addresses. Multiple per org. |
+| `org_carrier_accounts` | Carrier profiles + markup. |
+| `rate_cards` | Optional custom rates. |
 | `meters` | USPS postage wallet |
 | `meter_transactions` | Immutable meter ledger |
-| `carrier_invoice_mappings` | Normalization layer (versioned + AI) |
-| `shipment_ledger` | One row per shipment. Single-Ceiling output. |
+| `carrier_invoice_mappings` | Normalization layer |
+| `shipment_ledger` | One row per shipment. Immutable. |
 | `carrier_invoices` | Uploaded invoice batch tracking |
-| `invoice_line_items` | Individual carrier invoice lines. Full lifecycle. |
+| `invoice_line_items` | Individual carrier invoice lines |
 | `cactus_invoices` | Client-facing weekly invoices |
 | `cactus_invoice_line_items` | Junction: invoices ↔ line items |
-| `rate_shop_log` | Shadow Ledger — AI training dataset |
+| `rate_shop_log` | Shadow Ledger — AI dataset |
 | `shipment_events` | Event sourcing timeline |
 | `audit_logs` | Append-only action log |
 
-### Supported Carriers (Phase 1)
-`UPS` | `FEDEX` | `USPS` | `DHL_ECOM` | `DHL_EXPRESS` |
-`UNIUNI` | `LANDMARK` | `ONTRAC` | `LSO`
+### Carrier Code Enum (v1.4.0)
+Phase 1:  `UPS` | `FEDEX`
+Phase 2:  `USPS` | `UNIUNI` | `GOFO` | `SHIPX` | `DHL_ECOM` | `DHL_EXPRESS`
+Phase 3:  `LANDMARK` | `ONTRAC` | `OSM`
+Removed:  `LSO` (not in carrier roadmap)
 
 ### Privacy — Never expose to Cactus Portal
 `raw_carrier_cost` | `markup_percentage` | `markup_flat_fee` |
-`pre_ceiling_amount` | `org_carrier_accounts` data | `rate_cards` data
+`pre_ceiling_amount` | `org_carrier_accounts` | `rate_cards`
 
 ---
 
-## 8. Product Architecture
+## 10. Product Architecture
 
 ### The Two Portals
+
 **Cactus Portal** — client-facing
 Shipments, tracking, meter balance, invoices, AI insights.
 Never shows markup, raw costs, or carrier account details.
 
 **The Alamo** — internal Cactus admin only
-- Org management (create/edit orgs, carrier accounts, rate cards)
-- Invoice upload + AI normalization + human review queue
+- Org + carrier account management
+- Invoice upload, AI normalization, human review
 - Dispute review and resolution
 - Rate card management
-- Audit log viewer
-- Global meter health monitor
-- Carrier scorecard dashboard (Phase 2)
+- Audit logs, meter health
 
 ### Phase 1 Build Sequence
 ```
-Stage 1: Schema v1.3.0 (complete)
-Stage 2: The Alamo shell (Next.js, auth, navigation)
-Stage 3: The Alamo org management (orgs, carrier accounts, rate cards)
-Stage 4: The Alamo invoice pipeline (upload, normalize, match, bill)
-Stage 5: Rating engine core (billing math, rate card lookup)
-Stage 6: UPS + FedEx API integrations
+Stage 1: Schema v1.4.0           ✅ complete
+Stage 2: The Alamo shell          ← NEXT
+Stage 3: Org + carrier management
+Stage 4: Invoice pipeline
+Stage 5: Rating engine core
+Stage 6: UPS + FedEx integrations
 Stage 7: Warehance WMS integration
-Stage 8: Cactus Portal (client dashboard)
-Post-launch: USPS + UniUni carrier integrations
+Stage 8: Cactus Portal
+Post:    Phase 2 carriers
 ```
 
 ---
 
-## 9. Coding Philosophy
+## 11. Coding Philosophy
 
-### Human-First, AI-Assisted
-Every non-obvious block needs a WHY comment, not just a what.
-
-### Error Handling — Safe Fallbacks
-Rate card / carrier account lookup failure must never halt
-label production. Always log to audit_logs with full context.
-
-### Idempotency
-Every label purchase and meter reload must include
-`idempotency_key`. Return previous result if key seen twice.
-
-### Performance Targets
-- Rating API: < 500ms
-- Label purchase: < 2000ms
-- Dashboard queries: < 1000ms
-- Shadow Ledger writes: async, never block rating response
+- WHY comments on every non-obvious block
+- Rate card failure never halts label production
+- Idempotency keys on all label purchases and meter reloads
+- Async Shadow Ledger writes — never block rating response
+- Graceful carrier API error handling — never fail entire response
+- Performance: Rating < 500ms, Label < 2000ms, Dashboard < 1s
 
 ---
 
-## 10. Security Standards
+## 12. Security Standards
 - API keys in `.env` only — never hardcoded
-- `.env` always in `.gitignore` — never committed to GitHub
-- Payment method tokens only — raw card data never in Cactus
-- Service role key — backend only, never exposed to browser
-- Carrier credentials — never stored in plain text
+- `.env` in `.gitignore` — never committed
+- Payment tokens only — raw card data never in Cactus
+- Service role key — backend only, never in browser
 - All timestamps: `TIMESTAMPTZ`
 
 ---
 
-## 11. File & Folder Structure
+## 13. File & Folder Structure
 
 ```
 cactus-web-app/
@@ -335,23 +409,34 @@ cactus-web-app/
 │   └── rules/
 │       └── cactus-standards.mdc   ← this file
 ├── README.md
-├── cactus-master-briefing.md      ← paste into new Claude chats
+├── cactus-master-briefing.md
 ├── database/
-│   ├── database-setup.sql         ← v1.3.0 (16 tables)
+│   ├── database-setup.sql         ← v1.4.0 (16 tables)
 │   ├── seed-data.sql
 │   └── verify-data.sql
+├── docs/
+│   ├── fedex/                     ← complete
+│   ├── ups/                       ← in progress
+│   ├── usps/
+│   ├── uniuni/
+│   ├── gofo/
+│   ├── shipx/
+│   ├── dhl-ecommerce/
+│   ├── dhl-express/
+│   ├── landmark/
+│   ├── osm/
+│   └── ontrac/
 ├── src/
 │   ├── lib/
-│   │   └── supabase.ts            ← DB client (anon + admin)
+│   │   └── supabase.ts
 │   ├── core/
-│   │   ├── ai/                    ← AI service module
-│   │   │   └── ai-service.ts
-│   │   ├── rating/                ← carrier API integrations
-│   │   ├── billing/               ← Single-Ceiling pipeline
-│   │   └── normalization/         ← carrier invoice mapper
-│   ├── adapters/                  ← WMS/OMS adapter layer
-│   ├── alamo/                     ← internal admin (Next.js)
-│   └── portal/                    ← client-facing (Next.js)
+│   │   ├── ai/
+│   │   ├── rating/
+│   │   ├── billing/
+│   │   └── normalization/
+│   ├── adapters/
+│   ├── alamo/
+│   └── portal/
 ├── package.json
 └── tsconfig.json
 ```

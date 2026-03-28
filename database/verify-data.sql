@@ -1,8 +1,8 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: verify-data.sql
--- VERSION: 1.3.0
--- PURPOSE: Confirm the database is set up correctly.
+-- VERSION: 1.4.0
+-- UPDATED: 2026-03-28
 --
 -- HOW TO USE:
 -- Run each query block one at a time in Supabase SQL Editor.
@@ -12,8 +12,8 @@
 
 
 -- ==========================================================
--- CHECK 1: Table Inventory
--- EXPECTED: 16 tables, all with correct row counts
+-- CHECK 1: Table Row Counts
+-- EXPECTED: 16 tables with correct row counts
 --
 --   audit_logs:                0
 --   carrier_invoice_mappings:  21
@@ -33,15 +33,6 @@
 --   shipment_ledger:           3
 -- ==========================================================
 
-SELECT table_name, 0 AS row_count
-FROM information_schema.tables
-WHERE table_schema = 'public'
-  AND table_name NOT IN (
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-  )
-UNION ALL
 SELECT 'audit_logs',                (SELECT COUNT(*)::int FROM audit_logs)
 UNION ALL
 SELECT 'carrier_invoice_mappings',  (SELECT COUNT(*)::int FROM carrier_invoice_mappings)
@@ -77,10 +68,23 @@ ORDER BY 1;
 
 
 -- ==========================================================
--- CHECK 2: Organization Hierarchy
+-- CHECK 2: carrier_code_enum Values (v1.4.0)
+-- EXPECTED: 11 values — LSO should NOT appear
+--   UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX,
+--   DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM
+-- ==========================================================
+
+SELECT enumlabel AS carrier_code
+FROM pg_enum
+WHERE enumtypid = 'carrier_code_enum'::regtype
+ORDER BY enumsortorder;
+
+
+-- ==========================================================
+-- CHECK 3: Organization Hierarchy
 -- EXPECTED: 2 rows
---   Cactus 3PL Headquarters — 3PL — Top-level org
---   Desert Boutique — MERCHANT — Child of: Cactus 3PL Headquarters
+--   Cactus 3PL Headquarters — 3PL — terms_days: 7 — Top-level org
+--   Desert Boutique — MERCHANT — terms_days: 7 — Child of: Cactus 3PL Headquarters
 -- ==========================================================
 
 SELECT
@@ -98,7 +102,7 @@ ORDER BY o.created_at;
 
 
 -- ==========================================================
--- CHECK 3: Locations with Billing Address Flag
+-- CHECK 4: Locations with Billing Address Flag
 -- EXPECTED: 3 rows, all is_billing_address = TRUE
 --   Cactus 3PL Main Warehouse — Phoenix AZ
 --   Cactus 3PL Dallas Hub — Dallas TX
@@ -106,8 +110,8 @@ ORDER BY o.created_at;
 -- ==========================================================
 
 SELECT
-    o.name AS org_name,
-    l.name AS location_name,
+    o.name              AS org_name,
+    l.name              AS location_name,
     l.city,
     l.state,
     l.normalized_address,
@@ -118,7 +122,7 @@ ORDER BY o.name, l.name;
 
 
 -- ==========================================================
--- CHECK 4: Carrier Account Profiles
+-- CHECK 5: Carrier Account Profiles
 -- EXPECTED: 4 rows
 --   Cactus 3PL — UPS lassoed — 15% markup — is_cactus = TRUE
 --   Cactus 3PL — FedEx lassoed — 15% markup — is_cactus = TRUE
@@ -140,7 +144,7 @@ ORDER BY o.name, oca.carrier_code;
 
 
 -- ==========================================================
--- CHECK 5: Meter Balance
+-- CHECK 6: Meter Balance
 -- EXPECTED: 1 row
 --   Cactus 3PL Headquarters — balance: 500.0000
 -- ==========================================================
@@ -162,14 +166,12 @@ ORDER BY mt.created_at;
 
 
 -- ==========================================================
--- CHECK 6: Single-Ceiling Math Verification (Lassoed)
--- EXPECTED: 1 row with ceiling_verified = 'PASS ✓'
+-- CHECK 7: Single-Ceiling Math — All Shipments
+-- EXPECTED: ceiling_verified = 'PASS ✓' on all 3 rows
 --
--- Math:
---   raw_carrier_cost:   $12.3456
---   markup (15%):       × 1.15 = $14.19744
---   pre_ceiling:        $14.1974
---   final_merchant_rate: $14.20 (ceiling)
+-- Lassoed: $12.3456 × 1.15 = $14.19744 → ceiling → $14.20
+-- Dark 1:  $18.4500 × 1.18 = $21.7710  → ceiling → $21.78
+-- Dark 2:  $27.3300 × 1.18 = $32.2494  → ceiling → $32.25
 -- ==========================================================
 
 SELECT
@@ -190,11 +192,11 @@ SELECT
     END                     AS ceiling_verified
 FROM shipment_ledger sl
 INNER JOIN organizations o ON sl.org_id = o.id
-WHERE sl.shipment_source = 'RATING_ENGINE';
+ORDER BY sl.created_at;
 
 
 -- ==========================================================
--- CHECK 7: Dark Account Invoice Pipeline Verification
+-- CHECK 8: Dark Account Invoice Pipeline Verification
 -- EXPECTED: 2 rows — both ceiling_verified = 'PASS ✓'
 --   both billing_status = 'APPROVED'
 --   both match_method = 'SHIP_FROM_ADDRESS'
@@ -226,7 +228,7 @@ ORDER BY ili.tracking_number;
 
 
 -- ==========================================================
--- CHECK 8: Shipment Events (Event Sourcing)
+-- CHECK 9: Shipment Events (Event Sourcing)
 -- EXPECTED: 1 row
 --   event_type = LABEL_CREATED for 1Z-CACTUS-TEST-001
 -- ==========================================================
@@ -246,8 +248,12 @@ ORDER BY se.created_at;
 
 
 -- ==========================================================
--- CHECK 9: Carrier Invoice Mappings
--- EXPECTED: 21 rows across UPS, FEDEX, USPS, DHL_ECOM
+-- CHECK 10: Carrier Invoice Mappings by Carrier
+-- EXPECTED: 21 rows total
+--   DHL_ECOM: 5
+--   FEDEX:    6
+--   UPS:      6
+--   USPS:     4
 -- ==========================================================
 
 SELECT
