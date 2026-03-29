@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 
@@ -7,17 +7,19 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { count: orgCount } = await supabase
-    .from('organizations')
-    .select('*', { count: 'exact', head: true })
+    const admin = createAdminSupabaseClient()
 
-  const { count: carrierCount } = await supabase
-    .from('org_carrier_accounts')
-    .select('*', { count: 'exact', head: true })
-
-  const { count: shipmentCount } = await supabase
-    .from('shipment_ledger')
-    .select('*', { count: 'exact', head: true })
+    const { count: orgCount } = await admin
+      .from('organizations')
+      .select('*', { count: 'exact', head: true })
+    
+    const { count: carrierCount } = await admin
+      .from('org_carrier_accounts')
+      .select('*', { count: 'exact', head: true })
+    
+    const { count: shipmentCount } = await admin
+      .from('shipment_ledger')
+      .select('*', { count: 'exact', head: true })
 
   return (
     <div style={{
