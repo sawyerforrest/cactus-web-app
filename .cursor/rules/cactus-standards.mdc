@@ -159,17 +159,60 @@ Invoice matching: ship_from_address_normalized → locations
 ```
 organizations
     └── org_carrier_accounts
-            ├── markup_percentage  ← PRIMARY markup
+            ├── markup_percentage  ← applied to BOTH API rates and rate cards
+            ├── use_rate_card      ← master switch: API vs rate card pricing
             ├── dispute_threshold
             ├── carrier_account_mode
             ├── is_cactus_account
-            └── rate_cards (optional children)
-                    ├── service_level
-                    └── nickname
+            └── rate_cards (active when use_rate_card = TRUE)
+                    ├── nickname       ← human-readable label in The Alamo
+                    ├── service_level  ← e.g. UPS_GROUND, GROUND_ADVANTAGE
+                    ├── base_rate      ← always pre-markup, never includes markup
+                    ├── effective_date ← rate card not used until this date
+                    └── deprecated_date ← rate card expires on this date
 ```
 
 ### All carrier accounts are Cactus/Buku master accounts.
 No per-org carrier credentials to store.
+
+### use_rate_card Flag (on org_carrier_accounts)
+FALSE (default): Rating engine calls carrier API. Markup applied on top.
+TRUE: Rating engine uses rate cards instead of carrier API.
+  - Rate card stores BASE rate only — never includes markup
+  - Markup percentage on carrier account applied on top of rate card
+  - Single-Ceiling applied once to (rate_card_base × (1 + markup))
+  - If no rate card exists for a service level → no rate returned
+  - is_active is NOT stored on rate_cards — it is computed (see Rate Card Active State below)
+  - Future: USPS may have zone/weight tiered rate cards (Phase 3)
+
+### Rate Card Rating Flow
+IF use_rate_card = TRUE:
+  Look up rate card for carrier_account + service_level where:
+    effective_date <= CURRENT_DATE
+    deprecated_date IS NULL OR deprecated_date > CURRENT_DATE
+  ORDER BY effective_date DESC LIMIT 1
+  IF found → base_rate × (1 + markup) → Single-Ceiling → return rate
+  IF not found → exclude this service level (no rate returned)
+IF use_rate_card = FALSE:
+  Call carrier API → apply markup → Single-Ceiling → return rate
+
+### Rate Card Active State — Computed, Never Stored
+is_active is NOT a stored field on rate_cards.
+Computed at read time from three conditions (AND logic):
+  1. org_carrier_accounts.use_rate_card = TRUE
+  2. rate_cards.effective_date <= CURRENT_DATE
+  3. rate_cards.deprecated_date IS NULL
+     OR rate_cards.deprecated_date > CURRENT_DATE
+All three must be TRUE for a rate card to be active.
+The Alamo UI displays computed active state — never a stored boolean.
+
+### Rate Card Date Fields
+created_at:       auto-populated at upload — audit trail only
+effective_date:   admin-set — rate card not used until this date
+deprecated_date:  admin-set — rate card expires on this date
+
+Future-dating: upload new rates in advance, they go live automatically.
+Superseding: new effective_date > old → new card wins automatically.
 
 ---
 
@@ -204,6 +247,18 @@ Cactus purchases label → returns tracking number to WMS
         ↓
 WMS prints label
 ```
+### Rate Card Date Logic
+created_at:      auto-populated at upload — audit trail
+effective_date:  admin-set — rate card not used until this date
+deprecated_date: admin-set — rate card expires on this date
+
+Rating engine lookup:
+  effective_date <= TODAY
+  deprecated_date IS NULL OR deprecated_date > TODAY
+  ORDER BY effective_date DESC LIMIT 1
+
+Future-dating: upload new rates in advance, they go live automatically.
+Superseding: new effective_date > old effective_date → new card wins.
 
 ### Rate Sorting
 ```
@@ -367,8 +422,8 @@ Never shows markup, raw costs, or carrier account details.
 ### Phase 1 Build Sequence
 ```
 Stage 1: Schema v1.4.0           ✅ complete
-Stage 2: The Alamo shell          ← NEXT
-Stage 3: Org + carrier management
+Stage 2: The Alamo shell          ✅ complete
+Stage 3: Org + carrier management ← CURRENT
 Stage 4: Invoice pipeline
 Stage 5: Rating engine core
 Stage 6: UPS + FedEx integrations
