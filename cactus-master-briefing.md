@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.0 | UPDATED: 2026-03-28
+# VERSION: 1.4.1 | UPDATED: 2026-03-28
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -385,11 +385,22 @@ Never update shipment status. Always append new event rows.
 - [x] Carrier roadmap v1.4.0 finalized
 - [x] Rating engine WMS architecture confirmed
 - [x] Product evolution (middleware → full OS) confirmed
+- [x] Supabase reset — database-setup.sql v1.4.0 live and verified
+- [x] seed-data.sql + verify-data.sql — all 10 checks passing
+- [x] All v1.4.0 files pushed to GitHub
+- [x] Stage 2: The Alamo shell complete
+      - Next.js 16.2.1 scaffolded in src/alamo/
+      - proxy.ts — route protection (Next.js 16 renamed middleware)
+      - Export function must be named "proxy" not "middleware"
+      - Browser client: src/alamo/lib/supabase.ts
+      - Server client: src/alamo/lib/supabase-server.ts (separate file required)
+      - Login page — dark UI, Supabase Auth email/password
+      - Dashboard page — post-login landing with seed data stats
+      - Smart redirects: / → /dashboard, unauth → /login, login+auth → /dashboard
+      - .env.local — Supabase keys for Next.js frontend
+      - sawyer@cactus-logistics.com admin user created in Supabase Auth
 
 ### Pending Phase 0 items
-- [ ] Reset Supabase → run database-setup.sql v1.4.0
-- [ ] Run seed-data.sql + verify-data.sql (10 checks)
-- [ ] Push all v1.4.0 files to GitHub
 - [ ] EIN from irs.gov — Monday 8-9am MT (5am MT = 7am ET open)
 - [ ] Mercury business bank account — after EIN
 - [ ] UPS Developer Portal — waiting for approval
@@ -399,14 +410,12 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-1. Reset Supabase → run database-setup.sql v1.4.0
-2. Run seed-data.sql + verify-data.sql — confirm 10 checks pass
-3. Push all v1.4.0 files to GitHub
-4. Begin Stage 2: The Alamo shell
-   - Scaffold Next.js app in src/alamo/
-   - Supabase Auth — admin login only
-   - Basic sidebar navigation
-   - Protected routes (no public access)
+Stage 3: The Alamo org management
+  - Org list page — show all organizations from Supabase
+  - Create org form — name, type (3PL/MERCHANT), terms_days
+  - Org detail page — view carrier accounts and locations
+  - Add carrier account form — mode, carrier, markup, dispute threshold
+  - Add location form — address, normalized_address, is_billing_address
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -437,6 +446,10 @@ Never update shipment status. Always append new event rows.
 - DHL eCommerce: daily manifest job required
 - Phase 1-2: Cactus as middleware → Phase 3: Cactus as full OS
 - All carrier contacts came through BukuShip — approach post-departure
+- Next.js 16: middleware.ts renamed to proxy.ts, function named "proxy"
+- Next.js 16: browser and server Supabase clients must be separate files
+- Browser client (createBrowserClient): use in 'use client' components only
+- Server client (createServerClient): use in Server Components and Route Handlers
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
