@@ -1,26 +1,53 @@
-@import "tailwindcss";
+/* ==========================================================
+   FILE: src/alamo/app/globals.css
+   PURPOSE: Cactus Design System — global CSS tokens.
+   All colors, spacing, and typography live here.
+   ========================================================== */
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+   *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+  
+  :root {
+    /* Brand */
+    --cactus-forest:       #2D5A27;
+    --cactus-mint:         #EEF4EB;
+    --cactus-forest-deep:  #1A3D15;
+    --cactus-amber:        #D97706;
+    --cactus-amber-bg:     #FEF3C7;
+    --cactus-amber-text:   #92400E;
+    --cactus-bloom:        #D81B7A;
+    --cactus-bloom-bg:     #FCE4F0;
+    --cactus-bloom-border: #F48CBB;
+    --cactus-bloom-deep:   #8A0F4E;
+    --cactus-bloom-mid:    #9A1258;
+  
+    /* Text */
+    --cactus-ink:    #0D1210;
+    --cactus-slate:  #1A2420;
+    --cactus-muted:  #6B7570;
+    --cactus-hint:   #9CA3A0;
+  
+    /* Surfaces */
+    --cactus-canvas:      #F8F6F2;
+    --cactus-sand:        #F0EEE9;
+    --cactus-border:      #DDD8D0;
+    --cactus-border-mid:  #CCC8C0;
+  
+    /* Typography */
+    --font-sans: var(--font-geist-sans), -apple-system, sans-serif;
+    --font-mono: var(--font-geist-mono), 'SF Mono', monospace;
+  }
+  
+  body {
+    font-family: var(--font-sans);
+    color: var(--cactus-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  a { color: inherit; text-decoration: none; }
+  button { cursor: pointer; font-family: inherit; }
+  input, select, textarea { font-family: inherit; }
