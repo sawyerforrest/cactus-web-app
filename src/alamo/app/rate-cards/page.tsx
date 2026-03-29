@@ -4,20 +4,27 @@ import Sidebar from '@/components/Sidebar'
 
 const CARRIERS = ['UPS', 'FEDEX', 'USPS', 'UNIUNI', 'GOFO', 'SHIPX', 'DHL_ECOM', 'DHL_EXPRESS', 'LANDMARK', 'ONTRAC', 'OSM']
 
-export default async function CarriersPage() {
+export default async function RateCardsPage() {
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const admin = createAdminSupabaseClient()
-  const { data: accounts } = await admin
-    .from('org_carrier_accounts')
-    .select('carrier_code, id')
+  const { data: rateCards } = await admin
+    .from('rate_cards')
+    .select(`
+      id,
+      service_level,
+      org_carrier_accounts ( carrier_code )
+    `)
 
-  // Count accounts per carrier
+  // Count rate cards per carrier
   const countByCarrier: Record<string, number> = {}
-  accounts?.forEach(a => {
-    countByCarrier[a.carrier_code] = (countByCarrier[a.carrier_code] ?? 0) + 1
+  rateCards?.forEach(rc => {
+    const carrier = (rc.org_carrier_accounts as any)?.carrier_code
+    if (carrier) {
+      countByCarrier[carrier] = (countByCarrier[carrier] ?? 0) + 1
+    }
   })
 
   return (
@@ -36,15 +43,15 @@ export default async function CarriersPage() {
           padding: '0 24px', height: 48,
           display: 'flex', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Carrier Accounts</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Rate Cards</div>
         </div>
 
         <div style={{ padding: '20px 24px' }}>
           <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--cactus-ink)', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            Carrier Accounts
+            Rate Cards
           </div>
           <div style={{ fontSize: 13, color: 'var(--cactus-muted)', marginBottom: 20 }}>
-            Select a carrier to view all accounts
+            Select a carrier to view service levels
           </div>
 
           <div style={{
@@ -55,9 +62,9 @@ export default async function CarriersPage() {
             {CARRIERS.map((carrier, i) => {
               const count = countByCarrier[carrier] ?? 0
               return (
-                <a key={carrier} href={`/carriers/${carrier}`} style={{
+                <a key={carrier} href={`/rate-cards/${carrier}`} style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 80px 80px',
+                  gridTemplateColumns: '1fr 100px 80px',
                   padding: '12px 16px',
                   alignItems: 'center',
                   borderBottom: i < CARRIERS.length - 1 ? '0.5px solid var(--cactus-border)' : 'none',
@@ -68,7 +75,7 @@ export default async function CarriersPage() {
                     {carrier}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--cactus-muted)' }}>
-                    {count} {count === 1 ? 'account' : 'accounts'}
+                    {count} {count === 1 ? 'rate card' : 'rate cards'}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--cactus-muted)', textAlign: 'right' }}>
                     →
