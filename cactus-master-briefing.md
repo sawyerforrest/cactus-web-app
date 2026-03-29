@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.1 | UPDATED: 2026-03-28
+# VERSION: 1.4.2 | UPDATED: 2026-03-29
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -407,13 +407,25 @@ Never update shipment status. Always append new event rows.
       - Smart redirects: / → /dashboard, unauth → /login, login+auth → /dashboard
       - .env.local — Supabase keys for Next.js frontend
       - sawyer@cactus-logistics.com admin user created in Supabase Auth
-- [x] Stage 3 in progress
+- [x] Stage 3: Org + carrier management — COMPLETE
       - Dashboard rebuilt in Cactus design system
       - Geist font + CSS tokens (globals.css)
       - Shared Sidebar component (components/Sidebar.tsx)
-      - Organizations list page (/orgs) — live Supabase data
-      - Add org form (/orgs/new) — Server Action writes to Supabase
-      - + Add org button wired up on dashboard and orgs pages
+      - Organizations list (/orgs) — live Supabase data
+      - Add org form (/orgs/new) — server action
+      - Org detail page (/orgs/[id]) — carrier accounts + locations
+      - Add carrier account form (/orgs/[id]/carriers/new)
+      - Add location form (/orgs/[id]/locations/new)
+      - Carrier account detail (/orgs/[id]/carriers/[carrierId])
+      - Carrier Accounts sidebar (/carriers, /carriers/[carrier])
+      - Rate Cards sidebar (/rate-cards, /rate-cards/[carrier], /rate-cards/[carrier]/[service_level])
+      - Computed rate card active state (use_rate_card + effective_date + deprecated_date)
+      - Design system v1.0 locked in cactus-standards.mdc
+      - Markup validation — server-side 0-100% enforcement
+      - use_rate_card column added to org_carrier_accounts
+      - is_active removed from rate_cards (now computed)
+      - RLS grants fixed — service_role has ALL on ALL tables
+      - admin client (createAdminSupabaseClient) for all Alamo reads + writes
 
 ### Pending Phase 0 items
 - [ ] EIN from irs.gov — Monday 8-9am MT (5am MT = 7am ET open)
@@ -425,11 +437,14 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Continue Stage 3:
-  - Test Add org form — create a real org, verify in Supabase
-  - Carrier accounts page (/carriers)
-  - Add carrier account form
-  - Location management
+Stage 4: Invoice Pipeline
+  - Invoice upload page (/invoices/upload)
+  - AI header normalization (Claude API)
+  - Human review queue
+  - Line item matching — lassoed (tracking number) + dark (address)
+  - Dispute flagging — variance > threshold → HELD
+  - Approve and release to billing
+  - Generate cactus_invoices from approved line items
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
