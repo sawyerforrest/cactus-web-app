@@ -440,3 +440,142 @@ cactus-web-app/
 ├── package.json
 └── tsconfig.json
 ```
+
+---
+
+## 14. DESIGN SYSTEM — THE ALAMO & CACTUS PORTAL
+
+### Design Philosophy
+Crisp lines. Clean spacing. Less noise. Detail-oriented.
+Stripe-level data density for The Alamo.
+Apple-level restraint for the Cactus Portal.
+Same system, different spacing expression.
+No pure black. No shadows. No gradients. Always 0.5px borders.
+
+### The Three Brand Colors
+Forest  #2D5A27 — operational, active, confirmed, primary CTA
+Amber   #D97706 — client-facing warmth, savings highlights, Portal CTA
+Bloom   #D81B7A — warnings, disputes, held items, attention required
+
+The cactus in full expression:
+  Forest = the plant. Grounded, alive, resilient.
+  Amber  = the desert sun. Warm, energetic, inviting.
+  Bloom  = the flower. Striking, urgent, beautiful.
+
+### Full Color Token Set
+--cactus-forest:       #2D5A27  primary brand, buttons, links, active nav
+--cactus-mint:         #EEF4EB  green surface, active nav bg, approved badges
+--cactus-forest-deep:  #1A3D15  green badge text
+
+--cactus-amber:        #D97706  vibrant amber, Portal CTA, savings highlights
+--cactus-amber-bg:     #FEF3C7  amber surface
+--cactus-amber-text:   #92400E  amber badge text
+
+--cactus-bloom:        #D81B7A  warnings, disputes, held, errors
+--cactus-bloom-bg:     #FCE4F0  bloom surface, alert backgrounds
+--cactus-bloom-border: #F48CBB  bloom border, alert borders
+--cactus-bloom-deep:   #8A0F4E  bloom heading text
+--cactus-bloom-mid:    #9A1258  bloom body text
+
+--cactus-ink:          #0D1210  primary text, rich near-black
+--cactus-slate:        #1A2420  secondary text, nav items
+--cactus-muted:        #6B7570  tertiary text, labels, timestamps
+--cactus-hint:         #9CA3A0  placeholder, inactive, brand-sub
+
+--cactus-canvas:       #F8F6F2  card and sidebar surface
+--cactus-sand:         #F0EEE9  page background
+--cactus-border:       #DDD8D0  all borders
+--cactus-border-mid:   #CCC8C0  form input borders
+--cactus-border-bloom: #F0A8C8  bloom-state borders
+
+### Typography Scale
+Display:    20-24px / weight 500 / ink / tracking -0.02em
+Body:       13px / weight 400 / ink
+Muted:      13px / weight 400 / muted
+Label:      11px / weight 500 / muted / tracking 0.03em
+Nav label:  10px / weight 500 / hint / tracking 0.07em / uppercase
+Mono:       12px / SF Mono or Fira Code / forest
+            (all tracking numbers, IDs, account numbers)
+Form input: 13px / weight 500 / ink
+
+### Spacing Scale
+Page padding:      20px 24px
+Card header:       12px 16px
+Card body:         14px 16px
+Table cell:        10px 16px
+Stat card:         14px 16px
+Form row gap:      12px
+Nav item:          6px 8px
+Nav section:       12px 8px 4px
+
+### Border Radius Scale
+Form inputs:       6px
+Badges:            20px (full pill)
+Stat cards:        8px
+Cards:             10px
+Shell / modals:    12px
+
+### Non-Negotiable Rules
+- Border: always 0.5px — never 1px, never 2px
+- No shadows of any kind
+- No gradients of any kind
+- No pure black — use ink (#0D1210)
+- Form inputs: font-weight 500
+- Active nav: forest green only
+- Active disputes nav: bloom
+- Focus ring: 0 0 0 3px rgba(45,90,39,0.10)
+- Mono font for ALL tracking numbers and IDs
+- Badges: always pill shape, never square
+- Variance columns: bloom color when positive (overcharge)
+
+### Semantic Color Usage
+
+Default state — everything is quiet:
+  Text:              ink #0D1210
+  Borders:           #DDD8D0
+  Backgrounds:       canvas #F8F6F2
+  Badges:            subtle tint, never loud
+
+Approved / confirmed:
+  Badge text:        forest #2D5A27
+  Badge bg:          mint #EEF4EB
+  No row highlighting — approved is the default expected state
+
+Lassoed / dark account mode:
+  Badge text:        slate #3D4744
+  Badge bg:          #E8ECEB
+  No row highlighting
+
+Held / dispute — minor variance:
+  Badge only:        bloom text #D81B7A on bloom-bg #FCE4F0
+  Row:               no fill — badge carries the signal
+  Variance text:     bloom #D81B7A on the variance column only
+
+Held / dispute — major variance (e.g. >$10):
+  Row left border:   2px solid #D81B7A (the ONLY moment bloom goes structural)
+  Badge:             bloom as above
+  Variance text:     bloom
+
+Alert banners:
+  Minor:             muted border + canvas bg + bloom text
+  Major:             bloom-bg #FCE4F0 + bloom-border #F48CBB
+
+Savings highlights (Portal):
+  Number text only:  amber #D97706
+  No fills
+
+### The Rule in Plain English
+Color lives in text and badges first.
+It moves to borders only when action is truly required.
+The screen should feel calm until something genuinely needs you.
+
+### The Two Portal Expressions
+The Alamo (internal):
+  Primary CTA:     forest #2D5A27
+  Data density:    Stripe-level
+  Spacing:         compact
+
+Cactus Portal (client-facing):
+  Primary CTA:     amber #D97706
+  Data density:    Apple-level restraint
+  Spacing:         generous, more breathing room
