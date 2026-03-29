@@ -407,6 +407,13 @@ Never update shipment status. Always append new event rows.
       - Smart redirects: / → /dashboard, unauth → /login, login+auth → /dashboard
       - .env.local — Supabase keys for Next.js frontend
       - sawyer@cactus-logistics.com admin user created in Supabase Auth
+- [x] Stage 3 in progress
+      - Dashboard rebuilt in Cactus design system
+      - Geist font + CSS tokens (globals.css)
+      - Shared Sidebar component (components/Sidebar.tsx)
+      - Organizations list page (/orgs) — live Supabase data
+      - Add org form (/orgs/new) — Server Action writes to Supabase
+      - + Add org button wired up on dashboard and orgs pages
 
 ### Pending Phase 0 items
 - [ ] EIN from irs.gov — Monday 8-9am MT (5am MT = 7am ET open)
@@ -418,12 +425,11 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Stage 3: The Alamo org management
-  - Org list page — show all organizations from Supabase
-  - Create org form — name, type (3PL/MERCHANT), terms_days
-  - Org detail page — view carrier accounts and locations
-  - Add carrier account form — mode, carrier, markup, dispute threshold
-  - Add location form — address, normalized_address, is_billing_address
+Continue Stage 3:
+  - Test Add org form — create a real org, verify in Supabase
+  - Carrier accounts page (/carriers)
+  - Add carrier account form
+  - Location management
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
