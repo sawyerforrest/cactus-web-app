@@ -38,11 +38,12 @@ export default async function DashboardPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Dashboard</div>
-          <button style={{
-            background: 'var(--cactus-forest)', color: '#fff',
-            border: 'none', padding: '6px 14px',
-            borderRadius: 6, fontSize: 12, fontWeight: 500,
-          }}>+ Add org</button>
+          <a href="/orgs/new" style={{
+  background: 'var(--cactus-forest)', color: '#fff',
+  border: 'none', padding: '6px 14px',
+  borderRadius: 6, fontSize: 12, fontWeight: 500,
+  textDecoration: 'none',
+}}>+ Add org</a>
         </div>
 
         <div style={{ padding: '20px 24px' }}>

@@ -53,7 +53,12 @@ export default async function OrgsPage() {
             background: 'var(--cactus-forest)', color: '#fff',
             border: 'none', padding: '6px 14px',
             borderRadius: 6, fontSize: 12, fontWeight: 500,
-          }}>+ Add org</button>
+            <a href="/orgs/new" style={{
+                background: 'var(--cactus-forest)', color: '#fff',
+                border: 'none', padding: '6px 14px',
+                borderRadius: 6, fontSize: 12, fontWeight: 500,
+                textDecoration: 'none',
+              }}>+ Add org</a>
         </div>
 
         {/* Content */}
