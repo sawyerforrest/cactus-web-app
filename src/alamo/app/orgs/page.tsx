@@ -1,11 +1,4 @@
-// ==========================================================
-// FILE: src/alamo/app/orgs/page.tsx
-// PURPOSE: Organizations list — all tenants in Cactus.
-// Pulls live data from Supabase. Service role client used
-// so RLS does not filter results for admin view.
-// ==========================================================
-
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 
@@ -14,19 +7,19 @@ export default async function OrgsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: orgs } = await supabase
-    .from('organizations')
-    .select(`
-      id,
-      name,
-      org_type,
-      terms_days,
-      is_active,
-      created_at,
-      parent_org_id,
-      org_carrier_accounts ( count )
-    `)
-    .order('created_at', { ascending: true })
+    const admin = createAdminSupabaseClient()
+    const { data: orgs, error } = await admin
+  .from('organizations')
+  .select(`
+    id,
+    name,
+    org_type,
+    terms_days,
+    is_active,
+    created_at,
+    parent_org_id
+  `)
+  .order('created_at', { ascending: true })
 
   return (
     <div style={{
@@ -36,12 +29,10 @@ export default async function OrgsPage() {
       background: 'var(--cactus-sand)',
     }}>
 
-    <Sidebar />
+      <Sidebar />
 
-      {/* Main */}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
 
-        {/* Topbar */}
         <div style={{
           background: 'var(--cactus-canvas)',
           borderBottom: '0.5px solid var(--cactus-border)',
@@ -49,19 +40,14 @@ export default async function OrgsPage() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Organizations</div>
-          <button style={{
+          <a href="/orgs/new" style={{
             background: 'var(--cactus-forest)', color: '#fff',
-            border: 'none', padding: '6px 14px',
-            borderRadius: 6, fontSize: 12, fontWeight: 500,
-            <a href="/orgs/new" style={{
-                background: 'var(--cactus-forest)', color: '#fff',
-                border: 'none', padding: '6px 14px',
-                borderRadius: 6, fontSize: 12, fontWeight: 500,
-                textDecoration: 'none',
-              }}>+ Add org</a>
+            padding: '6px 14px', borderRadius: 6,
+            fontSize: 12, fontWeight: 500,
+            textDecoration: 'none',
+          }}>+ Add org</a>
         </div>
 
-        {/* Content */}
         <div style={{ padding: '20px 24px' }}>
           <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--cactus-ink)', letterSpacing: '-0.02em', marginBottom: 4 }}>
             Organizations
@@ -70,13 +56,11 @@ export default async function OrgsPage() {
             {orgs?.length ?? 0} total
           </div>
 
-          {/* Table */}
           <div style={{
             background: 'var(--cactus-canvas)',
             border: '0.5px solid var(--cactus-border)',
             borderRadius: 10, overflow: 'hidden',
           }}>
-            {/* Table header */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 100px 80px 80px 120px',
@@ -94,7 +78,6 @@ export default async function OrgsPage() {
               ))}
             </div>
 
-            {/* Rows */}
             {orgs?.map((org, i) => (
               <div key={org.id} style={{
                 display: 'grid',
@@ -124,7 +107,7 @@ export default async function OrgsPage() {
                   Net-{org.terms_days}
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
-                  {(org.org_carrier_accounts as any)?.[0]?.count ?? 0}
+                  -
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--cactus-muted)', fontFamily: 'var(--font-mono)' }}>
                   {new Date(org.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
