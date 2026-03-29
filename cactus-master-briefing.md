@@ -62,6 +62,14 @@ Anthropic Claude API, GitHub, Cursor IDE.
 - Analytics dashboard: trends, cost-per-package, margin health
 - Vector embeddings for semantic normalization
 - Rate volatility predictions from Shadow Ledger
+- PLD/Rate Analysis (PLD Analysis Engine internally) — two-layer sales tool:
+    Layer 1: Cactus runs PLD/Rate Analysis to win 3PL clients
+    Layer 2: 3PL clients run PLD/Rate Analysis to win merchant clients
+    Engine calls live carrier APIs for real-time rating with all surcharges
+    Rate cards + hardcoded surcharges used where API not available
+      (USPS, UniUni, GOFO, ShipX, DHL eCommerce)
+    Powered by Shadow Ledger rate intelligence over time
+    Key differentiator vs DiversiFi: built on reconciled invoice data depth
 
 **Phase 3 — Full WMS & B2B Expansion**
 - Cactus builds its own WMS — full end-to-end logistics OS
@@ -457,6 +465,10 @@ Stage 3: The Alamo org management
 - QuickBooks Online API integration approach
 - Dispute threshold default ($2.00 currently in schema)
 - DHL eCommerce Americas: requires sales conversation
+- PLD Analysis Engine: standard template file format to provide prospects
+  (what column headers, what order, what file type — CSV or XLSX?)
+- PLD Analysis Engine: how to handle mixed unit of weight in same file
+  (some rows LB, some rows OZ?)
 
 ---
 
@@ -477,3 +489,69 @@ Stage 3: The Alamo org management
 
 ## 14. GITHUB REPOSITORY
 https://github.com/sawyerforrest/cactus-web-app
+
+---
+
+## 15. PLD ANALYSIS ENGINE SPEC
+
+### Client-Facing Name: PLD/Rate Analysis
+### Internal Name: PLD Analysis Engine
+
+### How It Works
+For each row in an uploaded PLD file, Cactus runs a live rate
+request against pre-selected carrier APIs — identical to the
+rating engine but against historical data instead of live orders.
+Same carrier abstraction layer. API where available, rate card
+where not.
+
+### Required Fields (10)
+- Ship Date — sample range, annualization, peak/stale flagging
+- Service Level — required for accurate rating and ensures cactus rates with equal service level
+- Weight — required for rating
+- Unit of Weight — LB or OZ, normalize to OZ internally
+- Length — DIM weight calculation
+- Width — DIM weight calculation
+- Height — DIM weight calculation
+- Ship From ZIP — zone calculation
+- Ship From Country Code — domestic vs international routing
+- Ship To ZIP — zone calculation
+- Ship To Country Code — domestic vs international routing
+
+### Preferred Fields (3 — enrich output but not required)
+- Tracking or Order Number — de-duplication key
+- Carrier — enables current carrier breakdown in output
+- Total Shipping Cost — enables savings delta calculation
+  Without it: output is Cactus rate projection only
+
+### Ship Date — Two Purposes
+1. Detects sample window → annualizes savings projection
+   Example: 90 days of data → multiply savings × 4 = annual estimate
+2. Flags rate context issues:
+   - Stale data flag: data older than 18 months
+   - Peak season flag: data includes October–December
+
+### DIM Weight
+Cactus calculates DIM weight for every shipment.
+DIM weight = L × W × H ÷ 139
+Carrier bills whichever is greater: actual weight or DIM weight.
+Dimensions are required — without them rates are inaccurate.
+
+### Carrier Rating Method by Carrier
+- FedEx → live API (Comprehensive Rates API)
+- UPS → live API (Rating API)
+- USPS → rate cards + hardcoded surcharges
+- UniUni → rate cards (no residential, no fuel surcharge)
+- GOFO → rate cards (no residential, no fuel surcharge)
+- ShipX → rate cards + fuel surcharge hardcoded
+- DHL eCommerce → rate cards (pending sales relationship)
+
+### Output Includes
+- Sample date range detected
+- Annualized savings projection
+- Peak season flag (if data includes Oct–Dec)
+- Stale data flag (if data is 18+ months old)
+- Total spend in sample period vs Cactus equivalent
+- Savings by carrier, service level, zone, and lane
+- Top 10 lanes by spend
+- DIM weight upgrade flags
+- Carrier API vs rate card transparency note
