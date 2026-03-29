@@ -87,13 +87,13 @@ export default async function OrgsPage() {
                 borderBottom: i < (orgs.length - 1) ? '0.5px solid var(--cactus-border)' : 'none',
               }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cactus-ink)' }}>
-                    {org.name}
-                  </div>
-                  {org.parent_org_id && (
-                    <div style={{ fontSize: 11, color: 'var(--cactus-muted)', marginTop: 1 }}>sub-client</div>
-                  )}
-                </div>
+  <a href={`/orgs/${org.id}`} style={{ fontSize: 13, fontWeight: 500, color: 'var(--cactus-forest)', textDecoration: 'none' }}>
+    {org.name}
+  </a>
+  {org.parent_org_id && (
+    <div style={{ fontSize: 11, color: 'var(--cactus-muted)', marginTop: 1 }}>sub-client</div>
+  )}
+</div>
                 <div>
                   <span style={{
                     display: 'inline-flex', padding: '2px 8px',
