@@ -576,3 +576,33 @@ Dimensions are required — without them rates are inaccurate.
 - Top 10 lanes by spend
 - DIM weight upgrade flags
 - Carrier API vs rate card transparency note
+
+---
+
+## 16. INVESTOR DOCUMENT CONTEXT
+
+### March 2026 MTD Performance (BukuShip book of business)
+- Total gross margin: $57,458 | Total packages: 77,273
+- FulfillmentEZ: $20,650 total margin | $13,579 addressable (ex-Amazon, ex-USPS) | Warehance by July
+- Valencia Fulfillment: $9,234 addressable | 100% UniUni | dark account
+- Jam-n Logistics: $5,207 addressable | FedEx heavy
+- Total addressable margin (ex-Amazon, ex-USPS): ~$27,845/month
+- Real-world margins: UniUni $0.63/label | UPS $1.90/label | FedEx $2.51/label
+
+### Funding Plan
+- Ask: $300,000 for 10% equity
+- Monthly burn: $10k Sawyer salary | $10k senior dev | $5k ops = $25k/month
+- Revenue targets: $15k July → $25k September → $40k+ November → $45k+ December
+- Breakeven: Month 6 (September)
+- Month 12 cash balance projects above starting amount
+
+### WMS Integration Priority
+1. Warehance — warm relationship, FulfillmentEZ + Only Hydration moving there July
+2. Dark accounts — no WMS integration needed, lowest friction
+3. Packiyo — younger, hungry for business, similar to Warehance
+4. Extensiv — older, traditional, harder business case, lowest priority
+
+### Three Investor Documents Needed (1 page each)
+1. Executive Summary / Business Plan
+2. Personal Resume (updated with BukuShip Senior AE role, Draper UT, Jan 2025–Present)
+3. Pro Forma (24-month, based on funding plan and revenue targets above)
