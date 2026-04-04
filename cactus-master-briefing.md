@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.2 | UPDATED: 2026-03-29
+# VERSION: 1.4.3 | UPDATED: 2026-04-04
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -132,6 +132,8 @@ Approach only after leaving BukuShip cleanly.
 UPS | FEDEX | USPS | UNIUNI | GOFO | SHIPX |
 DHL_ECOM | DHL_EXPRESS | LANDMARK | ONTRAC | OSM
 (LSO removed in v1.4.0)
+AMAZON: pending — add when available:
+  ALTER TYPE carrier_code_enum ADD VALUE 'AMAZON';
 
 ---
 
@@ -426,9 +428,16 @@ Never update shipment status. Always append new event rows.
       - is_active removed from rate_cards (now computed)
       - RLS grants fixed — service_role has ALL on ALL tables
       - admin client (createAdminSupabaseClient) for all Alamo reads + writes
+- [x] Stage 4: Invoice Pipeline — pages complete
+      - /invoices list page — live, reads carrier_invoices table
+      - /invoices/upload — live, creates carrier_invoices row on submit
+      - /invoices/[id] detail page — live, reads line items from Supabase
+      - Schema migration v1.4.1 — weight + weight_unit added to invoice_line_items
+      - database-setup.sql updated to v1.4.1
+      - UPS invoice summary format analyzed — 32 headers confirmed
 
 ### Pending Phase 0 items
-- [ ] EIN from irs.gov — Monday 8-9am MT (5am MT = 7am ET open)
+- [x] EIN received
 - [ ] Mercury business bank account — after EIN
 - [ ] UPS Developer Portal — waiting for approval
 - [ ] Contact UniUni, GOFO, ShipX — after leaving BukuShip
@@ -437,14 +446,15 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Stage 4: Invoice Pipeline
-  - Invoice upload page (/invoices/upload)
-  - AI header normalization (Claude API)
-  - Human review queue
-  - Line item matching — lassoed (tracking number) + dark (address)
-  - Dispute flagging — variance > threshold → HELD
-  - Approve and release to billing
-  - Generate cactus_invoices from approved line items
+Stage 4 continued: AI normalization engine
+  - Server action reads uploaded file headers
+  - Calls Claude API with headers + carrier type
+  - Claude maps raw headers → Cactus standard fields
+  - Stores mappings in carrier_invoice_mappings (ai_suggested=TRUE)
+  - Updates carrier_invoices.status → REVIEW
+  - Review UI at /invoices/[id]/review
+  NOTE: Need real UPS invoice CSV on Monday before building parser
+  NOTE: Confirm — UPS Adjustments row Billed Charge: delta or restated total?
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -479,6 +489,12 @@ Stage 4: Invoice Pipeline
 - Next.js 16: browser and server Supabase clients must be separate files
 - Browser client (createBrowserClient): use in 'use client' components only
 - Server client (createServerClient): use in Server Components and Route Handlers
+- UPS invoice: one-charge-per-line format — group by tracking_number before insert
+- Invoice Section field drives charge routing: Outbound = standard, Adjustments = apv_adjustment
+- Address fields kept independent + normalized concat built at parse time
+- Dimensions not available in UPS summary format — DIM reconciliation is Phase 2
+- weight_unit defaults to LB for UPS — normalize to OZ for Shadow Ledger comparisons
+- AI normalization handles both headered and headerless invoice files
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
@@ -490,6 +506,8 @@ Stage 4: Invoice Pipeline
   (what column headers, what order, what file type — CSV or XLSX?)
 - PLD Analysis Engine: how to handle mixed unit of weight in same file
   (some rows LB, some rows OZ?)
+- UPS Adjustments row: is Billed Charge a delta or restated total?
+- UPS Developer Portal: still blocked — call 1-800-782-7892, email apisupport@ups.com
 
 ---
 
@@ -498,7 +516,7 @@ Stage 4: Invoice Pipeline
 | Item | Status |
 |---|---|
 | Utah LLC | ✅ Cactus Logistics LLC |
-| EIN | ⏳ Monday 8-9am MT |
+| EIN | ✅ Received |
 | Business bank account | ⏳ After EIN (Mercury) |
 | Business credit card | ⏳ After LLC + EIN |
 | Stripe account | ⏳ After LLC |
@@ -606,3 +624,49 @@ Dimensions are required — without them rates are inaccurate.
 1. Executive Summary / Business Plan
 2. Personal Resume (updated with BukuShip Senior AE role, Draper UT, Jan 2025–Present)
 3. Pro Forma (24-month, based on funding plan and revenue targets above)
+
+---
+
+## 17. UPS INVOICE FORMAT — CONFIRMED
+
+### Summary File (32 columns — Phase 1 target)
+Headers confirmed:
+Account Number, Invoice Number, Invoice Date, Amount Due,
+Tracking Number, Pickup Record, Reference No.1, Reference No.2,
+Reference No.3, Weight, Zone, Service Level, Pickup Date,
+Sender Name, Sender Company Name, Sender Street, Sender City,
+Sender State, Sender Zip Code, Receiver Name, Receiver Company Name,
+Receiver Street, Receiver City, Receiver State, Receiver Zip Code,
+Receiver Country or Territory, Third Party, Billed Charge,
+Incentive Credit, Invoice Section, Invoice Type, Invoice Due Date
+
+### Invoice Section values (confirmed)
+- "Outbound/Shipping API" → standard shipment charge
+- "Adjustments & Other Charges/Shipping Charge Corrections" → apv_adjustment
+
+### UPS Header → Cactus Field Mapping
+- Tracking Number       → tracking_number
+- Account Number        → carrier_account_number
+- Billed Charge         → carrier_charge (billing source of truth)
+- Incentive Credit      → apv_adjustment
+- Service Level         → service_level (reference only)
+- Weight                → weight
+- Zone                  → metadata
+- Sender Street         → keep independent (sender_street)
+- Sender City           → keep independent (sender_city)
+- Sender State          → keep independent (sender_state)
+- Sender Zip Code       → keep independent (sender_zip)
+- Concatenated sender   → ship_from_address_normalized (dark matching)
+- Reference No.1/2/3    → metadata
+
+### Full File (250 columns)
+No headers present — data-inference mode required.
+Phase 2 priority. Not needed for Phase 1 billing.
+
+### UPS Developer Portal Status
+- Application name: Cactus | Billing account: 1820RB
+- Blocked by non-technical verification issue
+- Submitted "Click Here to Resolve" 3+ times — no response
+- Next step: call 1-800-782-7892 (API/Developer Support)
+- Email: apisupport@ups.com
+- Confirmed flow: Client Credentials (not Auth Code)

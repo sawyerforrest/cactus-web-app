@@ -1,8 +1,8 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.4.0
--- UPDATED: 2026-03-28
+-- VERSION: 1.4.1
+-- UPDATED: 2026-04-04
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
 -- STRUCTURE:
@@ -494,6 +494,8 @@ CREATE TABLE invoice_line_items (
     billing_status                  billing_status_enum NOT NULL DEFAULT 'PENDING',
     cactus_invoice_id               UUID REFERENCES cactus_invoices(id) ON DELETE SET NULL,
     raw_line_data                   JSONB,
+    weight                          DECIMAL(10,4),
+    weight_unit                     TEXT DEFAULT 'LB',
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -506,6 +508,10 @@ COMMENT ON COLUMN invoice_line_items.quoted_rate IS
     'What Cactus quoted at label print. NULL for dark accounts.';
 COMMENT ON COLUMN invoice_line_items.variance_amount IS
     'carrier_charge minus quoted_rate. Positive = carrier charged more than quoted.';
+COMMENT ON COLUMN invoice_line_items.weight IS
+    'Billed weight as reported on the carrier invoice.';
+COMMENT ON COLUMN invoice_line_items.weight_unit IS
+    'Unit of weight from carrier invoice. LB (default) or OZ. Normalize to OZ for cross-carrier Shadow Ledger comparisons.';
 
 
 -- ----------------------------------------------------------
