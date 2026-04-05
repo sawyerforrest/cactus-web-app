@@ -150,7 +150,7 @@ Invoice matching: tracking_number → shipment_ledger → org_id
 Client entered Cactus credentials in their own platform (e.g.
 ShipStation). Zero visibility at label print. Invoice-only.
 No reconciliation — billing only.
-Invoice matching: ship_from_address_normalized → locations table
+Invoice matching: address_sender_normalized → locations table
 shipment_ledger rows created at invoice import time.
 
 ### is_cactus_account Flag
@@ -653,6 +653,9 @@ Dimensions are required — without them rates are inaccurate.
 ## 17. UPS INVOICE FORMAT — CONFIRMED
 
 ### Summary File (32 columns — Phase 1 target)
+NOTE: All header mappings below apply to the summary file only.
+The full file (250 columns, no headers) requires data-inference
+mode and is a Phase 2 priority.
 Headers confirmed:
 Account Number, Invoice Number, Invoice Date, Amount Due,
 Tracking Number, Pickup Record, Reference No.1, Reference No.2,
@@ -667,20 +670,38 @@ Incentive Credit, Invoice Section, Invoice Type, Invoice Due Date
 - "Outbound/Shipping API" → standard shipment charge
 - "Adjustments & Other Charges/Shipping Charge Corrections" → apv_adjustment
 
-### UPS Header → Cactus Field Mapping
-- Tracking Number       → tracking_number
-- Account Number        → carrier_account_number
-- Billed Charge         → carrier_charge (billing source of truth)
-- Incentive Credit      → apv_adjustment
-- Service Level         → service_level (reference only)
-- Weight                → weight
-- Zone                  → metadata
-- Sender Street         → keep independent (sender_street)
-- Sender City           → keep independent (sender_city)
-- Sender State          → keep independent (sender_state)
-- Sender Zip Code       → keep independent (sender_zip)
-- Concatenated sender   → ship_from_address_normalized (dark matching)
-- Reference No.1/2/3    → metadata
+### UPS Header → Cactus Field Mapping — Summary File Only (32 columns, confirmed by AI normalization)
+- Tracking Number              → tracking_number
+- Account Number               → account_number_carrier
+- Billed Charge                → carrier_charge (billing source of truth)
+- Incentive Credit             → apv_adjustment
+- Service Level                → service_level
+- Weight                       → weight_billed
+- Zone                         → zone
+- Pickup Date                  → date_shipped
+- Invoice Date                 → date_invoiced
+- Sender Street                → address_sender_line1
+- Sender City                  → address_sender_city
+- Sender State                 → address_sender_state
+- Sender Zip Code              → address_sender_zip
+- Concatenated sender fields   → address_sender_normalized (dark matching)
+- Receiver Street              → address_receiver_line1
+- Receiver City                → address_receiver_city
+- Receiver State               → address_receiver_state
+- Receiver Zip Code            → address_receiver_zip
+- Receiver Country or Territory → address_receiver_country
+- Third Party                  → payor
+- Reference No.1/2/3           → reference_1/reference_2/reference_3
+- Invoice Number               → SKIP
+- Amount Due                   → SKIP
+- Pickup Record                → SKIP
+- Sender Name                  → SKIP
+- Sender Company Name          → SKIP
+- Receiver Name                → SKIP
+- Receiver Company Name        → SKIP
+- Invoice Section              → SKIP (parser routing instruction only)
+- Invoice Type                 → SKIP
+- Invoice Due Date             → SKIP
 
 ### Full File (250 columns)
 No headers present — data-inference mode required.
