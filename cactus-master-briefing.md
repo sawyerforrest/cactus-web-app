@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.3 | UPDATED: 2026-04-04
+# VERSION: 1.4.4 | UPDATED: 2026-04-05
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -395,7 +395,7 @@ Never update shipment status. Always append new event rows.
 - [x] Carrier roadmap v1.4.0 finalized
 - [x] Rating engine WMS architecture confirmed
 - [x] Product evolution (middleware → full OS) confirmed
-- [x] Supabase reset — database-setup.sql v1.4.0 live and verified
+- [x] Supabase reset — database-setup.sql v1.4.3 live and verified
 - [x] seed-data.sql + verify-data.sql — all 10 checks passing
 - [x] All v1.4.0 files pushed to GitHub
 - [x] Stage 2: The Alamo shell complete
@@ -435,6 +435,17 @@ Never update shipment status. Always append new event rows.
       - Schema migration v1.4.1 — weight + weight_unit added to invoice_line_items
       - database-setup.sql updated to v1.4.1
       - UPS invoice summary format analyzed — 32 headers confirmed
+- [x] Stage 4: AI normalization engine — complete
+      - Supabase Storage bucket: carrier-invoices (private)
+      - carrier_invoices: file_path + raw_headers columns added
+      - Upload page: parses CSV headers, uploads file to storage,
+        stores raw_headers as JSONB, redirects to review page
+      - Claude API integration: maps raw headers → Cactus standard
+        fields, stores in carrier_invoice_mappings (ai_suggested=TRUE)
+      - Review page /invoices/[id]/review: shows all 32 UPS headers,
+        Claude mapped 22/32 at 99% confidence, 10 correctly skipped
+      - ANTHROPIC_API_KEY added to .env.local
+      - UPS summary invoice tested end-to-end successfully
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -446,15 +457,19 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Stage 4 continued: AI normalization engine
-  - Server action reads uploaded file headers
-  - Calls Claude API with headers + carrier type
-  - Claude maps raw headers → Cactus standard fields
-  - Stores mappings in carrier_invoice_mappings (ai_suggested=TRUE)
-  - Updates carrier_invoices.status → REVIEW
-  - Review UI at /invoices/[id]/review
-  NOTE: Need real UPS invoice CSV on Monday before building parser
-  NOTE: Confirm — UPS Adjustments row Billed Charge: delta or restated total?
+Stage 4 continued: Line item processing engine
+  - Parse uploaded CSV using confirmed header mappings
+  - Group rows by tracking_number (one-charge-per-line format)
+  - Route by Invoice Section:
+      Outbound/Shipping API → base_charge + carrier_charge
+      Adjustments & Other Charges → apv_adjustment (delta confirmed)
+  - Insert one invoice_line_items row per tracking number
+  - Run lassoed matching: tracking_number → shipment_ledger → org_id
+  - Run dark matching: address_sender_normalized → locations
+  - Calculate variance_amount for lassoed lines
+  - Apply dispute flagging: ABS(variance) > dispute_threshold → HELD
+  - Apply markup + Single-Ceiling → final_merchant_rate
+  - Build /invoices/[id]/disputes page
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -495,6 +510,15 @@ Stage 4 continued: AI normalization engine
 - Dimensions not available in UPS summary format — DIM reconciliation is Phase 2
 - weight_unit defaults to LB for UPS — normalize to OZ for Shadow Ledger comparisons
 - AI normalization handles both headered and headerless invoice files
+- Invoice Section field is a parser routing instruction, not a stored field
+  Outbound/Shipping API → base_charge accumulator
+  Adjustments & Other Charges → apv_adjustment accumulator
+- UPS Adjustments Billed Charge = delta only (confirmed)
+- AI normalization: Claude maps headers, stores with ai_suggested=TRUE
+- Raw file stored in Supabase Storage bucket: carrier-invoices
+- File path format: {CARRIER_CODE}/{timestamp}_{filename}
+- Headers extracted at upload time, stored as JSONB in carrier_invoices
+- XLSX files flagged as XLSX_PARSE_REQUIRED — Phase 1 targets CSV only
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
@@ -506,7 +530,6 @@ Stage 4 continued: AI normalization engine
   (what column headers, what order, what file type — CSV or XLSX?)
 - PLD Analysis Engine: how to handle mixed unit of weight in same file
   (some rows LB, some rows OZ?)
-- UPS Adjustments row: is Billed Charge a delta or restated total?
 - UPS Developer Portal: still blocked — call 1-800-782-7892, email apisupport@ups.com
 
 ---
@@ -670,3 +693,11 @@ Phase 2 priority. Not needed for Phase 1 billing.
 - Next step: call 1-800-782-7892 (API/Developer Support)
 - Email: apisupport@ups.com
 - Confirmed flow: Client Credentials (not Auth Code)
+
+### AI Normalization Results (confirmed 2026-04-05)
+Claude mapped 22 of 32 UPS summary headers at 99% confidence.
+10 correctly skipped (Invoice Number, Amount Due, Pickup Record,
+Sender Name, Sender Company, Receiver Name, Receiver Company,
+Invoice Section, Invoice Type, Invoice Due Date).
+Invoice Section is a parser routing instruction — not stored as
+a mapped field. Used to route charge rows during line item parsing.

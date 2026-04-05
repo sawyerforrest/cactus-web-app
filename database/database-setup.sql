@@ -1,8 +1,8 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.4.1
--- UPDATED: 2026-04-04
+-- VERSION: 1.4.6
+-- UPDATED: 2026-04-05
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
 -- STRUCTURE:
@@ -14,7 +14,26 @@
 --
 -- CHANGES IN v1.4.0:
 --   - carrier_code_enum: removed LSO, added GOFO, SHIPX, OSM
---   - No table structure changes from v1.3.0
+-- CHANGES IN v1.4.1:
+--   - invoice_line_items: added weight_billed, weight_unit_billed
+-- CHANGES IN v1.4.2:
+--   - invoice_line_items: full field expansion (dims, addresses,
+--     dates, references, international, shipment characteristics)
+--   - Renamed carrier_account_number → account_number_carrier
+--   - Renamed ship_from_address_* → address_sender_*
+-- CHANGES IN v1.4.3:
+--   - rate_shop_log: renamed origin_postal → postal_origin,
+--     destination_postal → postal_destination,
+--     destination_country → country_destination,
+--     was_selected → is_selected
+-- CHANGES IN v1.4.4:
+--   - carrier_invoices: added file_path, raw_headers
+-- CHANGES IN v1.4.5:
+--   - invoice_line_items: removed dim_weight_adjustment,
+--     added apv_adjustment_detail
+-- CHANGES IN v1.4.6:
+--   - carrier_invoices: file_path and raw_headers columns
+--     already added in v1.4.4 — version bump for consistency
 -- ==========================================================
 
 
@@ -243,6 +262,7 @@ CREATE TABLE org_carrier_accounts (
     account_nickname        TEXT NOT NULL,
     carrier_account_mode    carrier_account_mode_enum NOT NULL DEFAULT 'lassoed_carrier_account',
     is_cactus_account       BOOLEAN NOT NULL DEFAULT TRUE,
+    use_rate_card           BOOLEAN NOT NULL DEFAULT FALSE,
     markup_percentage       DECIMAL(7,4) NOT NULL DEFAULT 0.0000,
     markup_flat_fee         DECIMAL(18,4) NOT NULL DEFAULT 0.0000,
     dispute_threshold       DECIMAL(18,4) NOT NULL DEFAULT 2.0000,
@@ -260,6 +280,8 @@ COMMENT ON COLUMN org_carrier_accounts.carrier_account_mode IS
     'lassoed = WMS integrated, full visibility. dark = credentials shared, invoice-only visibility.';
 COMMENT ON COLUMN org_carrier_accounts.dispute_threshold IS
     'Dollar variance above which an invoice line is flagged and held for human review.';
+COMMENT ON COLUMN org_carrier_accounts.use_rate_card IS
+    'FALSE = use carrier API for rating. TRUE = use rate cards instead of carrier API.';
 
 
 -- ----------------------------------------------------------
@@ -442,11 +464,17 @@ CREATE TABLE carrier_invoices (
     ai_processing_notes     TEXT,
     processed_at            TIMESTAMPTZ,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    file_path               TEXT,
+    raw_headers             JSONB
 );
 
 COMMENT ON TABLE carrier_invoices IS
     'One row per uploaded carrier invoice file. Individual lines in invoice_line_items.';
+COMMENT ON COLUMN carrier_invoices.file_path IS
+  'Path to uploaded invoice file in Supabase Storage bucket carrier-invoices.';
+COMMENT ON COLUMN carrier_invoices.raw_headers IS
+  'JSON array of raw column header strings extracted at upload time. Used by AI normalization.';
 
 
 -- ----------------------------------------------------------
@@ -454,7 +482,7 @@ COMMENT ON TABLE carrier_invoices IS
 --
 -- MATCHING LOGIC:
 --   lassoed accounts: tracking_number → shipment_ledger
---   dark accounts: ship_from_address_normalized → locations
+--   dark accounts: address_sender_normalized → locations
 --
 -- BILLING RULE:
 --   Always bill from carrier_charge. Never from quoted rate.
@@ -467,9 +495,22 @@ CREATE TABLE invoice_line_items (
     org_carrier_account_id          UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
     shipment_ledger_id              UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,
     tracking_number                 TEXT,
-    carrier_account_number          TEXT,
-    ship_from_address_raw           TEXT,
-    ship_from_address_normalized    TEXT,
+    tracking_number_lead            TEXT,
+    account_number_carrier          TEXT,
+    address_sender_raw              TEXT,
+    address_sender_normalized       TEXT,
+    address_sender_line1            TEXT,
+    address_sender_line2            TEXT,
+    address_sender_city             TEXT,
+    address_sender_state            TEXT,
+    address_sender_zip              TEXT,
+    address_sender_country          TEXT,
+    address_receiver_line1          TEXT,
+    address_receiver_line2          TEXT,
+    address_receiver_city           TEXT,
+    address_receiver_state          TEXT,
+    address_receiver_zip            TEXT,
+    address_receiver_country        TEXT,
     carrier_charge                  DECIMAL(18,4) NOT NULL,
     base_charge                     DECIMAL(18,4),
     fuel_surcharge                  DECIMAL(18,4),
@@ -477,10 +518,47 @@ CREATE TABLE invoice_line_items (
     address_correction              DECIMAL(18,4),
     delivery_area_surcharge         DECIMAL(18,4),
     additional_handling             DECIMAL(18,4),
-    dim_weight_adjustment           DECIMAL(18,4),
     apv_adjustment                  DECIMAL(18,4),
+    apv_adjustment_detail           JSONB,
     other_surcharges                DECIMAL(18,4),
     other_surcharges_detail         JSONB,
+    weight_billed                   DECIMAL(10,4),
+    weight_unit_billed              TEXT DEFAULT 'LB',
+    weight_entered                  DECIMAL(10,4),
+    weight_unit_entered             TEXT DEFAULT 'LB',
+    length_entered                  DECIMAL(8,4),
+    width_entered                   DECIMAL(8,4),
+    height_entered                  DECIMAL(8,4),
+    dim_weight_entered              DECIMAL(10,4),
+    length_carrier                  DECIMAL(8,4),
+    width_carrier                   DECIMAL(8,4),
+    height_carrier                  DECIMAL(8,4),
+    dim_weight_carrier              DECIMAL(10,4),
+    dim_divisor                     DECIMAL(6,2),
+    dim_increase                    DECIMAL(10,4),
+    is_dim_billed                   BOOLEAN DEFAULT FALSE,
+    service_level                   TEXT,
+    zone                            TEXT,
+    date_shipped                    DATE,
+    date_delivered                  DATE,
+    date_invoiced                   DATE,
+    is_residential                  BOOLEAN,
+    pieces_count                    INT,
+    bundle_number                   TEXT,
+    payor                           TEXT,
+    packaging_type                  TEXT,
+    reference_1                     TEXT,
+    reference_2                     TEXT,
+    reference_3                     TEXT,
+    reference_4                     TEXT,
+    reference_5                     TEXT,
+    reference_6                     TEXT,
+    reference_7                     TEXT,
+    reference_8                     TEXT,
+    customs_value                   DECIMAL(18,4),
+    customs_currency_code           TEXT,
+    status_international            TEXT,
+    confirmation_delivery           TEXT,
     match_method                    match_method_enum,
     match_status                    match_status_enum,
     markup_percentage               DECIMAL(7,4),
@@ -494,8 +572,6 @@ CREATE TABLE invoice_line_items (
     billing_status                  billing_status_enum NOT NULL DEFAULT 'PENDING',
     cactus_invoice_id               UUID REFERENCES cactus_invoices(id) ON DELETE SET NULL,
     raw_line_data                   JSONB,
-    weight                          DECIMAL(10,4),
-    weight_unit                     TEXT DEFAULT 'LB',
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -508,10 +584,6 @@ COMMENT ON COLUMN invoice_line_items.quoted_rate IS
     'What Cactus quoted at label print. NULL for dark accounts.';
 COMMENT ON COLUMN invoice_line_items.variance_amount IS
     'carrier_charge minus quoted_rate. Positive = carrier charged more than quoted.';
-COMMENT ON COLUMN invoice_line_items.weight IS
-    'Billed weight as reported on the carrier invoice.';
-COMMENT ON COLUMN invoice_line_items.weight_unit IS
-    'Unit of weight from carrier invoice. LB (default) or OZ. Normalize to OZ for cross-carrier Shadow Ledger comparisons.';
 
 
 -- ----------------------------------------------------------
@@ -550,9 +622,9 @@ CREATE TABLE rate_shop_log (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
     org_carrier_account_id  UUID REFERENCES org_carrier_accounts(id) ON DELETE SET NULL,
-    origin_postal           TEXT NOT NULL,
-    destination_postal      TEXT NOT NULL,
-    destination_country     CHAR(2) NOT NULL DEFAULT 'US',
+    postal_origin           TEXT NOT NULL,
+    postal_destination      TEXT NOT NULL,
+    country_destination     CHAR(2) NOT NULL DEFAULT 'US',
     is_residential          BOOLEAN,
     weight_oz               DECIMAL(10,4) NOT NULL,
     length_in               DECIMAL(8,4),
@@ -563,7 +635,7 @@ CREATE TABLE rate_shop_log (
     quoted_rate             DECIMAL(18,4) NOT NULL,
     final_merchant_rate     DECIMAL(18,4) NOT NULL,
     transit_days            INT,
-    was_selected            BOOLEAN NOT NULL DEFAULT FALSE,
+    is_selected            BOOLEAN NOT NULL DEFAULT FALSE,
     shipment_ledger_id      UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,
     metadata                JSONB,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -571,8 +643,14 @@ CREATE TABLE rate_shop_log (
 
 COMMENT ON TABLE rate_shop_log IS
     'Shadow Ledger. Logs every rate request including unselected options. Primary AI training dataset.';
-COMMENT ON COLUMN rate_shop_log.was_selected IS
-    'TRUE if client chose this rate and printed a label. FALSE = shopped but not selected.';
+COMMENT ON COLUMN rate_shop_log.postal_origin IS
+  'Origin postal code for zone calculation. Normalized to 5-digit US ZIP or international postal code.';
+COMMENT ON COLUMN rate_shop_log.postal_destination IS
+  'Destination postal code for zone calculation. Normalized to 5-digit US ZIP or international postal code.';
+COMMENT ON COLUMN rate_shop_log.country_destination IS
+  'Destination country code. Default US. Used for domestic vs international routing.';
+COMMENT ON COLUMN rate_shop_log.is_selected IS
+  'TRUE if client chose this rate and printed a label. FALSE = shopped but not selected. Core Shadow Ledger intelligence field.';
 
 
 -- ----------------------------------------------------------
@@ -817,8 +895,29 @@ CREATE INDEX idx_invoice_line_items_org_id
     ON invoice_line_items(org_id);
 CREATE INDEX idx_invoice_line_items_tracking
     ON invoice_line_items(tracking_number);
-CREATE INDEX idx_invoice_line_items_normalized_address
-    ON invoice_line_items(ship_from_address_normalized);
+CREATE INDEX idx_invoice_line_items_address_sender_normalized
+    ON invoice_line_items(address_sender_normalized);
+
+CREATE INDEX idx_invoice_line_items_address_receiver_zip
+    ON invoice_line_items(address_receiver_zip);
+
+CREATE INDEX idx_invoice_line_items_is_dim_billed
+    ON invoice_line_items(is_dim_billed)
+    WHERE is_dim_billed = TRUE;
+
+CREATE INDEX idx_invoice_line_items_is_residential
+    ON invoice_line_items(is_residential)
+    WHERE is_residential = TRUE;
+
+CREATE INDEX idx_invoice_line_items_tracking_number_lead
+    ON invoice_line_items(tracking_number_lead)
+    WHERE tracking_number_lead IS NOT NULL;
+
+CREATE INDEX idx_invoice_line_items_date_shipped
+    ON invoice_line_items(date_shipped);
+
+CREATE INDEX idx_invoice_line_items_service_zone
+    ON invoice_line_items(service_level, zone);
 CREATE INDEX idx_invoice_line_items_billing_status
     ON invoice_line_items(billing_status);
 CREATE INDEX idx_invoice_line_items_dispute
@@ -842,9 +941,9 @@ CREATE INDEX idx_cactus_invoice_line_items_org
 CREATE INDEX idx_rate_shop_log_org_id
     ON rate_shop_log(org_id);
 CREATE INDEX idx_rate_shop_log_lane
-    ON rate_shop_log(origin_postal, destination_postal, carrier_code);
+    ON rate_shop_log(postal_origin, postal_destination, carrier_code);
 CREATE INDEX idx_rate_shop_log_selected
-    ON rate_shop_log(org_id, was_selected);
+    ON rate_shop_log(org_id, is_selected);
 CREATE INDEX idx_rate_shop_log_created
     ON rate_shop_log(created_at DESC);
 
