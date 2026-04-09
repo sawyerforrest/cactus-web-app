@@ -1,8 +1,8 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.4.6
--- UPDATED: 2026-04-05
+-- VERSION: 1.4.7
+-- UPDATED: 2026-04-08
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
 -- STRUCTURE:
@@ -34,6 +34,14 @@
 -- CHANGES IN v1.4.6:
 --   - carrier_invoices: file_path and raw_headers columns
 --     already added in v1.4.4 — version bump for consistency
+-- CHANGES IN v1.4.7:
+--   - Added carrier_invoice_formats (Table 17)
+--     Stores 250-column UPS detail invoice format template
+--     Enables headerless invoice file ingestion by position
+--   - Added carrier_charge_routing (Table 18)
+--     Self-improving charge routing table for UPS detail format
+--     42 UPS charge routing rules seeded
+--     Unknown charges auto-route to other_surcharges + flag
 -- ==========================================================
 
 
@@ -466,7 +474,10 @@ CREATE TABLE carrier_invoices (
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     file_path               TEXT,
-    raw_headers             JSONB
+    raw_headers             JSONB,
+    invoice_format          TEXT DEFAULT 'SUMMARY',
+    has_unmapped_charges    BOOLEAN NOT NULL DEFAULT FALSE,
+    unmapped_charge_types   JSONB
 );
 
 COMMENT ON TABLE carrier_invoices IS
@@ -475,6 +486,12 @@ COMMENT ON COLUMN carrier_invoices.file_path IS
   'Path to uploaded invoice file in Supabase Storage bucket carrier-invoices.';
 COMMENT ON COLUMN carrier_invoices.raw_headers IS
   'JSON array of raw column header strings extracted at upload time. Used by AI normalization.';
+COMMENT ON COLUMN carrier_invoices.invoice_format IS
+  'DETAIL or SUMMARY. Set by admin at upload time. Determines which parser runs.';
+COMMENT ON COLUMN carrier_invoices.has_unmapped_charges IS
+  'TRUE if parser encountered charge types not in carrier_charge_routing. Requires admin review.';
+COMMENT ON COLUMN carrier_invoices.unmapped_charge_types IS
+  'JSONB array of unrecognized charge descriptions found during parsing. Used for routing table expansion.';
 
 
 -- ----------------------------------------------------------
@@ -699,6 +716,76 @@ CREATE TABLE audit_logs (
 COMMENT ON TABLE audit_logs IS
     'Append-only integrity log. Every meaningful action leaves a trace here. Never update or delete.';
 
+-- ----------------------------------------------------------
+-- TABLE 17: carrier_invoice_formats
+-- ----------------------------------------------------------
+
+CREATE TABLE carrier_invoice_formats (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    carrier_code        carrier_code_enum NOT NULL,
+    format_type         TEXT NOT NULL,
+    column_position     INT NOT NULL,
+    column_letter       TEXT NOT NULL,
+    header_name         TEXT NOT NULL,
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    effective_date      DATE NOT NULL DEFAULT CURRENT_DATE,
+    deprecated_date     DATE,
+    notes               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(carrier_code, format_type, column_position, effective_date)
+);
+
+COMMENT ON TABLE carrier_invoice_formats IS
+    'Column position templates for headerless carrier invoice files. One row per column per format. UPS detail invoices have no headers — this table provides them.';
+COMMENT ON COLUMN carrier_invoice_formats.format_type IS
+    'DETAIL or SUMMARY. UPS has both. Other carriers may have different format types.';
+COMMENT ON COLUMN carrier_invoice_formats.column_position IS
+    '1-based column position in the invoice file.';
+COMMENT ON COLUMN carrier_invoice_formats.column_letter IS
+    'Excel-style column letter for human reference. e.g. A, B, AA, BA.';
+COMMENT ON COLUMN carrier_invoice_formats.header_name IS
+    'Official carrier column name. Used to match normalization mappings.';
+
+
+-- ----------------------------------------------------------
+-- TABLE 18: carrier_charge_routing
+-- ----------------------------------------------------------
+
+CREATE TABLE carrier_charge_routing (
+    id                              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    carrier_code                    carrier_code_enum NOT NULL,
+    charge_classification_code      TEXT,
+    charge_category_code            TEXT,
+    charge_category_detail_code     TEXT,
+    charge_description              TEXT,
+    cactus_field                    TEXT,
+    is_skip                         BOOLEAN NOT NULL DEFAULT FALSE,
+    is_dimension_row                BOOLEAN NOT NULL DEFAULT FALSE,
+    is_adjustment                   BOOLEAN NOT NULL DEFAULT FALSE,
+    notes                           TEXT,
+    is_active                       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(carrier_code, charge_classification_code, charge_category_detail_code, charge_description)
+);
+
+COMMENT ON TABLE carrier_charge_routing IS
+    'Self-improving charge routing table. Maps carrier charge codes and descriptions to Cactus charge fields. Unknown charges route to other_surcharges and flag for admin review. Admin maps once — learned forever.';
+COMMENT ON COLUMN carrier_charge_routing.charge_classification_code IS
+    'UPS: FRT=freight, FSC=fuel, ACC=accessorial, INF=informational(dimension row), MSC=misc';
+COMMENT ON COLUMN carrier_charge_routing.charge_category_code IS
+    'UPS: SHP=shipment, ADJ=adjustment, RTN=return';
+COMMENT ON COLUMN carrier_charge_routing.charge_category_detail_code IS
+    'UPS: ISS=issued, SCC=shipping charge correction, RADJ=rate adjustment, ADC=address correction, RTS=return to sender, CADJ=billing adjustment';
+COMMENT ON COLUMN carrier_charge_routing.cactus_field IS
+    'Target field on invoice_line_items. NULL when is_dimension_row=TRUE.';
+COMMENT ON COLUMN carrier_charge_routing.is_skip IS
+    'TRUE = ignore this row entirely.';
+COMMENT ON COLUMN carrier_charge_routing.is_dimension_row IS
+    'TRUE = extract dimensions only, never add Net Amount to carrier_charge. UPS INF rows.';
+COMMENT ON COLUMN carrier_charge_routing.is_adjustment IS
+    'TRUE = post-audit correction. Net Amount goes to apv_adjustment + apv_adjustment_detail.';
+
 
 -- ==========================================================
 -- SECTION 2: ROW LEVEL SECURITY
@@ -811,6 +898,13 @@ CREATE POLICY "org_members_read_own_audit_logs"
     ON audit_logs FOR SELECT
     USING (org_id = (SELECT org_id FROM org_users WHERE user_id = auth.uid() LIMIT 1));
 
+ALTER TABLE carrier_invoice_formats ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_carrier_invoice_formats"
+    ON carrier_invoice_formats FOR ALL USING (auth.role() = 'service_role');
+
+ALTER TABLE carrier_charge_routing ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_carrier_charge_routing"
+    ON carrier_charge_routing FOR ALL USING (auth.role() = 'service_role');
 
 -- ==========================================================
 -- SECTION 3: INDEXES
@@ -964,6 +1058,16 @@ CREATE INDEX idx_audit_logs_org_id  ON audit_logs(org_id);
 CREATE INDEX idx_audit_logs_entity  ON audit_logs(entity_type, entity_id);
 CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
 
+-- carrier_invoice_formats
+CREATE INDEX idx_carrier_invoice_formats_lookup
+    ON carrier_invoice_formats(carrier_code, format_type, column_position)
+    WHERE is_active = TRUE;
+
+-- carrier_charge_routing
+CREATE INDEX idx_carrier_charge_routing_lookup
+    ON carrier_charge_routing(carrier_code, charge_classification_code, charge_category_detail_code)
+    WHERE is_active = TRUE;
+
 
 -- ==========================================================
 -- SECTION 4: TRIGGERS
@@ -1007,4 +1111,8 @@ CREATE TRIGGER trg_invoice_line_items_updated_at
 
 CREATE TRIGGER trg_cactus_invoices_updated_at
     BEFORE UPDATE ON cactus_invoices
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_carrier_charge_routing_updated_at
+    BEFORE UPDATE ON carrier_charge_routing
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

@@ -55,7 +55,7 @@ export default async function InvoiceDetailPage({
       `)
       .eq('id', id)
       .single(),
-    admin
+      admin
       .from('invoice_line_items')
       .select(`
         id,
@@ -64,7 +64,7 @@ export default async function InvoiceDetailPage({
         billing_status,
         match_status,
         dispute_flag,
-        ship_from_address_normalized,
+        address_sender_normalized,
         variance_amount,
         final_merchant_rate,
         organizations ( name )
@@ -295,7 +295,7 @@ export default async function InvoiceDetailPage({
                     fontFamily: 'monospace',
                     color: 'var(--cactus-ink)',
                   }}>
-                    {line.tracking_number ?? line.ship_from_address_normalized ?? '—'}
+                    {line.tracking_number ?? line.address_sender_normalized ?? '—'}
                   </div>
 
                   {/* Org */}

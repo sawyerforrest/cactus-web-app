@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.4 | UPDATED: 2026-04-05
+# VERSION: 1.4.5 | UPDATED: 2026-04-09
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -315,7 +315,7 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 10. DATABASE SCHEMA (v1.4.0 — 16 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.4.7 — 18 TABLES — LIVE IN SUPABASE)
 
 | Table | Purpose |
 |---|---|
@@ -335,6 +335,8 @@ Never update shipment status. Always append new event rows.
 | `rate_shop_log` | Shadow Ledger — AI dataset |
 | `shipment_events` | Event sourcing timeline |
 | `audit_logs` | Append-only action log |
+| `carrier_invoice_formats` | Column templates for headerless carrier invoice files |
+| `carrier_charge_routing` | Self-improving charge routing table |
 
 ### Key Enums
 - `carrier_account_mode_enum`: lassoed_carrier_account, dark_carrier_account
@@ -446,6 +448,32 @@ Never update shipment status. Always append new event rows.
         Claude mapped 22/32 at 99% confidence, 10 correctly skipped
       - ANTHROPIC_API_KEY added to .env.local
       - UPS summary invoice tested end-to-end successfully
+- [x] Stage 4: UPS Detail invoice parser — complete
+      - carrier_invoice_formats table — 250 UPS detail column positions seeded
+      - carrier_charge_routing table — 42 UPS charge routing rules seeded
+      - carrier_invoices: added invoice_format, has_unmapped_charges,
+        unmapped_charge_types columns (v1.4.8)
+      - Upload page: format selector added (DETAIL vs SUMMARY)
+      - /invoices/[id]/parse page built and working
+      - Parser logic:
+          Reads file from Supabase Storage
+          Applies carrier_invoice_formats column template
+          Groups rows by tracking number
+          Routes charges via carrier_charge_routing table
+          INF rows: extract dims only, never add to carrier_charge
+          ADJ rows: accumulate into apv_adjustment + detail JSONB
+          Unknown charges: other_surcharges + flag has_unmapped_charges
+          Splits AG (entered dims) and HR (carrier dims) into L/W/H
+          Builds address_sender_normalized for dark matching
+          Batch inserts invoice_line_items (100 per batch)
+      - Tested on real anonymized UPS detail invoice:
+          950 shipments parsed from 4,175 rows
+          $16,482.47 total carrier amount
+          All charge types recognized and routed
+          Carrier dims correctly extracted (HR column)
+      - next.config.ts: serverActions bodySizeLimit set to 10mb
+      - GRANT ALL on carrier_invoice_formats, carrier_charge_routing,
+        invoice_line_items to service_role (RLS fix)
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -457,18 +485,13 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Stage 4 continued: Line item processing engine
-  - Parse uploaded CSV using confirmed header mappings
-  - Group rows by tracking_number (one-charge-per-line format)
-  - Route by Invoice Section:
-      Outbound/Shipping API → base_charge + carrier_charge
-      Adjustments & Other Charges → apv_adjustment (delta confirmed)
-  - Insert one invoice_line_items row per tracking number
-  - Run lassoed matching: tracking_number → shipment_ledger → org_id
-  - Run dark matching: address_sender_normalized → locations
-  - Calculate variance_amount for lassoed lines
-  - Apply dispute flagging: ABS(variance) > dispute_threshold → HELD
-  - Apply markup + Single-Ceiling → final_merchant_rate
+Stage 4 continued: Org matching + billing pipeline
+  - Lassoed matching: tracking_number → shipment_ledger → org_id
+  - Dark matching: address_sender_normalized → locations → org_id
+  - Variance calculation: carrier_charge - quoted_rate
+  - Dispute flagging: ABS(variance) > dispute_threshold → HELD
+  - Markup + Single-Ceiling → final_merchant_rate
+  - Release approved lines → cactus_invoices
   - Build /invoices/[id]/disputes page
 
 ### Key architectural decisions (record)
@@ -519,6 +542,18 @@ Stage 4 continued: Line item processing engine
 - File path format: {CARRIER_CODE}/{timestamp}_{filename}
 - Headers extracted at upload time, stored as JSONB in carrier_invoices
 - XLSX files flagged as XLSX_PARSE_REQUIRED — Phase 1 targets CSV only
+- UPS detail format has no headers — carrier_invoice_formats provides them
+- INF rows carry dimensional data — extract dims only, never bill Net Amount
+- FRT rows = base freight, FSC = fuel, ACC = accessorial, ADJ = adjustment
+- Charge routing: exact match → class+detail match → class-only match
+- Unknown charge types → other_surcharges + flag for admin review
+- Self-improving routing: admin maps once → learned forever in DB
+- Header detection: skip first row if tracking number col doesn't start with 1Z
+- AG (Package Dimensions) = entered at label print → length/width/height_entered
+- HR (Detail Keyed Dim) = measured by carrier → length/width/height_carrier
+- BA (Net Amount) = charge source of truth for detail format
+- Parser batches inserts at 100 rows to avoid Supabase size limits
+- Next.js serverActions bodySizeLimit = 10mb (UPS detail files exceed 1mb default)
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
@@ -531,6 +566,8 @@ Stage 4 continued: Line item processing engine
 - PLD Analysis Engine: how to handle mixed unit of weight in same file
   (some rows LB, some rows OZ?)
 - UPS Developer Portal: still blocked — call 1-800-782-7892, email apisupport@ups.com
+- carrier_charge_routing needs GRANT ALL to service_role on new deployments
+- carrier_invoice_formats needs GRANT ALL to service_role on new deployments
 
 ---
 
@@ -722,3 +759,13 @@ Sender Name, Sender Company, Receiver Name, Receiver Company,
 Invoice Section, Invoice Type, Invoice Due Date).
 Invoice Section is a parser routing instruction — not stored as
 a mapped field. Used to route charge rows during line item parsing.
+
+### UPS Detail Format Parser (confirmed 2026-04-09)
+- 950 shipments correctly parsed from 4,175 invoice rows
+- All 61 charge description types recognized and routed
+- Carrier dims (HR column) correctly split into L/W/H
+- Entered dims (AG column) split into L/W/H (NULL when not present)
+- BA (Net Amount) confirmed as billing source of truth
+- INF rows confirmed as dimension-only rows — never billed
+- Header row detection: skip if col U (tracking) doesn't start with 1Z
+- Charge routing priority: exact → class+detail → class-only
