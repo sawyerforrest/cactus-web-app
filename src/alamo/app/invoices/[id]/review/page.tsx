@@ -299,7 +299,7 @@ export default async function InvoiceReviewPage({
             Carrier Invoices
           </a>
           <span style={{ color: 'var(--cactus-border)', fontSize: 13 }}>/</span>
-          <a href={`/invoices/${id}`} style={{ fontSize: 13, color: 'var(--cactus-muted)', textDecoration: 'none', fontFamily: 'monospace' }}>
+          <a href={`/invoices/${id}`} style={{ fontSize: 13, color: 'var(--cactus-muted)', textDecoration: 'none' }}>
             {invoice.invoice_file_name}
           </a>
           <span style={{ color: 'var(--cactus-border)', fontSize: 13 }}>/</span>
@@ -430,7 +430,6 @@ export default async function InvoiceReviewPage({
                     {/* Raw header name */}
                     <div style={{
                       fontSize: 12,
-                      fontFamily: 'monospace',
                       color: 'var(--cactus-ink)',
                     }}>
                       {header}

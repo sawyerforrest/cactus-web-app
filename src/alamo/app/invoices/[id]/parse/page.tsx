@@ -664,7 +664,7 @@ export default async function InvoiceParsePage({
             Carrier Invoices
           </a>
           <span style={{ color: 'var(--cactus-border)', fontSize: 13 }}>/</span>
-          <a href={`/invoices/${id}`} style={{ fontSize: 13, color: 'var(--cactus-muted)', textDecoration: 'none', fontFamily: 'monospace' }}>
+          <a href={`/invoices/${id}`} style={{ fontSize: 13, color: 'var(--cactus-muted)', textDecoration: 'none' }}>
             {invoice.invoice_file_name}
           </a>
           <span style={{ color: 'var(--cactus-border)', fontSize: 13 }}>/</span>
@@ -738,7 +738,7 @@ export default async function InvoiceParsePage({
               </div>
               {(invoice.unmapped_charge_types as string[]).map((t: string) => (
                 <div key={t} style={{
-                  fontFamily: 'monospace',
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 11,
                   color: 'var(--cactus-bloom-deep)',
                   padding: '2px 0',

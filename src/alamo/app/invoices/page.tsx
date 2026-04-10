@@ -50,8 +50,7 @@ export default async function InvoicesPage() {
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: '200px 1fr',
+      marginLeft: 200,
       minHeight: '100vh',
       background: 'var(--cactus-sand)',
     }}>
@@ -162,7 +161,6 @@ export default async function InvoicesPage() {
                       fontSize: 13,
                       fontWeight: 500,
                       color: 'var(--cactus-ink)',
-                      fontFamily: 'monospace',
                     }}>
                       {invoice.invoice_file_name}
                     </div>

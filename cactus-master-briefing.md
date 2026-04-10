@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.5 | UPDATED: 2026-04-09
+# VERSION: 1.4.6 | UPDATED: 2026-04-10
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -474,6 +474,30 @@ Never update shipment status. Always append new event rows.
       - next.config.ts: serverActions bodySizeLimit set to 10mb
       - GRANT ALL on carrier_invoice_formats, carrier_charge_routing,
         invoice_line_items to service_role (RLS fix)
+- [x] UI — Login page redesign complete
+      - Real Cactus SVG logo at public/cactus-logo.svg
+      - White sky + desert dunes SVG background
+      - Floating card with drop shadow
+      - "—— THE ALAMO ——" flanking rule header in forest green bold
+      - Running stallion button icon at public/stallion.png (white)
+      - "Logistics with Soul." footer in white/faded
+      - CactusLogo shared component at components/CactusLogo.tsx
+- [x] UI — Sidebar redesign complete
+      - Real Cactus logo left-aligned at public/cactus-logo.svg
+      - THE ALAMO subtitle in forest green below logo
+      - Three brown stallion icons next to THE ALAMO (public/stallion_brown.png)
+      - Left border active state (2px forest green) replacing dot indicators
+      - Active state uses pathname.startsWith() — PENDING FIX next session
+        (child pages do not currently keep parent nav item highlighted)
+      - Fixed position: position fixed, width 200, height 100vh, zIndex 10
+      - All pages updated to marginLeft: 200 replacing grid layout
+      - Sign out button locks to bottom regardless of page scroll length
+      - Logout: supabase.auth.signOut() → router.push('/login')
+- [x] UI — Typography updates
+      - JetBrains Mono added via Google Fonts import in globals.css
+      - --font-mono updated to prefer JetBrains Mono in globals.css
+      - monospace removed from filenames and page headings
+      - monospace kept on tracking numbers only via var(--font-mono)
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -485,7 +509,13 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Stage 4 continued: Org matching + billing pipeline
+
+FIRST — fix sidebar active state on child pages:
+  - Change pathname === item.href to pathname.startsWith(item.href)
+  - Keeps parent nav item highlighted when on child routes
+  - e.g. /invoices/[id] should keep Invoices highlighted
+
+THEN — Stage 4 continued: Org matching + billing pipeline
   - Lassoed matching: tracking_number → shipment_ledger → org_id
   - Dark matching: address_sender_normalized → locations → org_id
   - Variance calculation: carrier_charge - quoted_rate
@@ -554,6 +584,12 @@ Stage 4 continued: Org matching + billing pipeline
 - BA (Net Amount) = charge source of truth for detail format
 - Parser batches inserts at 100 rows to avoid Supabase size limits
 - Next.js serverActions bodySizeLimit = 10mb (UPS detail files exceed 1mb default)
+- Sidebar is position:fixed width:200 — all pages use marginLeft:200
+- Active nav state: use pathname.startsWith(href) not exact match
+- CactusLogo component is shared — used in both login and sidebar
+- Public assets: cactus-logo.svg, stallion.png (white), stallion_brown.png
+- Login page background is SVG-based — no image files, pure code
+- JetBrains Mono via Google Fonts — tracking numbers only
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)

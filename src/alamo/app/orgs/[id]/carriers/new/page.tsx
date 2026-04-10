@@ -74,8 +74,7 @@ const markup_percentage = markupInput / 100
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: '200px 1fr',
+      marginLeft: 200,
       minHeight: '100vh',
       background: 'var(--cactus-sand)',
     }}>

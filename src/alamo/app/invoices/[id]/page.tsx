@@ -80,8 +80,7 @@ export default async function InvoiceDetailPage({
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: '200px 1fr',
+      marginLeft: 200,
       minHeight: '100vh',
       background: 'var(--cactus-sand)',
     }}>
@@ -111,7 +110,6 @@ export default async function InvoiceDetailPage({
             fontSize: 13,
             fontWeight: 500,
             color: 'var(--cactus-ink)',
-            fontFamily: 'monospace',
           }}>
             {invoice.invoice_file_name}
           </div>
@@ -126,7 +124,6 @@ export default async function InvoiceDetailPage({
             color: 'var(--cactus-ink)',
             letterSpacing: '-0.02em',
             marginBottom: 4,
-            fontFamily: 'monospace',
           }}>
             {invoice.invoice_file_name}
           </div>
@@ -292,7 +289,7 @@ export default async function InvoiceDetailPage({
                   {/* Tracking number or address */}
                   <div style={{
                     fontSize: 12,
-                    fontFamily: 'monospace',
+                    fontFamily: 'var(--font-mono)',
                     color: 'var(--cactus-ink)',
                   }}>
                     {line.tracking_number ?? line.address_sender_normalized ?? '—'}

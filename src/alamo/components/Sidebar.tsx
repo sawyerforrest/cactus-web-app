@@ -6,7 +6,9 @@
 
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
+import { CactusLogo } from '@/components/CactusLogo'
 
 const navItems = {
   workspace: [
@@ -28,6 +30,14 @@ const navItems = {
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const supabase = createClient()
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   const NavSection = ({ title, items }: { title: string, items: typeof navItems.workspace }) => (
     <nav style={{ padding: '12px 8px 4px' }}>
@@ -40,21 +50,19 @@ export default function Sidebar() {
         const active = pathname === item.href
         return (
           <a key={item.label} href={item.href} style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 8px', borderRadius: 6,
+            display: 'flex', alignItems: 'center',
+            padding: '6px 12px',
             fontSize: 13,
+            borderLeft: active
+              ? '2px solid var(--cactus-forest)'
+              : '2px solid transparent',
             background: active ? 'var(--cactus-mint)' : 'transparent',
             color: active ? 'var(--cactus-forest)' : 'var(--cactus-slate)',
             fontWeight: active ? 500 : 400,
             marginBottom: 1,
             textDecoration: 'none',
+            transition: 'color 0.1s, border-color 0.1s',
           }}>
-            <div style={{
-              width: 5, height: 5, borderRadius: '50%',
-              background: 'currentColor',
-              opacity: active ? 1 : 0.25,
-              flexShrink: 0,
-            }} />
             {item.label}
           </a>
         )
@@ -68,39 +76,111 @@ export default function Sidebar() {
       borderRight: '0.5px solid var(--cactus-border)',
       display: 'flex',
       flexDirection: 'column',
-      minHeight: '100vh',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: 200,
+      height: '100vh',
+      overflowY: 'auto',
+      zIndex: 10,
     }}>
-      {/* Brand */}
       <div style={{
-        padding: '18px 16px 14px',
+        padding: '12px 16px 8px',
         borderBottom: '0.5px solid var(--cactus-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 2,
       }}>
-        <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--cactus-forest)', letterSpacing: '-0.01em' }}>cactus</div>
-        <div style={{ fontSize: 11, color: 'var(--cactus-hint)', marginTop: 2, letterSpacing: '0.04em' }}>the alamo</div>
+        <CactusLogo width={160} />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          marginTop: 2,
+        }}>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 500,
+            color: 'var(--cactus-forest)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}>
+            the alamo
+          </div>
+          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
+          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
+          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
+        </div>
       </div>
 
       <NavSection title="workspace" items={navItems.workspace} />
       <NavSection title="billing" items={navItems.billing} />
       <NavSection title="tools" items={navItems.tools} />
 
-      {/* Footer */}
+      {/* Footer — logout */}
       <div style={{
         marginTop: 'auto',
-        padding: '12px 16px',
+        padding: '12px 8px',
         borderTop: '0.5px solid var(--cactus-border)',
-        display: 'flex', alignItems: 'center', gap: 8,
       }}>
+        {/* User info */}
         <div style={{
-          width: 26, height: 26, borderRadius: '50%',
-          background: 'var(--cactus-mint)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 10, fontWeight: 500, color: 'var(--cactus-forest)',
-          flexShrink: 0,
-        }}>SF</div>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--cactus-ink)' }}>Sawyer</div>
-          <div style={{ fontSize: 11, color: 'var(--cactus-hint)' }}>admin</div>
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 8px',
+          marginBottom: 4,
+        }}>
+          <div style={{
+            width: 26, height: 26, borderRadius: '50%',
+            background: 'var(--cactus-mint)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 10, fontWeight: 500, color: 'var(--cactus-forest)',
+            flexShrink: 0,
+          }}>SF</div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--cactus-ink)' }}>
+              Sawyer
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--cactus-hint)' }}>admin</div>
+          </div>
         </div>
+
+        {/* Logout button */}
+        <button
+          onClick={handleLogout}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 8px',
+            borderRadius: 6,
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--cactus-muted)',
+            fontSize: 12,
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'background 0.1s, color 0.1s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'var(--cactus-bloom-bg)'
+            e.currentTarget.style.color = 'var(--cactus-bloom)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--cactus-muted)'
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <path d="M9 9l3-3-3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M12 6.5H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+          Sign out
+        </button>
       </div>
     </div>
   )

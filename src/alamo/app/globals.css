@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 /* ==========================================================
    FILE: src/alamo/app/globals.css
    PURPOSE: Cactus Design System — global CSS tokens.
@@ -38,7 +39,7 @@
   
     /* Typography */
     --font-sans: var(--font-geist-sans), -apple-system, sans-serif;
-    --font-mono: var(--font-geist-mono), 'SF Mono', monospace;
+    --font-mono: 'JetBrains Mono', var(--font-geist-mono), 'SF Mono', monospace;
   }
   
   body {
