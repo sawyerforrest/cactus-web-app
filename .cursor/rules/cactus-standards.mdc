@@ -458,11 +458,21 @@ Stored on org_users.role as portal_role_enum.
 Seeded to STANDARD by default on new user creation.
 
 ### Notification Types
-METER_RELOAD | INVOICE_READY | TRACKING_LABEL_STALE | PAYMENT_FAILED
+METER_RELOAD | INVOICE_READY | TRACKING_STATUS_ALERTS | PAYMENT_FAILED
 Stored in notification_preferences table.
 One row per user per org per type.
 Seeded by trigger on org_users insert based on role.
 User-adjustable in Cactus Portal settings.
+
+### Tracking Alert Categories (TRACKING_STATUS_ALERTS)
+NO_MOVEMENT: LABEL_CREATED > threshold days, no subsequent scan
+STALE_IN_TRANSIT: IN_TRANSIT/PICKED_UP > threshold days, no scan
+DAMAGED: event_type = DAMAGED
+UNDELIVERABLE: DELIVERY_ATTEMPTED with no DELIVERED follow-up
+RETURNED_TO_SENDER: event_type = RETURNED_TO_SENDER
+Digest: daily at 7:00am, scans 14 days, totals per category only
+Threshold: organizations.tracking_alert_threshold_days (default 3)
+Scale: direct query → shipment_alert_cache → read replica
 
 ### Email Delivery
 Provider: Resend (native Next.js SDK)

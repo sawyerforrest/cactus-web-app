@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.5.0 | UPDATED: 2026-04-12
+# VERSION: 1.5.2 | UPDATED: 2026-04-12
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -545,6 +545,35 @@ Never update shipment status. Always append new event rows.
       Notification preferences UI in Cactus Portal:
         Toggle on/off per type per user
         Default seeded by role at user creation
+- [x] Schema migrations v1.5.1 + v1.5.2 — complete
+      v1.5.1:
+        organizations: added tracking_alert_threshold_days
+          INT NOT NULL DEFAULT 3
+          Configurable per org in Cactus Portal settings
+        shipment_events: added two performance indexes
+          idx_shipment_events_type_created (event_type, created_at DESC)
+          idx_shipment_events_ledger_created (shipment_ledger_id, created_at DESC)
+          WHY: protect daily alert job query performance at scale
+      v1.5.2:
+        notification_type_enum: TRACKING_LABEL_STALE renamed to
+          TRACKING_STATUS_ALERTS — expanded scope covers all
+          tracking anomalies not just stale labels
+- [x] Tracking alert architecture — locked
+      Single TRACKING_STATUS_ALERTS notification covers:
+        NO_MOVEMENT: LABEL_CREATED > threshold days with no scan
+        STALE_IN_TRANSIT: IN_TRANSIT/PICKED_UP > threshold days
+        DAMAGED: shipment_events.event_type = DAMAGED
+        UNDELIVERABLE: DELIVERY_ATTEMPTED with no DELIVERED follow-up
+        RETURNED_TO_SENDER: shipment_events.event_type = RETURNED_TO_SENDER
+      Daily digest fires at 7:00am
+      Scans previous 14 days of shipment data
+      Email shows sum totals per category — no individual tracking numbers
+      Client clicks portal link to see full filtered list
+      Threshold: organizations.tracking_alert_threshold_days (default 3)
+      Scale plan:
+        Phase 1 (now): query shipment_events directly with indexes
+        Phase 2 (1,000+ orgs): add shipment_alert_cache table
+        Phase 3 (10,000+ labels/day): read replica + staggered timing
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -678,6 +707,16 @@ Build matching engine server action:
 - Trigger has exception handler — never blocks parent insert
 - notification_type_enum is extensible — add values via migration
 - Alamo has separate auth model from Cactus Portal (future)
+- TRACKING_STATUS_ALERTS covers all anomalies in one daily digest
+  Categories: NO_MOVEMENT, STALE_IN_TRANSIT, DAMAGED,
+  UNDELIVERABLE, RETURNED_TO_SENDER
+- Daily alert digest fires at 7:00am, scans previous 14 days
+- Email shows category totals only — portal link for full detail
+- tracking_alert_threshold_days on organizations (default 3)
+  applies to NO_MOVEMENT and STALE_IN_TRANSIT categories
+- Performance indexes on shipment_events protect alert job at scale
+- Scale plan: direct query now → cache table at 1k orgs →
+  read replica at 10k labels/day
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)

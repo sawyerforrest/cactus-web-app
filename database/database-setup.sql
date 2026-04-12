@@ -1,7 +1,7 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.5.0
+-- VERSION: 1.5.2
 -- UPDATED: 2026-04-08
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
@@ -53,6 +53,14 @@
 --   - notification_preferences table added (Table 19)
 --   - Auto-seed trigger on org_users insert
 --   - Default: ADMIN + FINANCE = all ON, STANDARD = all OFF
+-- CHANGES IN v1.5.1:
+--   - organizations: added tracking_alert_threshold_days INT DEFAULT 3
+--   - shipment_events: added idx_shipment_events_type_created
+--   - shipment_events: added idx_shipment_events_ledger_created
+-- CHANGES IN v1.5.2:
+--   - notification_type_enum: renamed TRACKING_LABEL_STALE
+--     to TRACKING_STATUS_ALERTS (expanded scope — covers all
+--     tracking anomalies not just stale labels)
 -- ==========================================================
 
 
@@ -182,7 +190,7 @@ CREATE TYPE portal_role_enum AS ENUM (
 CREATE TYPE notification_type_enum AS ENUM (
   'METER_RELOAD',
   'INVOICE_READY',
-  'TRACKING_LABEL_STALE',
+  'TRACKING_STATUS_ALERTS',
   'PAYMENT_FAILED'
 );
 
@@ -203,6 +211,7 @@ CREATE TABLE organizations (
     org_type        org_type_enum NOT NULL DEFAULT 'MERCHANT',
     terms_days      INT NOT NULL DEFAULT 7,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    tracking_alert_threshold_days INT NOT NULL DEFAULT 3,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -213,6 +222,11 @@ COMMENT ON COLUMN organizations.parent_org_id IS
     'NULL = top-level org. Non-null = sub-client of a 3PL (Phase 2 billing).';
 COMMENT ON COLUMN organizations.terms_days IS
     'Payment terms for post-paid weekly invoices. Default Net-7.';
+COMMENT ON COLUMN organizations.tracking_alert_threshold_days IS
+  'Number of business days before a shipment with no movement
+   triggers a TRACKING_STATUS_ALERTS notification. Default 3.
+   Applies to NO_MOVEMENT and STALE_IN_TRANSIT alert categories.
+   Configurable per org in the Cactus Portal settings.';
 
 
 -- ----------------------------------------------------------
@@ -1126,6 +1140,12 @@ CREATE INDEX idx_shipment_events_ai_flagged
     ON shipment_events(ai_flagged) WHERE ai_flagged = TRUE;
 CREATE INDEX idx_shipment_events_created
     ON shipment_events(created_at DESC);
+
+-- shipment_events performance indexes for daily alert job
+CREATE INDEX idx_shipment_events_type_created
+  ON shipment_events(event_type, created_at DESC);
+CREATE INDEX idx_shipment_events_ledger_created
+  ON shipment_events(shipment_ledger_id, created_at DESC);
 
 -- audit_logs
 CREATE INDEX idx_audit_logs_org_id  ON audit_logs(org_id);

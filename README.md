@@ -173,7 +173,9 @@ CSV: Full line item detail, same display rules as PDF
 Four notification types — user-controlled in Cactus Portal:
 - METER_RELOAD: sent when auto-reload fires
 - INVOICE_READY: HTML summary + portal link for PDF/CSV download
-- TRACKING_LABEL_STALE: shipment stuck in label created > threshold
+- TRACKING_STATUS_ALERTS: daily 7am digest covering all anomalies
+  NO_MOVEMENT, STALE_IN_TRANSIT, DAMAGED, UNDELIVERABLE,
+  RETURNED_TO_SENDER — totals per category, portal link for detail
 - PAYMENT_FAILED: auto-pull failed on invoice due date
 
 Provider: Resend + React Email templates
