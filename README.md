@@ -134,7 +134,8 @@ rate_cards (optional children)          ← custom rate pricing
 ```
 
 ### Dispute Threshold
-When carrier charge vs. quoted rate variance exceeds
+When carrier_charge vs. raw_carrier_cost variance
+(both pre-markup — never compare to final_merchant_rate) exceeds
 `org_carrier_accounts.dispute_threshold`:
 → Line item flagged and held from billing
 → Alamo review required before releasing to client invoice
@@ -143,6 +144,39 @@ When carrier charge vs. quoted rate variance exceeds
 Default: cheapest first (`final_merchant_rate ASC`).
 Residential and fuel surcharges already included in carrier
 API responses — no special weighting needed.
+
+---
+
+## Invoice Display Rules
+Per carrier_account_mode on each org_carrier_account:
+  lassoed_carrier_account → client sees ONLY final_merchant_rate
+    Never expose: carrier_charge, markup_percentage, variance
+  dark_carrier_account → client sees carrier_charge + final_merchant_rate
+Checked per line item — an org can have lassoed UPS + dark DHL simultaneously
+
+## Client Invoice Format
+PDF: One-page summary only
+  Total amount due + total shipments
+  Breakdown by carrier (shipments + amount)
+  Breakdown by origin location via locations.name (shipments + amount)
+CSV: Full line item detail, same display rules as PDF
+
+## User Roles (Cactus Portal)
+
+| Role | Access | Notifications Default |
+|---|---|---|
+| ADMIN | Full access including user management | All ON |
+| FINANCE | Full access except user management | All ON |
+| STANDARD | All except sub-client billing | All OFF |
+
+## Email Notifications
+Four notification types — user-controlled in Cactus Portal:
+- METER_RELOAD: sent when auto-reload fires
+- INVOICE_READY: HTML summary + portal link for PDF/CSV download
+- TRACKING_LABEL_STALE: shipment stuck in label created > threshold
+- PAYMENT_FAILED: auto-pull failed on invoice due date
+
+Provider: Resend + React Email templates
 
 ---
 
@@ -189,7 +223,7 @@ API responses — no special weighting needed.
 
 ---
 
-## Database Schema (v1.4.0 — 16 Tables)
+## Database Schema (v1.5.0 — 19 Tables)
 
 ```
 organizations              → Tenant root
@@ -208,6 +242,9 @@ cactus_invoice_line_items  → Junction: invoices ↔ line items
 rate_shop_log              → Shadow Ledger (AI training dataset)
 shipment_events            → Event sourcing timeline
 audit_logs                 → Append-only action log
+carrier_invoice_formats    → Column templates for headerless invoice files
+carrier_charge_routing     → Self-improving charge routing table
+notification_preferences   → User email notification settings
 ```
 
 ---
@@ -216,10 +253,10 @@ audit_logs                 → Append-only action log
 
 | Stage | Focus | Status |
 |---|---|---|
-| 1 | Schema v1.4.0 | ✅ Complete |
-| 2 | The Alamo shell | ← Next |
-| 3 | Org + carrier account management | |
-| 4 | Invoice pipeline | |
+| 1 | Schema | ✅ Complete |
+| 2 | Alamo shell | ✅ Complete |
+| 3 | Org + carrier management | ✅ Complete |
+| 4 | Invoice pipeline | ⏳ In Progress |
 | 5 | Rating engine core | |
 | 6 | UPS + FedEx API integrations | |
 | 7 | Warehance WMS integration | |

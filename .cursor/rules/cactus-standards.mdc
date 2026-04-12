@@ -295,6 +295,12 @@ Failure to manifest = packages not collected.
 
 ## 7. Invoice Pipeline — The Billing Brain
 
+### Variance Calculation Rule — Non-Negotiable
+variance_amount = carrier_charge - raw_carrier_cost
+Both values are pre-markup carrier costs — apples to apples.
+NEVER compare carrier_charge to final_merchant_rate.
+The markup difference would create false variance on every shipment.
+
 ### Full Flow
 ```
 Upload carrier CSV/XLSX in The Alamo
@@ -371,7 +377,7 @@ await supabase
 
 ---
 
-## 9. Database Standards (v1.4.0 — 16 Tables)
+## 9. Database Standards (v1.5.0 — 19 Tables)
 
 | Table | Purpose |
 |---|---|
@@ -391,6 +397,9 @@ await supabase
 | `rate_shop_log` | Shadow Ledger — AI dataset |
 | `shipment_events` | Event sourcing timeline |
 | `audit_logs` | Append-only action log |
+| `carrier_invoice_formats` | Column templates for headerless invoice files |
+| `carrier_charge_routing` | Self-improving charge routing table |
+| `notification_preferences` | User email notification settings |
 
 ### Carrier Code Enum (v1.4.0)
 Phase 1:  `UPS` | `FEDEX`
@@ -419,6 +428,11 @@ Never shows markup, raw costs, or carrier account details.
 - Rate card management
 - Audit logs, meter health
 
+Invoice display rules per carrier_account_mode:
+  lassoed → ONLY final_merchant_rate shown to client
+  dark → carrier_charge + final_merchant_rate shown
+  Checked per line item, not per invoice or per org
+
 ### Phase 1 Build Sequence
 ```
 Stage 1: Schema v1.4.0           ✅ complete
@@ -431,6 +445,38 @@ Stage 7: Warehance WMS integration
 Stage 8: Cactus Portal
 Post:    Phase 2 carriers
 ```
+
+---
+
+## 10b. User Roles & Notification Architecture
+
+### Portal Role Enum
+ADMIN: full portal access + user management. Notifications ON.
+FINANCE: full portal access. Notifications ON.
+STANDARD: all except sub-client billing. Notifications OFF.
+Stored on org_users.role as portal_role_enum.
+Seeded to STANDARD by default on new user creation.
+
+### Notification Types
+METER_RELOAD | INVOICE_READY | TRACKING_LABEL_STALE | PAYMENT_FAILED
+Stored in notification_preferences table.
+One row per user per org per type.
+Seeded by trigger on org_users insert based on role.
+User-adjustable in Cactus Portal settings.
+
+### Email Delivery
+Provider: Resend (native Next.js SDK)
+Templates: React Email — one component per notification type
+Invoice email: HTML summary in body, portal link for file downloads
+No PDF/CSV attachments — spam filter deliverability.
+
+### Non-Negotiable Rules
+- Never block org_users insert if preference seeding fails
+- Trigger must have EXCEPTION WHEN OTHERS handler
+- notification_type_enum is the source of truth for valid types
+- New notification types require enum migration + template build
+- STANDARD role never receives notifications unless user opts in
+- Alamo auth model is separate from Cactus Portal auth model
 
 ---
 
@@ -582,6 +628,9 @@ Shell / modals:    12px
 - Mono font for ALL tracking numbers and IDs
 - Badges: always pill shape, never square
 - Variance columns: bloom color when positive (overcharge)
+- Cactus Portal never shows carrier_charge on lassoed account lines
+- locations.name is the human-friendly location label
+  Use short names: "Phoenix WH", "Tempe FC", "SLC Returns"
 
 ### Semantic Color Usage
 

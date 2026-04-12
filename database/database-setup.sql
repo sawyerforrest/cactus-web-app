@@ -1,7 +1,7 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.4.7
+-- VERSION: 1.5.0
 -- UPDATED: 2026-04-08
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
@@ -42,6 +42,17 @@
 --     Self-improving charge routing table for UPS detail format
 --     42 UPS charge routing rules seeded
 --     Unknown charges auto-route to other_surcharges + flag
+-- CHANGES IN v1.4.9:
+--   - invoice_line_items: added match_location_id
+--     FK to locations for invoice summary and portal filtering
+-- CHANGES IN v1.5.0:
+--   - portal_role_enum: ADMIN, FINANCE, STANDARD
+--   - org_users.role: TEXT → portal_role_enum, default STANDARD
+--   - notification_type_enum: METER_RELOAD, INVOICE_READY,
+--     TRACKING_LABEL_STALE, PAYMENT_FAILED
+--   - notification_preferences table added (Table 19)
+--   - Auto-seed trigger on org_users insert
+--   - Default: ADMIN + FINANCE = all ON, STANDARD = all OFF
 -- ==========================================================
 
 
@@ -162,6 +173,19 @@ CREATE TYPE billing_status_enum AS ENUM (
     'INVOICED'
 );
 
+CREATE TYPE portal_role_enum AS ENUM (
+  'ADMIN',
+  'FINANCE',
+  'STANDARD'
+);
+
+CREATE TYPE notification_type_enum AS ENUM (
+  'METER_RELOAD',
+  'INVOICE_READY',
+  'TRACKING_LABEL_STALE',
+  'PAYMENT_FAILED'
+);
+
 
 -- ==========================================================
 -- SECTION 1: TABLES
@@ -199,7 +223,7 @@ CREATE TABLE org_users (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    role        TEXT NOT NULL DEFAULT 'MEMBER',
+    role        portal_role_enum NOT NULL DEFAULT 'STANDARD',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(org_id, user_id)
 );
@@ -589,6 +613,7 @@ CREATE TABLE invoice_line_items (
     billing_status                  billing_status_enum NOT NULL DEFAULT 'PENDING',
     cactus_invoice_id               UUID REFERENCES cactus_invoices(id) ON DELETE SET NULL,
     raw_line_data                   JSONB,
+    match_location_id               UUID REFERENCES locations(id) ON DELETE SET NULL,
     created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -601,6 +626,10 @@ COMMENT ON COLUMN invoice_line_items.quoted_rate IS
     'What Cactus quoted at label print. NULL for dark accounts.';
 COMMENT ON COLUMN invoice_line_items.variance_amount IS
     'carrier_charge minus quoted_rate. Positive = carrier charged more than quoted.';
+COMMENT ON COLUMN invoice_line_items.match_location_id IS
+  'The matched locations row for this line item. Set during
+   matching stage. Used for invoice summary breakdown by
+   origin location and portal location filtering.';
 
 
 -- ----------------------------------------------------------
@@ -787,6 +816,40 @@ COMMENT ON COLUMN carrier_charge_routing.is_adjustment IS
     'TRUE = post-audit correction. Net Amount goes to apv_adjustment + apv_adjustment_detail.';
 
 
+-- ----------------------------------------------------------
+-- TABLE 19: notification_preferences
+-- ----------------------------------------------------------
+
+CREATE TABLE notification_preferences (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id                UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id               UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_type     notification_type_enum NOT NULL,
+  is_enabled            BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(org_id, user_id, notification_type)
+);
+
+COMMENT ON TABLE notification_preferences IS
+  'One row per user per org per notification type.
+   Seeded automatically on org_users insert based on role.
+   ADMIN + FINANCE = all ON. STANDARD = all OFF.
+   Users can toggle individually in the Cactus Portal.';
+
+COMMENT ON COLUMN notification_preferences.is_enabled IS
+  'Seeded TRUE for ADMIN and FINANCE roles via trigger.
+   Seeded FALSE for STANDARD role.
+   User-adjustable in Cactus Portal notification settings.';
+
+COMMENT ON COLUMN notification_preferences.notification_type IS
+  'METER_RELOAD: fired when auto-reload triggers on meter.
+   INVOICE_READY: fired when new cactus_invoice generated.
+   TRACKING_LABEL_STALE: fired when shipment stuck in
+     LABEL_CREATED beyond org threshold (default 3 days).
+   PAYMENT_FAILED: fired when auto-pull fails on due date.';
+
+
 -- ==========================================================
 -- SECTION 2: ROW LEVEL SECURITY
 -- ==========================================================
@@ -905,6 +968,17 @@ CREATE POLICY "service_role_all_carrier_invoice_formats"
 ALTER TABLE carrier_charge_routing ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "service_role_all_carrier_charge_routing"
     ON carrier_charge_routing FOR ALL USING (auth.role() = 'service_role');
+
+ALTER TABLE notification_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_notification_preferences"
+  ON notification_preferences FOR ALL
+  USING (auth.role() = 'service_role');
+CREATE POLICY "users_read_own_notification_preferences"
+  ON notification_preferences FOR SELECT
+  USING (user_id = auth.uid());
+CREATE POLICY "users_update_own_notification_preferences"
+  ON notification_preferences FOR UPDATE
+  USING (user_id = auth.uid());
 
 -- ==========================================================
 -- SECTION 3: INDEXES
@@ -1068,6 +1142,13 @@ CREATE INDEX idx_carrier_charge_routing_lookup
     ON carrier_charge_routing(carrier_code, charge_classification_code, charge_category_detail_code)
     WHERE is_active = TRUE;
 
+-- notification_preferences
+CREATE INDEX idx_notification_preferences_user
+  ON notification_preferences(user_id, org_id);
+CREATE INDEX idx_notification_preferences_type
+  ON notification_preferences(notification_type, is_enabled)
+  WHERE is_enabled = TRUE;
+
 
 -- ==========================================================
 -- SECTION 4: TRIGGERS
@@ -1116,3 +1197,40 @@ CREATE TRIGGER trg_cactus_invoices_updated_at
 CREATE TRIGGER trg_carrier_charge_routing_updated_at
     BEFORE UPDATE ON carrier_charge_routing
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE OR REPLACE FUNCTION seed_notification_preferences()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_enabled BOOLEAN;
+  v_type notification_type_enum;
+BEGIN
+  v_enabled := CASE
+    WHEN NEW.role IN ('ADMIN', 'FINANCE') THEN TRUE
+    ELSE FALSE
+  END;
+  BEGIN
+    FOR v_type IN
+      SELECT unnest(enum_range(NULL::notification_type_enum))
+    LOOP
+      INSERT INTO notification_preferences
+        (org_id, user_id, notification_type, is_enabled)
+      VALUES
+        (NEW.org_id, NEW.user_id, v_type, v_enabled)
+      ON CONFLICT (org_id, user_id, notification_type)
+      DO NOTHING;
+    END LOOP;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'seed_notification_preferences failed for user %: %',
+      NEW.user_id, SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_seed_notification_preferences
+  AFTER INSERT ON org_users
+  FOR EACH ROW EXECUTE FUNCTION seed_notification_preferences();
+
+CREATE TRIGGER trg_notification_preferences_updated_at
+  BEFORE UPDATE ON notification_preferences
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();

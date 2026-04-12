@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.4.6 | UPDATED: 2026-04-10
+# VERSION: 1.5.0 | UPDATED: 2026-04-12
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -315,7 +315,7 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 10. DATABASE SCHEMA (v1.4.7 — 18 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.5.0 — 19 TABLES — LIVE IN SUPABASE)
 
 | Table | Purpose |
 |---|---|
@@ -337,6 +337,7 @@ Never update shipment status. Always append new event rows.
 | `audit_logs` | Append-only action log |
 | `carrier_invoice_formats` | Column templates for headerless carrier invoice files |
 | `carrier_charge_routing` | Self-improving charge routing table |
+| `notification_preferences` | User email notification settings per org |
 
 ### Key Enums
 - `carrier_account_mode_enum`: lassoed_carrier_account, dark_carrier_account
@@ -349,6 +350,8 @@ Never update shipment status. Always append new event rows.
 - `invoice_status_enum`: UNPAID, PAID, FAILED, VOID
 - `carrier_code_enum`: UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX, DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM
 - `shipment_event_type_enum`: RATE_REQUESTED, LABEL_CREATED, LABEL_VOIDED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERY_ATTEMPTED, DELIVERED, RETURNED_TO_SENDER, LOST, EXCEPTION, APV_ADJUSTMENT, ADDRESS_CORRECTED, DAMAGED
+- `portal_role_enum`: ADMIN, FINANCE, STANDARD
+- `notification_type_enum`: METER_RELOAD, INVOICE_READY, TRACKING_LABEL_STALE, PAYMENT_FAILED
 
 ---
 
@@ -498,6 +501,50 @@ Never update shipment status. Always append new event rows.
       - --font-mono updated to prefer JetBrains Mono in globals.css
       - monospace removed from filenames and page headings
       - monospace kept on tracking numbers only via var(--font-mono)
+- [x] Cowork setup — complete
+      - Claude Desktop installed and Cowork tab active
+      - Global instructions set with Cactus project context
+      - Cactus Logistics OS project created in Cowork
+      - Pointed at ~/Documents/Developer Projects/cactus_dev/cactus-web-app/
+      - Will be used for: briefing updates, codebase audits,
+        cross-file consistency checks, documentation generation
+- [x] Schema migration v1.4.9
+      - invoice_line_items: added match_location_id
+        UUID FK to locations(id) ON DELETE SET NULL
+        Used for invoice summary breakdown by origin location
+        and Cactus Portal location filtering
+      - Decision: no nickname column on locations —
+        locations.name already serves this purpose
+        Convention: use short descriptive names e.g. "Phoenix WH"
+- [x] Schema migration v1.5.0 — complete
+      - portal_role_enum: ADMIN, FINANCE, STANDARD
+      - org_users.role: TEXT → portal_role_enum, default STANDARD
+      - notification_type_enum: 4 types added
+      - notification_preferences table (Table 19)
+      - Auto-seed trigger on org_users insert:
+          ADMIN + FINANCE → all notifications ON by default
+          STANDARD → all notifications OFF by default
+      - Users can toggle individually in Cactus Portal
+      - Trigger has exception handler — never blocks user creation
+      - Tested and verified in Supabase
+- [x] Email notification architecture — designed and locked
+      Three notification types:
+        METER_RELOAD: auto-reload fired, sent to ADMIN + FINANCE
+        INVOICE_READY: new cactus_invoice generated, HTML summary
+          in email body + portal link to download PDF and CSV
+          (no attachments — better deliverability)
+        TRACKING_LABEL_STALE: shipment stuck in LABEL_CREATED
+          beyond threshold (default 3 business days, configurable)
+        PAYMENT_FAILED: auto-pull failed on invoice due date
+      Email provider: Resend (native Next.js SDK)
+      Templates: React Email components, one per type
+      User roles confirmed:
+        ADMIN: full access, all notifications ON by default
+        FINANCE: full access, all notifications ON by default
+        STANDARD: all but sub-client billing, all notifications OFF
+      Notification preferences UI in Cactus Portal:
+        Toggle on/off per type per user
+        Default seeded by role at user creation
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -509,20 +556,29 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
+Build matching engine server action:
+  FILE: src/alamo/app/invoices/[id]/actions/match.ts
 
-FIRST — fix sidebar active state on child pages:
-  - Change pathname === item.href to pathname.startsWith(item.href)
-  - Keeps parent nav item highlighted when on child routes
-  - e.g. /invoices/[id] should keep Invoices highlighted
+  STEP 1: Lassoed matching
+    tracking_number → shipment_ledger → org_id
+    variance = carrier_charge - raw_carrier_cost (NOT final_merchant_rate)
+    IF ABS(variance) > dispute_threshold → HELD + dispute_flag = TRUE
+    ELSE → AUTO_MATCHED → proceed to billing calc
 
-THEN — Stage 4 continued: Org matching + billing pipeline
-  - Lassoed matching: tracking_number → shipment_ledger → org_id
-  - Dark matching: address_sender_normalized → locations → org_id
-  - Variance calculation: carrier_charge - quoted_rate
-  - Dispute flagging: ABS(variance) > dispute_threshold → HELD
-  - Markup + Single-Ceiling → final_merchant_rate
-  - Release approved lines → cactus_invoices
-  - Build /invoices/[id]/disputes page
+  STEP 2: Dark matching
+    address_sender_normalized → locations (is_billing_address=TRUE)
+    IF exactly one match → AUTO_MATCHED + store match_location_id
+    IF zero or multiple → FLAGGED → HELD → manual review
+
+  STEP 3: Billing calculation (APPROVED lines only)
+    final_merchant_rate = CEILING(carrier_charge × (1 + markup_percentage))
+    pre_ceiling_amount stored for audit trail
+
+  STEP 4: Build /invoices/[id]/disputes page
+  STEP 5: Build invoice generation (group APPROVED by org → cactus_invoices)
+  STEP 6: Build PDF summary generator (one page)
+  STEP 7: Build CSV export (full detail)
+  STEP 8: Start Cactus Portal
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -590,6 +646,38 @@ THEN — Stage 4 continued: Org matching + billing pipeline
 - Public assets: cactus-logo.svg, stallion.png (white), stallion_brown.png
 - Login page background is SVG-based — no image files, pure code
 - JetBrains Mono via Google Fonts — tracking numbers only
+- Variance logic: carrier_charge - raw_carrier_cost (both pre-markup)
+  NEVER compare carrier_charge to final_merchant_rate (apples to oranges)
+- Invoice display rules locked per carrier_account_mode:
+    lassoed → show ONLY final_merchant_rate, NEVER carrier_charge or markup
+    dark → show both carrier_charge AND final_merchant_rate
+    This is per org_carrier_account, not per org
+    An org can have lassoed UPS + dark DHL simultaneously
+    Each line item checked individually via org_carrier_account_id join
+- PDF invoice = one page summary only:
+    Total amount due, total shipments
+    Breakdown by carrier (shipments + amount)
+    Breakdown by origin location (shipments + amount) via match_location_id
+    Never shows carrier_charge or markup on lassoed lines
+- CSV export = full line item detail, same display rules as PDF
+- locations.name = the human-friendly location label (no separate nickname)
+    Convention: use short names e.g. "Phoenix WH", "Tempe FC"
+    Used in PDF summary and Cactus Portal location filter
+- match_location_id on invoice_line_items stores matched location
+    Set at matching time for dark accounts
+    Enables PDF location breakdown and portal filtering
+- Sidebar active state: pathname.startsWith(href) not exact match
+    Dashboard exception: pathname === '/dashboard' to prevent over-matching
+- portal_role_enum: ADMIN, FINANCE, STANDARD on org_users
+- ADMIN + FINANCE: full portal access, notifications ON default
+- STANDARD: full access except sub-client billing, notifications OFF
+- Email notifications use Resend + React Email templates
+- Invoice notification: HTML summary in email, portal link for files
+  No PDF/CSV attachments — better spam filter deliverability
+- notification_preferences seeded by trigger on org_users insert
+- Trigger has exception handler — never blocks parent insert
+- notification_type_enum is extensible — add values via migration
+- Alamo has separate auth model from Cactus Portal (future)
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
@@ -805,3 +893,116 @@ a mapped field. Used to route charge rows during line item parsing.
 - INF rows confirmed as dimension-only rows — never billed
 - Header row detection: skip if col U (tracking) doesn't start with 1Z
 - Charge routing priority: exact → class+detail → class-only
+
+---
+
+## 18. FULL INVOICE PIPELINE — STAGE BY STAGE
+
+STAGE 1: INGESTION
+  Admin uploads carrier invoice in The Alamo
+  Selects carrier + format (DETAIL or SUMMARY)
+  File stored in Supabase Storage
+  carrier_invoices row created (status: UPLOADED)
+
+STAGE 2: PARSING
+  Detail format: rule-based parser (carrier_charge_routing)
+  Summary format: AI normalization → human review
+  One invoice_line_items row per tracking number
+  Charges split into named fields, dims extracted
+  address_sender_normalized built for dark matching
+  status: COMPLETE
+
+STAGE 3: MATCHING
+  Lassoed: tracking_number → shipment_ledger → org_id
+    variance = carrier_charge - raw_carrier_cost
+    ABS(variance) > dispute_threshold → HELD + dispute_flag
+    ELSE → AUTO_MATCHED
+  Dark: address_sender_normalized → locations
+    Exactly one match → AUTO_MATCHED + match_location_id stored
+    Zero/multiple → FLAGGED → HELD
+  carrier_invoices updated: matched/flagged counts
+  status: REVIEW (if flagged) or APPROVED
+
+STAGE 4: DISPUTE RESOLUTION
+  Admin reviews /invoices/[id]/disputes
+  Can manually assign org to FLAGGED items
+  Can approve or override variance disputes
+  dispute_notes per line item
+  Resolved → billing_status = APPROVED
+
+STAGE 5: BILLING CALCULATION
+  Runs on APPROVED line items only
+  final_merchant_rate = CEILING(carrier_charge × (1 + markup))
+  pre_ceiling_amount stored for audit trail
+  Immutable — never update once written
+
+STAGE 6: INVOICE GENERATION
+  Groups all APPROVED lines by org_id
+  One cactus_invoices row per org per billing period
+  cactus_invoice_line_items junction rows created
+  billing_status → INVOICED
+  due_date = today + org.terms_days
+
+STAGE 7: DELIVERY TO CACTUS PORTAL
+  cactus_invoices visible in Cactus Portal
+  Display rules per carrier_account_mode:
+    lassoed lines → final_merchant_rate only
+    dark lines → carrier_charge + final_merchant_rate
+  PDF download: one-page summary
+    Total due, total shipments
+    By carrier: shipments + amount
+    By origin location: shipments + amount
+  CSV download: full line item detail, same display rules
+  Payment status: UNPAID → PAID
+
+STAGE 8: PAYMENT
+  USPS → pre-paid meter already settled
+  All others → auto-pull on due_date via Stripe/Fortis
+  invoice_status → PAID
+  audit_logs entry
+
+## 19. CACTUS PORTAL — FULL VISION
+
+Dashboard
+  Active shipments count
+  This week's spend
+  Tracking alerts (packages stuck > threshold)
+
+Shipments
+  Every shipment for their org
+  Current tracking status
+  Service level, carrier, zone, weight, dims
+  Filter by location via locations.name
+  Display rules: lassoed = final_merchant_rate only
+                 dark = carrier_charge + final_merchant_rate
+
+Tracking Alerts
+  LABEL_CREATED > 3 business days (configurable per org)
+  IN_TRANSIT > X days with no scan
+  DELIVERY_ATTEMPTED with no follow-up
+  EXCEPTION or LOST flags
+  Threshold stored on organizations table (Phase 2 column)
+
+Meter (USPS orgs only)
+  Current balance
+  Reload history
+  Transaction log
+
+Invoices
+  All cactus_invoices for their org
+  Line item drill-down per invoice
+  PDF one-page summary download
+  CSV full detail download
+  Payment status
+
+FUTURE — 3PL Billing Module (Phase 2)
+  Assign shipments to sub-clients
+  Add markup per sub-client
+  Add non-shipping charges (pick/pack, storage, etc.)
+  Reconcile and generate sub-client invoices
+  Margin summary per sub-client
+  Full P&L visibility per customer
+  Infrastructure already in place:
+    organizations.parent_org_id for sub-clients
+    org_type_enum includes SUB_CLIENT
+    Portal billing module needs UI layer only

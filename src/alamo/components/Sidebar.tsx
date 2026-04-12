@@ -47,7 +47,7 @@ export default function Sidebar() {
         padding: '0 8px', marginBottom: 4,
       }}>{title}</div>
       {items.map(item => {
-        const active = pathname === item.href
+        const active = pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')
         return (
           <a key={item.label} href={item.href} style={{
             display: 'flex', alignItems: 'center',
