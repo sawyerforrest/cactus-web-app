@@ -195,16 +195,12 @@ async function parseInvoice(formData: FormData) {
     // template to know what each column position means.
     // ----------------------------------------------------------
     const { data: formatRows, error: formatError } = await admin
-  .from('carrier_invoice_formats')
-  .select('column_position, header_name')
-  .eq('carrier_code', invoice.carrier_code)
-  .eq('format_type', invoice.invoice_format)
-  .eq('is_active', true)
-  .order('column_position', { ascending: true })
-
-console.log('formatError:', formatError)
-
-      console.log('formatRows result:', formatRows?.length, 'carrier:', invoice.carrier_code, 'format:', invoice.invoice_format)
+      .from('carrier_invoice_formats')
+      .select('column_position, header_name')
+      .eq('carrier_code', invoice.carrier_code)
+      .eq('format_type', invoice.invoice_format)
+      .eq('is_active', true)
+      .order('column_position', { ascending: true })
 
       if (!formatRows || formatRows.length === 0) {
         throw new Error(`No column template found for ${invoice.carrier_code} ${invoice.invoice_format}`)
@@ -641,8 +637,7 @@ export default async function InvoiceParsePage({
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: '200px 1fr',
+      marginLeft: 200,
       minHeight: '100vh',
       background: 'var(--cactus-sand)',
     }}>
