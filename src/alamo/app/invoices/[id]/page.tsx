@@ -8,6 +8,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import MatchButton from './MatchButton'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   UPLOADED:    { label: 'Uploaded',    color: 'var(--cactus-muted)',  bg: 'var(--cactus-sand)' },
@@ -229,7 +230,16 @@ export default async function InvoiceDetailPage({
             </div>
           )}
 
-          {/* Line items table */}
+          {/* WHY: Only show the matching button when parsing is complete.
+    COMPLETE = the parser ran and line items exist.
+    REVIEW / APPROVED = matching already ran, don't show again.
+    The button triggers the matching engine server action. */}
+
+{invoice.status === 'COMPLETE' && (
+  <MatchButton invoiceId={id} />
+)}
+
+{/* Line items table */}
           <div style={{
             background: 'var(--cactus-canvas)',
             border: '0.5px solid var(--cactus-border)',

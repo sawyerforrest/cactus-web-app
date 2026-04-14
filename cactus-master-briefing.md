@@ -477,6 +477,41 @@ Never update shipment status. Always append new event rows.
       - next.config.ts: serverActions bodySizeLimit set to 10mb
       - GRANT ALL on carrier_invoice_formats, carrier_charge_routing,
         invoice_line_items to service_role (RLS fix)
+- [x] Stage 4: Matching engine — complete
+      - match.ts server action at src/alamo/app/invoices/[id]/actions/match.ts
+      - Per-line-item architecture: org determined per line, not per invoice
+      - Lassoed path: tracking_number → shipment_ledger → org_id
+      - Dark path: address_sender_normalized → locations → org_id
+      - Carrier account lookup: org_id + carrier_code + is_active + is_cactus_account = TRUE
+      - Single-Ceiling billing calc applied on all AUTO_MATCHED lines
+      - Variance check: carrier_charge - raw_carrier_cost vs dispute_threshold
+      - HELD lines flagged with dispute_notes for human review
+      - carrier_invoices updated: matched_line_items, flagged_line_items, status
+      - audit_logs entry written on every run
+      - Tested on real anonymized UPS detail invoice: 950 shipments
+- [x] Stage 4: MatchButton client component — complete
+      - src/alamo/app/invoices/[id]/MatchButton.tsx
+      - Appears only when invoice.status === 'COMPLETE'
+      - Shows result summary after engine runs
+      - Calls runMatchingEngine() server action directly
+- [x] Stage 4: Dispute resolution — complete
+      - resolve.ts server action at src/alamo/app/invoices/[id]/actions/resolve.ts
+      - Resolves HELD line items by manually assigning org
+      - Looks up carrier account using same is_cactus_account filter
+      - Applies Single-Ceiling billing calc on resolution
+      - Creates shipment_ledger row (shipment_source = INVOICE_IMPORT)
+      - Recalculates carrier_invoice matched/flagged counts from DB
+      - audit_logs entry written on every resolution
+      - Disputes page at src/alamo/app/invoices/[id]/disputes/page.tsx
+      - ResolveGroup.tsx client component — groups items by dispute_notes
+      - Bulk resolution: admin selects org once, approves entire group
+      - Tested: 11 held items resolved, invoice moved to APPROVED
+- [x] Stage 4: Full invoice pipeline tested end-to-end
+      - Real anonymized UPS detail invoice: 950 shipments, $16,482.47
+      - Parse → Match → Dispute Resolution → APPROVED
+      - All 950 line items matched to Cactus 3PL Headquarters
+      - 15% markup applied via Single-Ceiling on all lines
+      - Billed amounts visible in invoice detail page
 - [x] UI — Login page redesign complete
       - Real Cactus SVG logo at public/cactus-logo.svg
       - White sky + desert dunes SVG background
@@ -585,29 +620,23 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC
 
 ### Next task — START HERE next session
-Build matching engine server action:
-  FILE: src/alamo/app/invoices/[id]/actions/match.ts
+Stage 5: Invoice generation
+  FILE: src/alamo/app/invoices/[id]/actions/generate.ts
 
-  STEP 1: Lassoed matching
-    tracking_number → shipment_ledger → org_id
-    variance = carrier_charge - raw_carrier_cost (NOT final_merchant_rate)
-    IF ABS(variance) > dispute_threshold → HELD + dispute_flag = TRUE
-    ELSE → AUTO_MATCHED → proceed to billing calc
-
-  STEP 2: Dark matching
-    address_sender_normalized → locations (is_billing_address=TRUE)
-    IF exactly one match → AUTO_MATCHED + store match_location_id
-    IF zero or multiple → FLAGGED → HELD → manual review
-
-  STEP 3: Billing calculation (APPROVED lines only)
-    final_merchant_rate = CEILING(carrier_charge × (1 + markup_percentage))
-    pre_ceiling_amount stored for audit trail
-
-  STEP 4: Build /invoices/[id]/disputes page
-  STEP 5: Build invoice generation (group APPROVED by org → cactus_invoices)
-  STEP 6: Build PDF summary generator (one page)
-  STEP 7: Build CSV export (full detail)
-  STEP 8: Start Cactus Portal
+  STEP 1: Group all APPROVED invoice_line_items by org_id
+  STEP 2: For each org — create one cactus_invoices row
+    total_amount = SUM of final_merchant_rate for that org
+    billing_period_start = MIN(date_shipped)
+    billing_period_end = MAX(date_shipped)
+    due_date = today + organizations.terms_days
+    status = UNPAID
+  STEP 3: Create cactus_invoice_line_items junction rows
+    One row per approved line item linking to the cactus_invoice
+  STEP 4: Update invoice_line_items billing_status → INVOICED
+  STEP 5: Update carrier_invoices status → COMPLETE
+  STEP 6: Write audit_log entry
+  STEP 7: Build PDF summary generator (one page)
+  STEP 8: Build CSV export (full line item detail)
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -698,6 +727,14 @@ Build matching engine server action:
 - Sidebar active state: pathname.startsWith(href) not exact match
     Dashboard exception: pathname === '/dashboard' to prevent over-matching
 - portal_role_enum: ADMIN, FINANCE, STANDARD on org_users
+- Carrier account lookup per line item (not per invoice) — one Cactus
+  master account serves multiple orgs; org determined by address/tracking
+  match, then carrier account found by org_id + carrier_code +
+  is_cactus_account = TRUE
+- is_cactus_account = TRUE used as secondary filter to isolate the
+  Cactus billing account when an org has multiple carrier accounts
+- Dispute grouping by dispute_notes — items with identical notes share
+  the same root cause and can be bulk-resolved in one action
 - ADMIN + FINANCE: full portal access, notifications ON default
 - STANDARD: full access except sub-client billing, notifications OFF
 - Email notifications use Resend + React Email templates

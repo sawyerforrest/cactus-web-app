@@ -258,11 +258,12 @@ notification_preferences   → User email notification settings
 | 1 | Schema | ✅ Complete |
 | 2 | Alamo shell | ✅ Complete |
 | 3 | Org + carrier management | ✅ Complete |
-| 4 | Invoice pipeline | ⏳ In Progress |
-| 5 | Rating engine core | |
-| 6 | UPS + FedEx API integrations | |
-| 7 | Warehance WMS integration | |
-| 8 | Cactus Portal | |
+| 4 | Invoice pipeline + matching + disputes | ✅ Complete |
+| 5 | Invoice generation + PDF + CSV        | ⏳ In Progress |
+| 6 | Rating engine core | |
+| 7 | UPS + FedEx API integrations | |
+| 8 | Warehance WMS integration | |
+| 9 | Cactus Portal | |
 | Post | Phase 2 carriers | |
 
 ---
