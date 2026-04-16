@@ -211,6 +211,9 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
       }
 
       // INSERT cactus_invoice_line_items junction rows
+      // WHY: Batch in chunks of 100 to avoid PostgREST payload limits
+      // on large orgs with hundreds of line items.
+      const BATCH_SIZE = 100
       const junctionRows = group.items.map((item) => ({
         cactus_invoice_id: newInvoice.id,
         invoice_line_item_id: item.id,
@@ -218,38 +221,57 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
         final_merchant_rate: item.final_merchant_rate,
       }))
 
-      const { error: junctionError } = await supabase
-        .from('cactus_invoice_line_items')
-        .insert(junctionRows)
+      let junctionFailed = false
+      for (let i = 0; i < junctionRows.length; i += BATCH_SIZE) {
+        const batch = junctionRows.slice(i, i + BATCH_SIZE)
+        const { error: junctionError } = await supabase
+          .from('cactus_invoice_line_items')
+          .insert(batch)
 
-      if (junctionError) {
-        result.errors.push(
-          `Failed to create junction rows for org "${group.orgName}": ` +
-          `${junctionError.message}. Invoice ${newInvoice.id} created but line items not linked.`
-        )
-        continue
+        if (junctionError) {
+          result.errors.push(
+            `Failed to create junction rows for org "${group.orgName}" ` +
+            `(batch ${Math.floor(i / BATCH_SIZE) + 1}): ` +
+            `${junctionError.message}. Invoice ${newInvoice.id} created but line items not linked.`
+          )
+          junctionFailed = true
+          break
+        }
       }
+
+      if (junctionFailed) continue
 
       // UPDATE invoice_line_items → INVOICED
       // Also set cactus_invoice_id FK for direct lookup
+      // WHY: Batch in chunks of 100. PostgREST sends .in() filter
+      // values as URL query params — 950 UUIDs (~34KB) exceeds the
+      // URL length limit and returns "Bad Request."
       const lineItemIds = group.items.map((item) => item.id)
 
-      const { error: statusError } = await supabase
-        .from('invoice_line_items')
-        .update({
-          billing_status: 'INVOICED' as any,
-          cactus_invoice_id: newInvoice.id,
-        })
-        .in('id', lineItemIds)
+      let statusFailed = false
+      for (let i = 0; i < lineItemIds.length; i += BATCH_SIZE) {
+        const batchIds = lineItemIds.slice(i, i + BATCH_SIZE)
+        const { error: statusError } = await supabase
+          .from('invoice_line_items')
+          .update({
+            billing_status: 'INVOICED' as any,
+            cactus_invoice_id: newInvoice.id,
+          })
+          .in('id', batchIds)
 
-      if (statusError) {
-        result.errors.push(
-          `Failed to update billing_status for org "${group.orgName}": ` +
-          `${statusError.message}. Invoice ${newInvoice.id} created but ` +
-          `line items still showing APPROVED.`
-        )
-        continue
+        if (statusError) {
+          result.errors.push(
+            `Failed to update billing_status for org "${group.orgName}" ` +
+            `(batch ${Math.floor(i / BATCH_SIZE) + 1}): ` +
+            `${statusError.message}. Invoice ${newInvoice.id} created but ` +
+            `some line items still showing APPROVED.`
+          )
+          statusFailed = true
+          break
+        }
       }
+
+      if (statusFailed) continue
 
       // Success for this org
       runTotalAmount = runTotalAmount.plus(totalAmount)
