@@ -609,34 +609,105 @@ Never update shipment status. Always append new event rows.
         Phase 1 (now): query shipment_events directly with indexes
         Phase 2 (1,000+ orgs): add shipment_alert_cache table
         Phase 3 (10,000+ labels/day): read replica + staggered timing
+- [x] Business formation progress
+      - Mercury business bank account — applied
+      - Chase Ink Preferred credit card — applied
+      - Utah DBA "Cactus" — filed with state
+      - Utah taxpayer account — opened on tap.tax.utah.gov
+      - EIN received (previously pending)
+
+- [x] cactus-logistics.com marketing website — complete and live
+      - Single-file HTML site deployed on Vercel (Hobby plan)
+      - GitHub repo: github.com/sawyerforrest/cactus-marketing (separate from cactus-web-app)
+      - Domain: cactus-logistics.com (DNS via Squarespace → Vercel)
+        A record: @ → 76.76.21.21
+        CNAME: www → cname.vercel-dns.com
+      - Stack: Pure HTML/CSS/JS, self-contained single file, no framework
+      - Fonts: Cormorant Garamond (display serif) + Geist (body sans)
+      - Design: matches Cactus brand system (Forest, Amber, Sand, Bloom)
+      - Contact form: Formspree — YOUR_FORM_ID placeholder must be configured
+      - To deploy updates: edit index.html → git push → Vercel auto-deploys in ~30s
+      - Favicon: cactus icon extracted from logo SVG, embedded as data URI
+      - Carrier marquee: 9 carriers scrolling left to right (UPS, FedEx, DHL, USPS,
+        GOFO, UniUni, OSM Worldwide, Landmark Global, OnTrac)
+      - Core values in footer: Gratitude → Curiosity → Faith → Creation
+
+- [x] Stage 5: Weekly billing engine — complete
+      - generate.ts server action at src/alamo/app/invoices/actions/generate.ts
+      - Sweeps ALL APPROVED invoice_line_items system-wide (not per carrier invoice)
+      - Groups by org_id — one cactus_invoices row per org per billing run
+      - total_amount = SUM(final_merchant_rate) via decimal.js (no floats)
+      - billing_period_start/end = MIN/MAX(date_shipped)
+      - due_date = today + organizations.terms_days
+      - Creates cactus_invoice_line_items junction rows
+      - Updates invoice_line_items.billing_status → INVOICED
+      - Error isolation per org — one failure does not block others
+      - Batched in chunks of 100 rows — fixes PostgREST URL length limit
+        (.in() with 950 UUIDs = ~34KB URL, exceeds PostgREST limit)
+      - Billing lock: button disables when no APPROVED lines remain
+      - Single audit_logs entry per run with full details
+      - Orphaned invoice cleanup: delete cactus_invoices row cascades
+        to cactus_invoice_line_items via ON DELETE CASCADE
+      - Tested: 939 line items, $18,468.42, Cactus 3PL Headquarters
+
+- [x] Stage 5: GenerateBillingButton.tsx — complete
+      - src/alamo/app/invoices/GenerateBillingButton.tsx
+      - Only renders when hasApproved = true
+      - Disabled + "Running..." during execution (prevents double-click)
+      - Result card: green (success), amber (partial), bloom (errors), neutral (nothing to bill)
+      - Per-org breakdown with line item count and amount
+
+- [x] Stage 5: InvoiceFilters.tsx — complete
+      - src/alamo/app/invoices/InvoiceFilters.tsx
+      - Search by invoice_file_name
+      - Filter: carrier_code (all enum values)
+      - Filter: status (all carrier_invoice_status_enum values)
+      - Filter: date range FROM/TO on created_at with Alamo label style
+      - Export CSV of filtered invoice list
+      - All client-side state, no page reloads
+
+- [x] Stage 5: Invoices list page updated
+      - GenerateBillingButton rendered above table
+      - InvoiceFilters rendered above table
+      - hasApproved check uses .select('id').limit(1) — NOT head:true
+        (head:true with admin client silently returns null count)
+      - Parallel fetch of invoices + approved count
 
 ### Pending Phase 0 items
 - [x] EIN received
-- [ ] Mercury business bank account — after EIN
-- [ ] UPS Developer Portal — waiting for approval
+- [x] Mercury business bank account — applied (pending approval)
+- [x] Chase Ink Preferred — applied (pending approval)
+- [x] Utah DBA "Cactus" — filed
+- [x] Utah taxpayer account (TAP) — opened
+- [ ] UPS Developer Portal — still blocked, call 1-800-782-7892
 - [ ] Contact UniUni, GOFO, ShipX — after leaving BukuShip
-- [ ] DHL eCommerce sales outreach — after leaving BukuShip
-- [ ] Book Utah business attorney consult
-- [ ] Create Stripe account under LLC
+- [ ] DHL eCommerce sales outreach — after leaving BukuShip (60-90 day lead time)
+- [ ] Book Utah business attorney consult — needed before first client signs
+- [ ] Create Stripe account under LLC — needed before first real invoice is due
+- [ ] QuickBooks Online account — needed for Stage 5+ invoice sync
+- [ ] Warehance API partnership conversation — initiate before leaving BukuShip
+- [ ] Configure Formspree form ID in cactus-marketing/index.html
 
 ### Next task — START HERE next session
-Stage 5: Invoice generation
-  FILE: src/alamo/app/invoices/[id]/actions/generate.ts
+Stage 5 continued: PDF + CSV + Portal foundation
 
-  STEP 1: Group all APPROVED invoice_line_items by org_id
-  STEP 2: For each org — create one cactus_invoices row
-    total_amount = SUM of final_merchant_rate for that org
-    billing_period_start = MIN(date_shipped)
-    billing_period_end = MAX(date_shipped)
-    due_date = today + organizations.terms_days
-    status = UNPAID
-  STEP 3: Create cactus_invoice_line_items junction rows
-    One row per approved line item linking to the cactus_invoice
-  STEP 4: Update invoice_line_items billing_status → INVOICED
-  STEP 5: Update carrier_invoices status → COMPLETE
-  STEP 6: Write audit_log entry
-  STEP 7: Build PDF summary generator (one page)
-  STEP 8: Build CSV export (full line item detail)
+  STEP 7: Build PDF summary generator
+    FILE: src/alamo/app/invoices/[id]/actions/pdf.ts
+    One-page PDF per cactus_invoice:
+      - Total amount due + total shipments
+      - Breakdown by carrier (shipments + amount)
+      - Breakdown by origin location via match_location_id → locations.name
+      - lassoed lines: show final_merchant_rate only
+      - dark lines: show carrier_charge + final_merchant_rate
+      - Never show carrier_charge or markup on lassoed lines
+
+  STEP 8: Build CSV export
+    Full line item detail, same display rules as PDF
+
+  STEP 9: Start Cactus Portal (Stage 9)
+    Client-facing dashboard
+    Auth: separate from Alamo auth
+    Views: shipments, invoices, tracking, meter balance
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -754,6 +825,20 @@ Stage 5: Invoice generation
 - Performance indexes on shipment_events protect alert job at scale
 - Scale plan: direct query now → cache table at 1k orgs →
   read replica at 10k labels/day
+- Lassoed requires BOTH rate API and label purchase API — rate cards alone do not enable lassoed mode
+- UniUni and GOFO remain dark accounts until label purchase API agreements are signed
+- Dark accounts are a valid revenue path pre-WMS integration — onboard first client dark, migrate to lassoed when Warehance is live
+- Circuit breaker pattern for carrier API failures: visible Alamo dashboard banner, internal email alert, audit_logs entry, auto-recovery probe every 30s, admin manual reset
+- AI integration roadmap priorities: invoice normalization (live) → exception flagging → charge routing self-improvement → dark account fuzzy address matching → PLD Analysis Engine narration → Shadow Ledger intelligence → carrier scorecard → anomaly detection
+- carrier_master_accounts table deferred to Phase 2 — add when second carrier goes live or first client has multiple Cactus accounts
+- Weekly billing run sweeps ALL APPROVED lines system-wide — not triggered per carrier invoice
+- Billing engine groups by org_id, produces one cactus_invoice per org per run
+- billing_status moves forward only: PENDING → HELD → APPROVED → INVOICED — never backwards
+- .in() filter with large arrays must always be batched in chunks of 100 — PostgREST URL limit
+- .select('id').limit(1) for existence checks — never head:true with admin client (silently returns null)
+- ON DELETE CASCADE on cactus_invoice_line_items — deleting cactus_invoices cascades junction cleanup
+- hasApproved billing lock: button disabled when zero APPROVED lines remain
+- Claude Code worktree changes must be cherry-picked to main before dev server picks them up
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)

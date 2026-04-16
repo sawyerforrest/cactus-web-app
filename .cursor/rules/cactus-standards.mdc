@@ -490,6 +490,40 @@ No PDF/CSV attachments — spam filter deliverability.
 
 ---
 
+## 10c. Page Standards — Search, Filter, Export
+
+### Required on all list and report pages
+Every page that displays a list of records must include at the top
+of the page body, above all table/list content:
+
+1. SEARCH INPUT
+   - Searches tracking numbers and unique identifiers
+   - Also searches relevant text fields (file names, org names, etc.)
+
+2. FILTER COMPONENTS
+   - Date range: FROM and TO date inputs (label style: 11px uppercase muted)
+   - Carrier type: dropdown of carrier_code_enum values
+   - Invoice/record status: dropdown of relevant status enum
+   - Org: dropdown when cross-org data is displayed
+
+3. EXPORT CSV BUTTON
+   - Exports the current filtered dataset
+   - Applies same display rules as the page (lassoed vs dark invoice rules)
+   - Available on all report and invoice pages
+
+### Layout rule
+Search + filters + export live in a single bar at the top of the
+page body. All filtering is client-side state — no full page reloads.
+These are client components. The parent page (server component) passes
+the full dataset as a prop; the filter component handles display logic.
+
+### Non-negotiable
+- Never build a list/report page without search and filter
+- Export CSV is always present on invoice and report pages
+- FROM/TO date labels use 11px uppercase muted style (Alamo standard)
+
+---
+
 ## 11. Coding Philosophy
 
 - WHY comments on every non-obvious block

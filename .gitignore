@@ -98,3 +98,4 @@ coverage/
 # only using npm, to avoid lock file conflicts.
 # ----------------------------------------------------------
 yarn.lock
+.claude/
