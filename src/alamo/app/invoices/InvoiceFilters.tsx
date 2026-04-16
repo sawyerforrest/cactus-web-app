@@ -182,22 +182,38 @@ export default function InvoiceFilters({ invoices }: InvoiceFiltersProps) {
         </select>
 
         {/* Date from */}
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          style={selectStyle}
-          title="Created from"
-        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--cactus-muted)',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={selectStyle}
+          />
+        </label>
 
         {/* Date to */}
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          style={selectStyle}
-          title="Created to"
-        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--cactus-muted)',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}>To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={selectStyle}
+          />
+        </label>
 
         {/* Export CSV */}
         <button
