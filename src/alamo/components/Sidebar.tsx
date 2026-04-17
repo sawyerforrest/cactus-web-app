@@ -13,6 +13,7 @@ import {
   ArrowLeftRight,
   Tag,
   FileText,
+  ReceiptText,
   Flag,
   Gauge,
   BarChart2,
@@ -30,7 +31,8 @@ const navItems = {
     { label: 'Rate Cards', href: '/rate-cards', Icon: Tag },
   ],
   billing: [
-    { label: 'Invoices', href: '/invoices', Icon: FileText },
+    { label: 'Carrier Invoices', href: '/invoices', Icon: FileText },
+    { label: 'Client Invoices', href: '/billing', Icon: ReceiptText },
     { label: 'Disputes', href: '/disputes', Icon: Flag },
     { label: 'Meter Health', href: '/meters', Icon: Gauge },
   ],

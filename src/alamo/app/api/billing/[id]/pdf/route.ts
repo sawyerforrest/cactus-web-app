@@ -1,10 +1,10 @@
 // ==========================================================
-// FILE: src/alamo/app/api/invoices/[id]/pdf/route.ts
-// PURPOSE: GET /api/invoices/:id/pdf — streams a one-page
+// FILE: src/alamo/app/api/billing/[id]/pdf/route.ts
+// PURPOSE: GET /api/billing/:id/pdf — streams a one-page
 // PDF summary for the given cactus_invoice id.
 // ==========================================================
 
-import { generateInvoicePDF } from '@/app/invoices/[id]/actions/pdf'
+import { generateInvoicePDF } from '@/app/billing/[id]/actions/pdf'
 
 // pdfkit depends on Node APIs — force the Node.js runtime
 // so this route is never compiled to the edge runtime.
