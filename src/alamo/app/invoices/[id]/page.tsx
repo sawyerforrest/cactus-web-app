@@ -9,6 +9,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import MatchButton from './MatchButton'
+import DownloadPDFButton from './DownloadPDFButton'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   UPLOADED:    { label: 'Uploaded',    color: 'var(--cactus-muted)',  bg: 'var(--cactus-sand)' },
@@ -76,6 +77,22 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) redirect('/invoices')
 
+  // WHY: Lookup whether any line item on this carrier invoice
+  // has been rolled into a cactus_invoice. If so, we show the
+  // "Download PDF" button. Uses maybeSingle() so brand-new
+  // carrier invoices (no billing run yet) don't throw.
+  const lineItemIds = (lineItems ?? []).map(l => l.id)
+  let cactusInvoiceId: string | null = null
+  if (lineItemIds.length > 0) {
+    const { data: cactusInvoiceRow } = await admin
+      .from('cactus_invoice_line_items')
+      .select('cactus_invoice_id')
+      .in('invoice_line_item_id', lineItemIds)
+      .limit(1)
+      .maybeSingle()
+    cactusInvoiceId = (cactusInvoiceRow as any)?.cactus_invoice_id ?? null
+  }
+
   const status = STATUS_CONFIG[invoice.status] ?? STATUS_CONFIG.UPLOADED
   const org = invoice.organizations as any
 
@@ -114,6 +131,13 @@ export default async function InvoiceDetailPage({
           }}>
             {invoice.invoice_file_name}
           </div>
+
+          {/* PDF download — only once a cactus_invoice exists for this carrier invoice */}
+          {cactusInvoiceId && (
+            <div style={{ marginLeft: 'auto' }}>
+              <DownloadPDFButton cactusInvoiceId={cactusInvoiceId} />
+            </div>
+          )}
         </div>
 
         <div style={{ padding: '20px 24px' }}>
