@@ -20,6 +20,8 @@
 // All money math uses decimal.js — no floats.
 // =============================================================
 
+import fs from 'fs'
+import path from 'path'
 import Decimal from 'decimal.js'
 import PDFDocument from 'pdfkit'
 import { createAdminSupabaseClient } from '../../../../lib/supabase-server'
@@ -137,6 +139,9 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   // RENDER PDF
   // =============================================================
 
+  const logoPath = path.join(process.cwd(), 'public', 'cactus-logo-pdf.png')
+  const logoBuffer = fs.readFileSync(logoPath)
+
   const doc = new PDFDocument({
     size: 'LETTER',
     margins: { top: 54, bottom: 54, left: 54, right: 54 },
@@ -160,13 +165,10 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     doc.moveDown(1)
   }
 
-  // Brand title
-  doc.font('Helvetica-Bold')
-    .fontSize(24)
-    .fillColor(COLOR_FOREST)
-    .text('Cactus Logistics', pageLeft, doc.y)
-
-  doc.moveDown(0.6)
+  // Brand logo — absolute-positioned so it doesn't advance doc.y
+  // past where the "INVOICE" heading wants to start.
+  doc.image(logoBuffer, 50, 40, { width: 160 })
+  doc.y = 40 + 60
 
   // INVOICE heading
   doc.font('Helvetica-Bold')
