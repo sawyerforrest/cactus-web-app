@@ -534,7 +534,11 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     { word: 'Creation', desc: 'for joy' },
   ]
   const SPACE = '  '
-  const ARROW = '   →   '
+  // WHY · and not →: pdfkit's standard 14 fonts (Helvetica etc)
+  // use WinAnsiEncoding, which has no glyph for U+2192 (→) — the
+  // arrow rendered as "!'". Middle dot (U+00B7, 0xB7 in WinAnsi)
+  // is present and renders cleanly as a visual separator.
+  const ARROW = ' \u00B7 '
 
   doc.font('Helvetica-Oblique').fontSize(9)
   const wordWidths = values.map(v => doc.widthOfString(v.word))
