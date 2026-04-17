@@ -76,9 +76,11 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
         match_location_id,
         org_carrier_accounts (
           carrier_account_mode
+        ),
+        locations (
+          name
         )
-      ),
-      locations ( name )
+      )
     `)
     .eq('cactus_invoice_id', cactusInvoiceId)
 
@@ -96,7 +98,6 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
   for (const row of lineItems ?? []) {
     const line = row.invoice_line_items as any
-    const loc = row.locations as any
     if (!line) continue
 
     const amount = new Decimal(line.final_merchant_rate ?? 0)
@@ -111,7 +112,8 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
       byCarrier.set(carrierKey, { key: carrierKey, shipments: 1, amount })
     }
 
-    const locationKey = loc?.name ?? 'Unknown'
+    // locations now lives under invoice_line_items via match_location_id FK
+    const locationKey = line.locations?.name ?? 'Unknown'
     const locationEntry = byLocation.get(locationKey)
     if (locationEntry) {
       locationEntry.shipments += 1
