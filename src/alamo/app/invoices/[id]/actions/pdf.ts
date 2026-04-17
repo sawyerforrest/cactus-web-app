@@ -4,18 +4,13 @@
 // CACTUS INVOICE PDF — Stage 5
 // FILE: src/alamo/app/invoices/[id]/actions/pdf.ts
 //
-// Generates a one-page PDF summary for a single cactus_invoice:
-//   - Invoice header (org, billing period, due date, status)
-//   - Summary by carrier (shipments + amount)
-//   - Summary by origin location (shipments + amount)
-//   - Total due
+// Generates a one-page PDF summary for a single cactus_invoice.
 //
 // Display rules (non-negotiable):
 //   - lassoed_carrier_account → show final_merchant_rate only
 //   - dark_carrier_account    → may show carrier_charge alongside
-//   This PDF only shows aggregates, so in practice we sum
-//   final_merchant_rate for both — the rule still governs what
-//   lives in the document (no carrier_charge exposed anywhere).
+//   This PDF only shows aggregates (sum of final_merchant_rate),
+//   so neither mode ever exposes carrier_charge.
 //
 // All money math uses decimal.js — no floats.
 // =============================================================
@@ -30,6 +25,10 @@ const COLOR_FOREST = '#2D5A27'
 const COLOR_INK = '#0D1210'
 const COLOR_MUTED = '#9CA89A'
 const COLOR_DIVIDER = '#D8D3C8'
+const COLOR_ROW_SEP = '#F0EEE9'
+
+// Logo SVG viewBox aspect ratio — 923.18 × 475.16
+const LOGO_ASPECT = 923.18 / 475.16
 
 type SummaryRow = { key: string; shipments: number; amount: Decimal }
 
@@ -103,7 +102,6 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     const amount = new Decimal(line.final_merchant_rate ?? 0)
     totalDue = totalDue.plus(amount)
 
-    // carrier_code + carrier_account_mode both live on org_carrier_accounts.
     const carrierKey = line.org_carrier_accounts?.carrier_code ?? 'UNKNOWN'
     const carrierEntry = byCarrier.get(carrierKey)
     if (carrierEntry) {
@@ -113,7 +111,6 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
       byCarrier.set(carrierKey, { key: carrierKey, shipments: 1, amount })
     }
 
-    // locations now lives under invoice_line_items via match_location_id FK
     const locationKey = line.locations?.name ?? 'Unknown'
     const locationEntry = byLocation.get(locationKey)
     if (locationEntry) {
@@ -124,16 +121,12 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     }
   }
 
-  const carrierRows = [...byCarrier.values()].sort((a, b) =>
-    b.amount.cmp(a.amount)
-  )
-  const locationRows = [...byLocation.values()].sort((a, b) =>
-    b.amount.cmp(a.amount)
-  )
+  const carrierRows = [...byCarrier.values()].sort((a, b) => b.amount.cmp(a.amount))
+  const locationRows = [...byLocation.values()].sort((a, b) => b.amount.cmp(a.amount))
 
   const org = (invoice as any).organizations
   const orgName: string = org?.name ?? 'Unknown Org'
-  const shortId = cactusInvoiceId.slice(0, 8)
+  const shortId = cactusInvoiceId.slice(0, 8).toUpperCase()
 
   // =============================================================
   // RENDER PDF
@@ -144,7 +137,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
   const doc = new PDFDocument({
     size: 'LETTER',
-    margins: { top: 54, bottom: 54, left: 54, right: 54 },
+    margins: { top: 60, bottom: 60, left: 60, right: 60 },
   })
 
   const chunks: Buffer[] = []
@@ -154,132 +147,211 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     doc.on('error', reject)
   })
 
-  const pageLeft = doc.page.margins.left
-  const pageRight = doc.page.width - doc.page.margins.right
+  const pageLeft = 60
+  const pageRight = doc.page.width - 60
+  const pageBottom = doc.page.height - 60
   const contentWidth = pageRight - pageLeft
 
-  const drawDivider = () => {
-    const y = doc.y + 6
+  const drawDivider = (y: number, color = COLOR_DIVIDER, weight = 0.5) => {
     doc.moveTo(pageLeft, y).lineTo(pageRight, y)
-      .strokeColor(COLOR_DIVIDER).lineWidth(0.5).stroke()
-    doc.moveDown(1)
+      .strokeColor(color).lineWidth(weight).stroke()
   }
 
-  // Brand logo — absolute-positioned so it doesn't advance doc.y
-  // past where the "INVOICE" heading wants to start.
-  doc.image(logoBuffer, 50, 40, { width: 160 })
-  doc.y = 40 + 60
+  // -------- HEADER --------
+  const logoW = 180
+  const logoY = 45
+  const logoH = logoW / LOGO_ASPECT
+  const logoCenter = logoY + logoH / 2
 
-  // INVOICE heading
-  doc.font('Helvetica-Bold')
-    .fontSize(14)
-    .fillColor(COLOR_INK)
-    .text('INVOICE')
+  doc.image(logoBuffer, pageLeft, logoY, { width: logoW })
 
-  doc.moveDown(0.5)
+  const invoiceFontSize = 42
+  // Approximate vertical centering: Helvetica caps sit ~0.72 of fontSize
+  // from the text-top baseline pdfkit uses, so shifting up by ~fontSize/2
+  // yields visual center alignment with the logo's midline.
+  const invoiceTopY = logoCenter - invoiceFontSize * 0.52
+  doc.font('Helvetica-Bold').fontSize(invoiceFontSize).fillColor(COLOR_INK)
+    .text('INVOICE', pageLeft, invoiceTopY, {
+      width: contentWidth, align: 'right', lineBreak: false,
+    })
 
-  // Info block: label (muted) + value (ink) pairs
-  const infoRows: [string, string][] = [
-    ['Invoice #:', shortId],
-    ['Billed to:', orgName],
-    ['Billing period:',
-      `${formatDate((invoice as any).billing_period_start)} → ${formatDate((invoice as any).billing_period_end)}`],
-    ['Due date:', formatDate((invoice as any).due_date)],
-    ['Status:', String((invoice as any).status ?? '—')],
+  let cursorY = Math.max(logoY + logoH, invoiceTopY + invoiceFontSize) + 16
+  drawDivider(cursorY)
+  cursorY += 28
+
+  // -------- INVOICE META (two columns) --------
+  const LABEL_SPACING = 0.8
+  const setLabel = () => doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
+  const setValue = () => doc.font('Helvetica').fontSize(11).fillColor(COLOR_INK)
+
+  const leftColX = pageLeft
+  const rightColX = pageLeft + Math.floor(contentWidth * 0.55)
+
+  // Left column — just BILLED TO
+  setLabel().text('BILLED TO', leftColX, cursorY, {
+    lineBreak: false, characterSpacing: LABEL_SPACING,
+  })
+  setValue().text(orgName, leftColX, cursorY + 14, {
+    width: rightColX - leftColX - 20, lineBreak: false, ellipsis: true,
+  })
+
+  // Right column — three pairs stacked
+  const rightPairs: [string, string][] = [
+    ['INVOICE NO', shortId],
+    ['DATE', formatDate((invoice as any).billing_period_start)],
+    ['DUE DATE', formatDate((invoice as any).due_date)],
   ]
 
-  doc.fontSize(10)
-  for (const [label, value] of infoRows) {
-    const rowY = doc.y
-    doc.font('Helvetica').fillColor(COLOR_MUTED)
-      .text(label, pageLeft, rowY, { width: 110, continued: false })
-    doc.font('Helvetica').fillColor(COLOR_INK)
-      .text(value, pageLeft + 110, rowY, { width: contentWidth - 110 })
-    doc.moveDown(0.2)
+  const pairGap = 30
+  rightPairs.forEach(([label, value], i) => {
+    const y = cursorY + i * pairGap
+    setLabel().text(label, rightColX, y, {
+      lineBreak: false, characterSpacing: LABEL_SPACING,
+    })
+    setValue().text(value, rightColX, y + 14, {
+      width: pageRight - rightColX, lineBreak: false,
+    })
+  })
+
+  cursorY += rightPairs.length * pairGap + 6
+  drawDivider(cursorY)
+  cursorY += 24
+
+  // -------- SUMMARY SECTIONS --------
+  const HEADING_SPACING = 1.2
+
+  const sectionHeading = (title: string, y: number) => {
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLOR_FOREST)
+      .text(title, pageLeft, y, { lineBreak: false, characterSpacing: HEADING_SPACING })
   }
 
-  doc.moveDown(0.4)
-  drawDivider()
+  const shipmentsColX = pageLeft + 300
 
-  // -------- Summary by Carrier --------
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR_FOREST)
-    .text('SUMMARY BY CARRIER', pageLeft)
-  doc.moveDown(0.4)
-
-  const colCarrier = pageLeft
-  const colShipments = pageLeft + 240
-  const colAmount = pageRight - 90
-
-  const drawTableHeader = (firstLabel: string) => {
-    const y = doc.y
+  const columnHeaders = (firstLabel: string, y: number) => {
     doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
-      .text(firstLabel, colCarrier, y, { width: 240 })
-    doc.text('Shipments', colShipments, y, { width: 90 })
-    doc.text('Amount', colAmount, y, { width: 90, align: 'right' })
-    doc.moveDown(0.2)
+    doc.text(firstLabel, pageLeft, y, { lineBreak: false, characterSpacing: LABEL_SPACING })
+    doc.text('SHIPMENTS', shipmentsColX, y, { lineBreak: false, characterSpacing: LABEL_SPACING })
+    doc.text('AMOUNT', pageLeft, y, {
+      width: contentWidth, align: 'right', lineBreak: false, characterSpacing: LABEL_SPACING,
+    })
   }
 
-  const drawTableRow = (label: string, shipments: number, amount: Decimal) => {
-    const y = doc.y
-    doc.font('Helvetica').fontSize(10).fillColor(COLOR_INK)
-      .text(label, colCarrier, y, { width: 240, ellipsis: true })
-    doc.text(String(shipments), colShipments, y, { width: 90 })
-    doc.text(formatMoney(amount), colAmount, y, { width: 90, align: 'right' })
-    doc.moveDown(0.3)
+  const dataRow = (label: string, shipments: number, amount: Decimal, y: number) => {
+    doc.font('Helvetica').fontSize(11).fillColor(COLOR_INK)
+    doc.text(label, pageLeft, y, {
+      width: shipmentsColX - pageLeft - 10, lineBreak: false, ellipsis: true,
+    })
+    doc.text(String(shipments), shipmentsColX, y, { lineBreak: false })
+    doc.text(formatMoney(amount), pageLeft, y, {
+      width: contentWidth, align: 'right', lineBreak: false,
+    })
   }
 
-  drawTableHeader('Carrier')
-  if (carrierRows.length === 0) {
-    doc.font('Helvetica').fontSize(10).fillColor(COLOR_MUTED)
-      .text('No carriers on this invoice.', pageLeft)
-    doc.moveDown(0.3)
-  } else {
-    for (const row of carrierRows) {
-      drawTableRow(row.key, row.shipments, row.amount)
+  const drawSection = (
+    title: string,
+    firstColLabel: string,
+    rows: SummaryRow[],
+    startY: number,
+  ): number => {
+    sectionHeading(title, startY)
+    let y = startY + 24
+    columnHeaders(firstColLabel, y)
+    y += 20
+
+    if (rows.length === 0) {
+      doc.font('Helvetica').fontSize(10).fillColor(COLOR_MUTED)
+        .text('—', pageLeft, y, { lineBreak: false })
+      return y + 18
+    }
+
+    for (const row of rows) {
+      drawDivider(y - 4, COLOR_ROW_SEP, 0.5)
+      dataRow(row.key, row.shipments, row.amount, y)
+      y += 20
+    }
+    return y
+  }
+
+  cursorY = drawSection('SUMMARY BY CARRIER', 'CARRIER', carrierRows, cursorY)
+  cursorY += 8
+  drawDivider(cursorY)
+  cursorY += 22
+
+  cursorY = drawSection(
+    'SUMMARY BY ORIGIN LOCATION',
+    'LOCATION',
+    locationRows,
+    cursorY,
+  )
+  cursorY += 8
+  drawDivider(cursorY)
+  cursorY += 22
+
+  // -------- TOTAL DUE --------
+  const totalY = cursorY
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLOR_FOREST)
+    .text('TOTAL DUE', pageLeft, totalY + 4, {
+      lineBreak: false, characterSpacing: HEADING_SPACING,
+    })
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(COLOR_FOREST)
+    .text(formatMoney(totalDue), pageLeft, totalY, {
+      width: contentWidth, align: 'right', lineBreak: false,
+    })
+  cursorY += 32
+  drawDivider(cursorY)
+
+  // -------- FOOTER — pinned to page bottom --------
+  const creditY = pageBottom + 2
+  const valuesY = creditY - 18
+
+  const values = [
+    { word: 'Gratitude', desc: 'for people' },
+    { word: 'Curiosity', desc: 'for innovation' },
+    { word: 'Faith', desc: 'for purpose' },
+    { word: 'Creation', desc: 'for joy' },
+  ]
+  const SPACE = '  '
+  const ARROW = '   →   '
+
+  doc.font('Helvetica-Oblique').fontSize(9)
+  const wordWidths = values.map(v => doc.widthOfString(v.word))
+  doc.font('Helvetica').fontSize(8)
+  const descWidths = values.map(v => doc.widthOfString(SPACE + v.desc))
+  const arrowW = doc.widthOfString(ARROW)
+
+  const totalW =
+    wordWidths.reduce((s, w) => s + w, 0) +
+    descWidths.reduce((s, w) => s + w, 0) +
+    arrowW * (values.length - 1)
+
+  let x = pageLeft + (contentWidth - totalW) / 2
+
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i]
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor(COLOR_FOREST)
+      .text(v.word, x, valuesY, { lineBreak: false })
+    x += wordWidths[i]
+
+    // +1 to nudge smaller text toward the italic baseline
+    doc.font('Helvetica').fontSize(8).fillColor(COLOR_MUTED)
+      .text(SPACE + v.desc, x, valuesY + 1, { lineBreak: false })
+    x += descWidths[i]
+
+    if (i < values.length - 1) {
+      doc.font('Helvetica').fontSize(8).fillColor(COLOR_DIVIDER)
+        .text(ARROW, x, valuesY + 1, { lineBreak: false })
+      x += arrowW
     }
   }
 
-  doc.moveDown(0.2)
-  drawDivider()
-
-  // -------- Summary by Origin Location --------
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR_FOREST)
-    .text('SUMMARY BY ORIGIN LOCATION', pageLeft)
-  doc.moveDown(0.4)
-
-  drawTableHeader('Location')
-  if (locationRows.length === 0) {
-    doc.font('Helvetica').fontSize(10).fillColor(COLOR_MUTED)
-      .text('No origin locations on this invoice.', pageLeft)
-    doc.moveDown(0.3)
-  } else {
-    for (const row of locationRows) {
-      drawTableRow(row.key, row.shipments, row.amount)
-    }
-  }
-
-  doc.moveDown(0.2)
-  drawDivider()
-
-  // -------- Total Due --------
-  const totalY = doc.y
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(COLOR_FOREST)
-    .text('TOTAL DUE', pageLeft, totalY)
-  doc.text(formatMoney(totalDue), colAmount, totalY, { width: 90, align: 'right' })
-  doc.moveDown(0.6)
-  drawDivider()
-
-  // -------- Footer --------
   const generatedOn = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
-  const footerY = doc.page.height - doc.page.margins.bottom - 14
-  doc.font('Helvetica').fontSize(9).fillColor(COLOR_MUTED)
+  doc.font('Helvetica').fontSize(8).fillColor(COLOR_MUTED)
     .text(
-      `Cactus Logistics LLC | cactus-logistics.com | Generated ${generatedOn}`,
-      pageLeft,
-      footerY,
-      { width: contentWidth, align: 'center' }
+      `Cactus Logistics LLC  |  cactus-logistics.com  |  Generated ${generatedOn}`,
+      pageLeft, creditY,
+      { width: contentWidth, align: 'center', lineBreak: false },
     )
 
   doc.end()
