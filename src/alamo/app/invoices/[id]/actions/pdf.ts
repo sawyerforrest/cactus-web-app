@@ -353,7 +353,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
       valueColor: COLOR_INK,
     },
     {
-      label: 'DATE',
+      label: 'INVOICE PERIOD',
       values: [
         formatDate((invoice as any).billing_period_start),
         formatDate((invoice as any).billing_period_end),
