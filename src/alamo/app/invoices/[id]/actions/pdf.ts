@@ -46,9 +46,11 @@ const LAYOUT = {
   margin: 60,
   pageWidth: 612,
   pageHeight: 792,
-  logoWidth: 180,
+  logoWidth: 160,
   logoY: 45,
   headerY: 45,
+  headerDividerY: 125,
+  metaStartY: 140,
   sectionGap: 28,
   rowHeight: 20,
   rowFontSize: 10,
@@ -58,10 +60,10 @@ const LAYOUT = {
   footerValuesY: 700,
   footerCreditY: 718,
   bodyEndY: 686,
-  col1X: 60,   // left column start
-  col2X: 320,  // right column start
-  col3X: 440,  // shipments column
-  col4X: 540,  // amount column (right-aligned edge)
+  col1X: 60,   // logo + BILLED TO left edge
+  col2X: 300,  // Cactus from-block left edge
+  col3X: 430,  // invoice meta / SHIPMENTS column
+  col4X: 552,  // right edge for right-aligned text / AMOUNT column
 } as const
 
 // Cactus "from" block — hardcoded on the invoice since Cactus is
@@ -271,90 +273,85 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
       .strokeColor(color).lineWidth(weight).stroke()
   }
 
-  // -------- HEADER — two columns + floating INVOICE wordmark -----
+  // -------- HEADER — logo + INVOICE + 3-column meta --------
 
-  // Left column: logo
-  const logoH = LAYOUT.logoWidth / LOGO_ASPECT
-  doc.image(logoBuffer, LAYOUT.col1X, LAYOUT.logoY, { width: LAYOUT.logoWidth })
-  const leftAfterLogoY = LAYOUT.logoY + logoH
-
-  // "INVOICE" wordmark — top-right, aligned with logo top
-  const invoiceFontSize = 42
-  doc.font('Helvetica-Bold').fontSize(invoiceFontSize).fillColor(COLOR_INK)
-    .text('INVOICE', LAYOUT.col1X, LAYOUT.headerY, {
-      width: contentWidth, align: 'right', lineBreak: false,
-    })
-  const invoiceWordBottom = LAYOUT.headerY + invoiceFontSize
-
-  // Left column continued: BILLED TO block (below the logo)
   const LABEL_SPACING = 0.8
-  let leftY = leftAfterLogoY + 14
 
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
+  // Row 1: Logo (left) + INVOICE wordmark (right-aligned to col4X)
+  doc.image(logoBuffer, LAYOUT.col1X, LAYOUT.logoY, { width: LAYOUT.logoWidth })
+
+  const invoiceFontSize = 36
+  doc.font('Helvetica-Bold').fontSize(invoiceFontSize).fillColor(COLOR_INK)
+    .text('INVOICE', LAYOUT.col1X, 48, {
+      width: LAYOUT.col4X - LAYOUT.col1X, align: 'right', lineBreak: false,
+    })
+
+  // Row 2: hairline divider under logo/wordmark
+  drawDivider(LAYOUT.headerDividerY)
+
+  // Row 3: three sub-columns starting at metaStartY
+
+  // Left sub-column (col1X): BILLED TO
+  let leftY = LAYOUT.metaStartY
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR_MUTED)
     .text('BILLED TO', LAYOUT.col1X, leftY, {
       lineBreak: false, characterSpacing: LABEL_SPACING,
     })
-  leftY += 14
-
-  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLOR_INK)
+  leftY += 12
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR_INK)
     .text(orgName, LAYOUT.col1X, leftY, {
-      width: LAYOUT.col2X - LAYOUT.col1X - 20, lineBreak: false, ellipsis: true,
+      width: LAYOUT.col2X - LAYOUT.col1X - 10, lineBreak: false, ellipsis: true,
     })
-  leftY += 16
-
+  leftY += 14
   for (const line of billingAddress) {
-    doc.font('Helvetica').fontSize(10).fillColor(COLOR_INK)
+    doc.font('Helvetica').fontSize(9).fillColor(COLOR_MUTED)
       .text(line, LAYOUT.col1X, leftY, {
-        width: LAYOUT.col2X - LAYOUT.col1X - 20, lineBreak: false, ellipsis: true,
+        width: LAYOUT.col2X - LAYOUT.col1X - 10, lineBreak: false, ellipsis: true,
       })
-    leftY += 13
+    leftY += 12
   }
 
-  // Right column: Cactus "from" + invoice meta (starts below INVOICE wordmark)
-  const rightColWidth = pageRight - LAYOUT.col2X
-  let rightY = invoiceWordBottom + 10
-
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR_INK)
-    .text(CACTUS_FROM.name, LAYOUT.col2X, rightY, {
-      width: rightColWidth, lineBreak: false,
+  // Center sub-column (col2X): Cactus from-block
+  let centerY = LAYOUT.metaStartY
+  const centerColWidth = LAYOUT.col3X - LAYOUT.col2X
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(COLOR_INK)
+    .text(CACTUS_FROM.name, LAYOUT.col2X, centerY, {
+      width: centerColWidth, lineBreak: false,
     })
-  rightY += 14
-
+  centerY += 13
   for (const line of CACTUS_FROM.lines) {
     doc.font('Helvetica').fontSize(9).fillColor(COLOR_MUTED)
-      .text(line, LAYOUT.col2X, rightY, {
-        width: rightColWidth, lineBreak: false,
+      .text(line, LAYOUT.col2X, centerY, {
+        width: centerColWidth, lineBreak: false, ellipsis: true,
       })
-    rightY += 12
+    centerY += 11
   }
 
-  rightY += 10 // gap before invoice meta
+  // Right sub-column (col3X): invoice meta
+  let rightY = LAYOUT.metaStartY
+  const rightColWidth = LAYOUT.col4X - LAYOUT.col3X
 
   const metaPairs: Array<{
     label: string
     value: string
-    valueFontSize: number
     valueFont: string
     valueColor: string
   }> = [
     {
       label: 'INVOICE NO',
       value: shortId,
-      valueFontSize: 11,
       valueFont: 'Helvetica',
       valueColor: COLOR_INK,
     },
     {
       label: 'DATE',
       value: `${formatDate((invoice as any).billing_period_start)} – ${formatDate((invoice as any).billing_period_end)}`,
-      valueFontSize: 10,
       valueFont: 'Helvetica',
       valueColor: COLOR_INK,
     },
     {
       label: 'DUE DATE',
       value: formatDate((invoice as any).due_date),
-      valueFontSize: 11,
       valueFont: 'Helvetica-Bold',
       valueColor: COLOR_FOREST,
     },
@@ -362,21 +359,26 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
   for (const pair of metaPairs) {
     doc.font('Helvetica-Bold').fontSize(LAYOUT.labelFontSize).fillColor(COLOR_MUTED)
-      .text(pair.label, LAYOUT.col2X, rightY, {
+      .text(pair.label, LAYOUT.col3X, rightY, {
         lineBreak: false, characterSpacing: LABEL_SPACING,
       })
     rightY += 10
-    doc.font(pair.valueFont).fontSize(pair.valueFontSize).fillColor(pair.valueColor)
-      .text(pair.value, LAYOUT.col2X, rightY, {
+    doc.font(pair.valueFont).fontSize(10).fillColor(pair.valueColor)
+      .text(pair.value, LAYOUT.col3X, rightY, {
         width: rightColWidth, lineBreak: false,
       })
-    rightY += pair.valueFontSize + 6
+    rightY += 14
   }
 
-  // Header closes at whichever column ended lower, plus a breathing gap.
-  let cursorY = Math.max(leftY, rightY) + 10
-  drawDivider(cursorY)
-  cursorY += LAYOUT.sectionGap
+  // Row 4: second hairline divider below the tallest sub-column
+  const metaEndY = Math.max(leftY, centerY, rightY) + 6
+  drawDivider(metaEndY)
+
+  // Body starts below the second divider. All body positioning
+  // flows from contentStartY so header edits don't drift the
+  // summary/footer layout.
+  const contentStartY = metaEndY + LAYOUT.sectionGap
+  let cursorY = contentStartY
 
   // -------- SUMMARY SECTIONS --------
   const HEADING_SPACING = 1.2
