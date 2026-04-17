@@ -70,12 +70,10 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
       invoice_line_items (
         carrier_charge,
         final_merchant_rate,
-        date_shipped,
-        service_level,
-        carrier_code,
         match_location_id,
         org_carrier_accounts (
-          carrier_account_mode
+          carrier_account_mode,
+          carrier_code
         ),
         locations (
           name
@@ -103,7 +101,8 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     const amount = new Decimal(line.final_merchant_rate ?? 0)
     totalDue = totalDue.plus(amount)
 
-    const carrierKey = line.carrier_code ?? 'Unknown'
+    // carrier_code + carrier_account_mode both live on org_carrier_accounts.
+    const carrierKey = line.org_carrier_accounts?.carrier_code ?? 'UNKNOWN'
     const carrierEntry = byCarrier.get(carrierKey)
     if (carrierEntry) {
       carrierEntry.shipments += 1
