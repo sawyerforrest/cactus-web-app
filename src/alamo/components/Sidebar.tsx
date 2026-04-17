@@ -7,24 +7,36 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Building2,
+  ArrowLeftRight,
+  Tag,
+  FileText,
+  Flag,
+  Gauge,
+  BarChart2,
+  ScrollText,
+  LogOut,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { CactusLogo } from '@/components/CactusLogo'
 
 const navItems = {
   workspace: [
-    { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Organizations', href: '/orgs' },
-    { label: 'Carrier Accounts', href: '/carriers' },
-    { label: 'Rate Cards', href: '/rate-cards' },
+    { label: 'Dashboard', href: '/dashboard', Icon: LayoutDashboard },
+    { label: 'Organizations', href: '/orgs', Icon: Building2 },
+    { label: 'Carrier Accounts', href: '/carriers', Icon: ArrowLeftRight },
+    { label: 'Rate Cards', href: '/rate-cards', Icon: Tag },
   ],
   billing: [
-    { label: 'Invoices', href: '/invoices' },
-    { label: 'Disputes', href: '/disputes' },
-    { label: 'Meter Health', href: '/meters' },
+    { label: 'Invoices', href: '/invoices', Icon: FileText },
+    { label: 'Disputes', href: '/disputes', Icon: Flag },
+    { label: 'Meter Health', href: '/meters', Icon: Gauge },
   ],
   tools: [
-    { label: 'PLD/Rate Analysis', href: '/pld' },
-    { label: 'Audit Log', href: '/audit' },
+    { label: 'PLD/Rate Analysis', href: '/pld', Icon: BarChart2 },
+    { label: 'Audit Log', href: '/audit', Icon: ScrollText },
   ],
 }
 
@@ -48,9 +60,11 @@ export default function Sidebar() {
       }}>{title}</div>
       {items.map(item => {
         const active = pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')
+        const Icon = item.Icon
         return (
           <a key={item.label} href={item.href} style={{
             display: 'flex', alignItems: 'center',
+            gap: 10,
             padding: '6px 12px',
             fontSize: 13,
             borderLeft: active
@@ -63,6 +77,7 @@ export default function Sidebar() {
             textDecoration: 'none',
             transition: 'color 0.1s, border-color 0.1s',
           }}>
+            <Icon size={16} />
             {item.label}
           </a>
         )
@@ -174,11 +189,7 @@ export default function Sidebar() {
             e.currentTarget.style.color = 'var(--cactus-muted)'
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <path d="M9 9l3-3-3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 6.5H5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
+          <LogOut size={16} />
           Sign out
         </button>
       </div>
