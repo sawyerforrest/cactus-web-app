@@ -347,11 +347,11 @@ Never update shipment status. Always append new event rows.
 - `match_status_enum`: AUTO_MATCHED, FLAGGED, MANUAL_ASSIGNED
 - `billing_status_enum`: PENDING, HELD, APPROVED, INVOICED
 - `org_type_enum`: 3PL, MERCHANT, SUB_CLIENT
-- `invoice_status_enum`: UNPAID, PAID, FAILED, VOID
+- `invoice_status_enum`: UNPAID, PULLED, PAID, FAILED, VOID, OVERDUE
 - `carrier_code_enum`: UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX, DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM
 - `shipment_event_type_enum`: RATE_REQUESTED, LABEL_CREATED, LABEL_VOIDED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERY_ATTEMPTED, DELIVERED, RETURNED_TO_SENDER, LOST, EXCEPTION, APV_ADJUSTMENT, ADDRESS_CORRECTED, DAMAGED
 - `portal_role_enum`: ADMIN, FINANCE, STANDARD
-- `notification_type_enum`: METER_RELOAD, INVOICE_READY, TRACKING_LABEL_STALE, PAYMENT_FAILED
+- `notification_type_enum`: METER_RELOAD, INVOICE_READY, TRACKING_STATUS_ALERTS, PAYMENT_FAILED
 
 ---
 
@@ -673,6 +673,36 @@ Never update shipment status. Always append new event rows.
         (head:true with admin client silently returns null count)
       - Parallel fetch of invoices + approved count
 
+- [x] Stage 5: PDF summary generator — complete
+      - FILE: src/alamo/app/invoices/[id]/actions/pdf.ts
+      - API route: src/alamo/app/api/invoices/[id]/pdf/route.ts
+      - Client button: src/alamo/app/invoices/[id]/DownloadPDFButton.tsx
+      - Renders on invoice detail page when a cactus_invoice exists
+      - pdfkit used for generation (serverExternalPackages: ['pdfkit'] in next.config.ts)
+      - Logo: SVG converted to PNG via sharp, stored at public/cactus-logo-pdf.png
+      - LAYOUT constants object at top of file — all geometry in one place
+      - Header: logo + INVOICE wordmark | BILLED TO | FROM (Cactus address) | invoice meta
+      - Cactus address: 1956 N 1450 E, Provo, Utah 84604 | (801) 669-1157 | billing@cactus-logistics.com
+      - Invoice meta: INVOICE NO (first 8 chars), INVOICE PERIOD (start/end collapsed if same date), DUE DATE (forest green bold)
+      - Summary by carrier: shipments + amount per carrier_code
+      - Summary by origin location: capped at 12 rows, "+ N more — see CSV" overflow line
+      - Display rules enforced: lassoed = final_merchant_rate only, dark = carrier_charge + final_merchant_rate
+      - Total Due row: total shipments count left, total amount right in forest green 18pt
+      - Payment instruction: "Payment will be automatically collected on the due date via your payment method on file."
+      - Values footer: Gratitude · Curiosity · Faith · Creation (middle dot separator — → arrow breaks pdfkit font encoding)
+      - Footer: Cactus Logistics LLC | cactus-logistics.com | Generated [date]
+      - Dynamic row height compression when many locations — min 12pt floor
+      - autoFirstPage: false to prevent pdfkit auto-pagination
+      - Footer pinned to absolute Y position — never flows off page
+
+- [x] Alamo sidebar icons — complete
+      - lucide-react installed in src/alamo/package.json
+      - Icons added to all 10 nav items: LayoutDashboard, Building2, ArrowLeftRight, Tag, FileText, Flag, Gauge, BarChart2, ScrollText, LogOut
+      - 16px size, inherits active/inactive color from existing nav styles
+      - Section group labels (WORKSPACE, BILLING, TOOLS) intentionally left without icons
+      - Sign Out inline SVG replaced with Lucide LogOut icon
+      - "—— Alamo ——" divider below logo replaces stallion horse icons
+
 ### Pending Phase 0 items
 - [x] EIN received
 - [x] Mercury business bank account — applied (pending approval)
@@ -686,28 +716,20 @@ Never update shipment status. Always append new event rows.
 - [ ] Create Stripe account under LLC — needed before first real invoice is due
 - [ ] QuickBooks Online account — needed for Stage 5+ invoice sync
 - [ ] Warehance API partnership conversation — initiate before leaving BukuShip
-- [ ] Configure Formspree form ID in cactus-marketing/index.html
+- [x] Configure Formspree form ID in cactus-marketing/index.html — live and working
 
 ### Next task — START HERE next session
-Stage 5 continued: PDF + CSV + Portal foundation
+Stage 5 Step 8: CSV export
 
-  STEP 7: Build PDF summary generator
-    FILE: src/alamo/app/invoices/[id]/actions/pdf.ts
-    One-page PDF per cactus_invoice:
-      - Total amount due + total shipments
-      - Breakdown by carrier (shipments + amount)
-      - Breakdown by origin location via match_location_id → locations.name
-      - lassoed lines: show final_merchant_rate only
-      - dark lines: show carrier_charge + final_merchant_rate
-      - Never show carrier_charge or markup on lassoed lines
-
-  STEP 8: Build CSV export
-    Full line item detail, same display rules as PDF
-
-  STEP 9: Start Cactus Portal (Stage 9)
-    Client-facing dashboard
-    Auth: separate from Alamo auth
-    Views: shipments, invoices, tracking, meter balance
+  FILE: src/alamo/app/invoices/[id]/actions/csv.ts
+  Full line item detail export per cactus_invoice
+  Same display rules as PDF:
+    lassoed lines → final_merchant_rate only, never carrier_charge
+    dark lines → carrier_charge + final_merchant_rate
+  Columns: tracking number, carrier, service level, date shipped,
+           origin location, weight, zone, final amount (+ carrier charge if dark)
+  Client button: DownloadCSVButton.tsx alongside existing DownloadPDFButton
+  API route: src/alamo/app/api/invoices/[id]/csv/route.ts
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -839,6 +861,25 @@ Stage 5 continued: PDF + CSV + Portal foundation
 - ON DELETE CASCADE on cactus_invoice_line_items — deleting cactus_invoices cascades junction cleanup
 - hasApproved billing lock: button disabled when zero APPROVED lines remain
 - Claude Code worktree changes must be cherry-picked to main before dev server picks them up
+- Payment pull always happens before carrier payment — collect Friday, pay carrier Tuesday
+- 3% CC fee is always a visible separate line item, never hidden, waivable per org via Alamo toggle
+- USPS meter balances are client liabilities held by Cactus — not Cactus revenue until consumed
+- Disputes never delay a billing pull — pull APPROVED lines, carry disputes to next cycle
+- Invoice email: HTML summary embedded in body, no attachments, portal link for full detail
+- stripe_customer_id lives on organizations — one Stripe customer per Cactus org
+- Warehance requires 4 Cactus API endpoints: rating, purchase label, void/cancel, tracking
+- API key auth required for all WMS endpoints — key generated per org in Alamo, stored hashed
+- Carrier API integration priority: 1.UPS 2.DHL eCommerce 3.UniUni 4.GOFO 5.FedEx 6.USPS
+- UniUni and GOFO remain dark accounts until label purchase API agreements are signed
+- Lassoed requires BOTH rate API AND label purchase API — rate cards alone do not qualify
+- pdfkit requires serverExternalPackages: ['pdfkit'] in next.config.ts — Next.js bundler strips .afm font files otherwise
+- PDF uses autoFirstPage: false + manual addPage() to prevent implicit pagination
+- Footer pinned to absolute Y — never use doc.y for footer, always absolute coordinates
+- → arrow character breaks pdfkit WinAnsi font encoding — use middle dot · (U+00B7) as separator instead
+- PDF LAYOUT constants object centralizes all geometry — edit spacing in one place not scattered through file
+- PDF location rows capped at 12 with overflow line — PDF is summary only, CSV has full detail
+- sharp used one-time to convert cactus-logo.svg → cactus-logo-pdf.png at 400px wide
+- process.cwd() resolves to src/alamo/ when dev server launched from that directory
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
@@ -853,6 +894,10 @@ Stage 5 continued: PDF + CSV + Portal foundation
 - UPS Developer Portal: still blocked — call 1-800-782-7892, email apisupport@ups.com
 - carrier_charge_routing needs GRANT ALL to service_role on new deployments
 - carrier_invoice_formats needs GRANT ALL to service_role on new deployments
+- Warehance tracking: does Warehance poll Cactus or does Cactus push via webhook?
+- API key auth: confirm Warehance expects Bearer token or custom header format
+- Stripe vs Fortis: final payment processor decision needed before Phase 2 payment build
+- USPS: direct PC Postage vs licensed reseller path (Stamps.com etc.) — decision needed Phase 2
 
 ---
 
@@ -862,17 +907,52 @@ Stage 5 continued: PDF + CSV + Portal foundation
 |---|---|
 | Utah LLC | ✅ Cactus Logistics LLC |
 | EIN | ✅ Received |
-| Business bank account | ⏳ After EIN (Mercury) |
-| Business credit card | ⏳ After LLC + EIN |
-| Stripe account | ⏳ After LLC |
-| Attorney consult | ⏳ Schedule this week |
+| Utah DBA "Cactus" | ✅ Filed with state |
+| Utah TAP account | ✅ Opened at tap.tax.utah.gov |
+| Mercury bank account | ⏳ Applied — pending approval |
+| Chase Ink Preferred | ⏳ Applied — pending approval |
+| Stripe account | ⏳ Needed before first real invoice is due |
+| QuickBooks Online | ⏳ Needed for Stage 5+ invoice sync |
+| Attorney consult | ⏳ Book immediately — before first client signs |
 | FedEx developer account | ✅ Integrator ID: 70157774 |
-| UPS developer account | ⏳ Pending 24hr approval |
+| UPS developer account | ⏳ Blocked — call 1-800-782-7892 |
 
 ---
 
-## 14. GITHUB REPOSITORY
-https://github.com/sawyerforrest/cactus-web-app
+## 14. PROJECT STRUCTURE
+
+### Active Repositories
+```
+cactus_dev/
+  cactus-web-app/      ← Main Cactus OS (this repo)
+  cactus-marketing/    ← Marketing website (github.com/sawyerforrest/cactus-marketing)
+```
+
+### cactus-web-app folder structure
+```
+cactus-web-app/
+  src/
+    alamo/             ← Next.js 16.2.1 internal admin dashboard
+    portal/            ← Client-facing Cactus Portal (Phase 1)
+    lib/               ← Shared Supabase clients
+    core/              ← Rating, billing, normalization, AI
+    adapters/          ← Carrier API adapters
+  database/            ← database-setup.sql, seed-data.sql, verify-data.sql
+  docs/                ← Carrier API documentation
+    amazon-shipping/
+    dhl-ecommerce/
+    dhl-express/
+    fedex/
+    gofo/
+    landmark-global/
+    uniuni/
+    ups/
+    usps/
+```
+
+### GitHub
+- Main OS: https://github.com/sawyerforrest/cactus-web-app
+- Marketing: https://github.com/sawyerforrest/cactus-marketing
 
 ---
 
@@ -1167,3 +1247,180 @@ FUTURE — 3PL Billing Module (Phase 2)
     organizations.parent_org_id for sub-clients
     org_type_enum includes SUB_CLIENT
     Portal billing module needs UI layer only
+
+---
+
+## 20. PAYMENT ARCHITECTURE
+
+### USPS — Pre-funded Meter Wallet
+Client funds a USPS meter balance with Cactus via ACH or CC.
+Cactus holds these funds in Mercury and manages the USPS PC Postage
+account on the client's behalf.
+
+Auto-reload flow:
+  Client sets minimum balance threshold in Cactus Portal
+  Client sets reload amount (Cactus recommends 2-3 days typical spend)
+  Client sets payment method: ACH (free) or CC (+3% fee passed through)
+  When meter balance hits threshold:
+    → Auto-reload triggers via Stripe
+    → ACH pull (free) or CC charge (+3% fee)
+    → Funds clear in Mercury (2-3 business day ACH window)
+    → Meter balance updated in Cactus
+    → METER_RELOAD notification sent to client (ADMIN + FINANCE roles)
+
+USPS PC Postage Provider connection required for Phase 2.
+Enables Cactus to generate USPS labels directly as a reseller.
+
+### All Other Carriers — Weekly Pull Cycle
+Target carrier terms: NET 10. Prepare for NET 10, not NET 30.
+
+Weekly cycle:
+  Mon–Wed: Carrier invoices arrive for previous week's shipments
+           Upload to Alamo → Parse → Match → Disputes → Approve
+           Run Weekly Billing → Client invoices generated
+           Automated email sent: HTML summary + portal link
+           Client invoices live in Portal for review
+
+  Friday:  Stripe auto-pull fires (fixed day, fixed time weekly)
+           ACH debit (free) or CC charge (+3% if CC, unless waived)
+           Funds land in Mercury (ACH: 2-3 business days)
+
+  Monday:  Funds cleared in Mercury
+
+  Tuesday: Pay carrier via ACH from Mercury (within NET 10 window)
+
+CRITICAL RULE: Always collect from clients BEFORE paying carriers.
+Never reverse this order under any circumstance.
+
+Dispute policy: Pull all APPROVED lines on Friday regardless of
+unresolved disputes. Disputed lines carry forward to next billing cycle.
+Never delay a pull for an entire org because of a subset of held lines.
+
+### 3% CC Fee Architecture
+On organizations table (migration v1.6.0):
+  payment_method: ACH | CC | ACH_PRIMARY_CC_BACKUP
+  cc_fee_waived: boolean default false
+  stripe_customer_id: TEXT
+
+On cactus_invoices table (migration v1.6.0):
+  payment_method_used: ACH | CC
+  cc_fee_applied: boolean
+  cc_fee_amount: DECIMAL(18,4)
+  cc_fee_percentage: DECIMAL(5,4) default 0.0300
+  paid_at: TIMESTAMPTZ
+  payment_reference: TEXT
+  stripe_payment_intent_id: TEXT
+
+Alamo toggle per org: cc_fee_waived = true/false without touching code.
+3% CC fee always appears as a separate visible line item on the invoice.
+Fee is never hidden. Never bundled into the subtotal.
+
+### Client Invoice Email Format
+Subject: Your Cactus invoice is ready — $X,XXX.XX due Friday
+
+Body:
+  HTML summary table embedded in email (no PDF/CSV attachments)
+  Carrier | Shipments | Amount (per carrier)
+  Subtotal
+  CC Fee 3% (if applicable — separate line)
+  Total Due
+  Due Date
+  [View full invoice in Cactus Portal →]
+  [Download PDF] [Download CSV] — links to Portal
+
+No attachments. Full detail in Portal only. Better deliverability.
+
+### Applications Required
+Stripe:
+  Stores client payment methods (ACH bank account + CC on file)
+  Executes weekly auto-pull on fixed schedule (Vercel Cron trigger)
+  Handles failed payments + automatic retries
+  Fires webhooks to Cactus on payment success/failure
+  stripe_customer_id stored on organizations
+
+Mercury:
+  Receives incoming Stripe settlements
+  Sends outgoing ACH to carriers
+  Recommended sub-accounts:
+    Operating — Cactus overhead and payroll
+    Carrier payables — funds earmarked for carrier payment
+    USPS float — pre-funded meter funds (client liabilities)
+
+Resend: weekly invoice email delivery (already in architecture)
+Supabase: invoice lifecycle + payment event tracking
+
+### Cash Flow Safety Rules
+1. Pull before you pay — collect Friday, pay carrier Tuesday
+2. Reserve policy — maintain Mercury balance >= one week of carrier payables
+3. Failed payment → OVERDUE status immediately, no grace period
+4. Disputes carried forward — never delay pull for unresolved lines
+5. USPS float discipline — meter balances are client liabilities, not revenue
+6. Never commingle USPS float with operating funds
+
+### New Table: payment_events (migration v1.6.0)
+  id: UUID PK
+  cactus_invoice_id: UUID FK → cactus_invoices
+  event_type: TEXT
+    (PULL_INITIATED, PULL_SUCCESS, PULL_FAILED, REFUND, DISPUTE, OVERDUE_FLAGGED)
+  stripe_event_id: TEXT
+  amount: DECIMAL(18,4)
+  created_at: TIMESTAMPTZ default now()
+  notes: TEXT
+
+### Phase 2 Build Items (Payment)
+- Stripe account setup + API integration
+- Weekly auto-pull Vercel Cron job
+- Failed payment + OVERDUE workflow + retry logic
+- USPS PC Postage Provider connection
+- CC fee logic wired into invoice generation
+- payment_events Stripe webhook handler
+- Invoice status lifecycle: UNPAID → PULLED → PAID → OVERDUE
+
+---
+
+## 21. WAREHANCE WMS INTEGRATION
+
+### Partnership Status
+Brennan (CEO, Warehance) confirmed open to working together.
+First target client: FulfillmentEZ (Warehance → Cactus by July 2026)
+
+### Four Endpoints Cactus Must Build for Warehance
+
+1. Rating endpoint — POST /api/rate
+   Input: org_id, origin, destination, weight, dimensions
+   Output: all available rates across all active carriers, marked up,
+           sorted cheapest first (final_merchant_rate ASC)
+   This is the Phase 1 rating engine core.
+
+2. Purchase label endpoint — POST /api/label
+   Input: org_id, selected rate token, shipment details
+   Output: tracking number, label PDF/ZPL
+   Cactus calls carrier API, purchases label, writes shipment_ledger row.
+   This is what makes an account LASSOED — Cactus sees the print event.
+
+3. Void/cancel endpoint — POST /api/label/void
+   Input: tracking number
+   Cactus calls carrier void API, updates shipment_ledger,
+   writes LABEL_VOIDED event to shipment_events.
+
+4. Tracking endpoint — GET /api/tracking/:trackingNumber
+   Input: tracking number(s)
+   Output: current status + event history
+   Cactus calls carrier tracking APIs, returns status,
+   writes to shipment_events.
+
+### Open Question — Tracking Delivery Method
+Does Warehance poll the tracking endpoint on demand, or does Cactus
+push tracking updates via webhook? Must confirm with Brennan before
+building Stage 7 tracking integration.
+
+### API Key Authentication (required for all 4 endpoints)
+Generate API key per org in The Alamo.
+Store hashed in organizations table.
+Validate on every inbound Warehance request.
+Schema addition needed: organizations.api_key_hash TEXT
+
+### Build Sequence
+Stage 6: Rating engine core → /api/rate endpoint
+Stage 7: UPS + FedEx API integrations (power all 4 endpoints)
+Stage 8: Warehance WMS integration (wire to all 4 endpoints)

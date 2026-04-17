@@ -109,23 +109,22 @@ export default function Sidebar() {
       }}>
         <CactusLogo width={160} />
         <div style={{
+          width: 'calc(100% + 12px)',
+          marginLeft: -6,
+          marginRight: -6,
+          marginTop: 2,
           display: 'flex',
           alignItems: 'center',
-          gap: 5,
-          marginTop: 2,
+          gap: 8,
+          fontSize: 10,
+          fontWeight: 600,
+          color: '#2D5A27',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
         }}>
-          <div style={{
-            fontSize: 10,
-            fontWeight: 500,
-            color: 'var(--cactus-forest)',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-          }}>
-            the alamo
-          </div>
-          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
-          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
-          <img src="/stallion_brown.png" alt="" style={{ width: 22, height: 14, objectFit: 'contain' }}/>
+          <span style={{ flex: 1, height: 1, background: '#2D5A27' }} />
+          Alamo
+          <span style={{ flex: 1, height: 1, background: '#2D5A27' }} />
         </div>
       </div>
 
