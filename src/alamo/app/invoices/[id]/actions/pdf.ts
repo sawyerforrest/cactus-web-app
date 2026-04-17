@@ -13,15 +13,17 @@
 //   so neither mode ever exposes carrier_charge.
 //
 // Single-page guarantee:
-//   - autoFirstPage: false + explicit addPage() kills pdfkit's
-//     implicit first page so we control when pages exist.
-//   - Row height is computed up front from row counts so body
-//     content provably fits between the meta divider and the
-//     pinned footer Y. If it still wouldn't fit, row height is
-//     clamped to 12pt (minimum readable) and the location font
-//     drops to 9pt when there are many locations.
-//   - Every text() call passes an explicit (x, y) plus
-//     lineBreak:false, so pdfkit can't auto-paginate via wrap.
+//   - autoFirstPage:false + explicit addPage() so pdfkit can't
+//     create an implicit first page with different state.
+//   - Row height is computed up front from row counts and falls
+//     back to LAYOUT.rowHeight when content fits easily; if not,
+//     it compresses with a 12pt floor and the location font
+//     shrinks to 9pt when the list is dense.
+//   - The location section is capped at LAYOUT.maxLocationRows
+//     with an overflow line pointing at the CSV export.
+//   - Footer is pinned to absolute Y coords inside the bottom
+//     margin, and every text() call passes explicit (x, y) plus
+//     lineBreak:false so pdfkit can't auto-paginate via wrap.
 //
 // All money math uses decimal.js — no floats.
 // =============================================================
@@ -40,17 +42,40 @@ const COLOR_ROW_SEP = '#F0EEE9'
 
 const LOGO_ASPECT = 923.18 / 475.16
 
-// Page geometry
-const PAGE_HEIGHT = 792
-const PAGE_WIDTH = 612
-const MARGIN = 60
-const USABLE_HEIGHT = PAGE_HEIGHT - MARGIN * 2 // 672
+const LAYOUT = {
+  margin: 60,
+  pageWidth: 612,
+  pageHeight: 792,
+  logoWidth: 180,
+  logoY: 45,
+  headerY: 45,
+  sectionGap: 28,
+  rowHeight: 20,
+  rowFontSize: 10,
+  labelFontSize: 8,
+  valueFontSize: 11,
+  maxLocationRows: 12,
+  footerValuesY: 700,
+  footerCreditY: 718,
+  bodyEndY: 686,
+  col1X: 60,   // left column start
+  col2X: 320,  // right column start
+  col3X: 440,  // shipments column
+  col4X: 540,  // amount column (right-aligned edge)
+} as const
 
-// Footer — pinned absolute, sized to stay inside the bottom margin
-// so pdfkit never triggers implicit pagination.
-const FOOTER_CREDIT_Y = PAGE_HEIGHT - MARGIN - 14 // 718
-const FOOTER_VALUES_Y = FOOTER_CREDIT_Y - 18      // 700
-const BODY_END_Y = FOOTER_VALUES_Y - 14           // 686 — hard ceiling for the last row
+// Cactus "from" block — hardcoded on the invoice since Cactus is
+// always the issuer. If this ever needs to vary per-environment,
+// pull it from env or a settings table.
+const CACTUS_FROM = {
+  name: 'Cactus Logistics LLC',
+  lines: [
+    '1956 N 1450 E',
+    'Provo, Utah 84604',
+    '(801) 669-1157',
+    'billing@cactus-logistics.com',
+  ],
+}
 
 type SummaryRow = { key: string; shipments: number; amount: Decimal }
 
@@ -75,7 +100,18 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     .from('cactus_invoices')
     .select(`
       *,
-      organizations ( name, terms_days )
+      organizations (
+        name,
+        terms_days,
+        locations (
+          address_line1,
+          address_line2,
+          city,
+          state,
+          postal_code,
+          is_billing_address
+        )
+      )
     `)
     .eq('id', cactusInvoiceId)
     .single()
@@ -113,6 +149,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   const byCarrier = new Map<string, SummaryRow>()
   const byLocation = new Map<string, SummaryRow>()
   let totalDue = new Decimal(0)
+  let totalShipments = 0
 
   for (const row of lineItems ?? []) {
     const line = row.invoice_line_items as any
@@ -120,6 +157,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
     const amount = new Decimal(line.final_merchant_rate ?? 0)
     totalDue = totalDue.plus(amount)
+    totalShipments += 1
 
     const carrierKey = line.org_carrier_accounts?.carrier_code ?? 'UNKNOWN'
     const carrierEntry = byCarrier.get(carrierKey)
@@ -141,36 +179,67 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   }
 
   const carrierRows = [...byCarrier.values()].sort((a, b) => b.amount.cmp(a.amount))
-  const locationRows = [...byLocation.values()].sort((a, b) => b.amount.cmp(a.amount))
+  const locationRowsAll = [...byLocation.values()].sort((a, b) => b.amount.cmp(a.amount))
+
+  // Cap at maxLocationRows; remainder gets an overflow line at the bottom.
+  const locationRows = locationRowsAll.slice(0, LAYOUT.maxLocationRows)
+  const overflowLocations = Math.max(0, locationRowsAll.length - LAYOUT.maxLocationRows)
 
   const org = (invoice as any).organizations
   const orgName: string = org?.name ?? 'Unknown Org'
   const shortId = cactusInvoiceId.slice(0, 8).toUpperCase()
+
+  // Pick the billing address (fall back to the first location so we
+  // still render *something* when nobody flagged a billing address).
+  const orgLocations: any[] = Array.isArray(org?.locations) ? org.locations : []
+  const billingLocation =
+    orgLocations.find(l => l?.is_billing_address) ??
+    orgLocations[0] ??
+    null
+
+  const cityStatePostal = billingLocation
+    ? [
+        billingLocation.city,
+        [billingLocation.state, billingLocation.postal_code]
+          .filter((s: unknown) => typeof s === 'string' && s.trim().length > 0)
+          .join(' '),
+      ]
+        .filter((s) => typeof s === 'string' && s.trim().length > 0)
+        .join(', ')
+    : ''
+
+  const billingAddress: string[] = billingLocation
+    ? [
+        billingLocation.address_line1,
+        billingLocation.address_line2,
+        cityStatePostal,
+      ].filter((line: unknown) => typeof line === 'string' && line.trim().length > 0)
+    : []
 
   // =============================================================
   // FIT CALCULATION — compress row height when we have many rows
   // =============================================================
 
   const totalRows = carrierRows.length + locationRows.length
-  const headerHeight = 120
+  const headerHeight = 220 // logo + billed-to + right column all in
   const totalDueHeight = 60
   const footerHeight = 60
-  const sectionChrome = 120 // 2 headings + 2 col-header rows + dividers
+  const sectionChrome = 120
+  const usableHeight = LAYOUT.pageHeight - LAYOUT.margin * 2
   const needed =
-    headerHeight + totalRows * 20 + sectionChrome + totalDueHeight + footerHeight
+    headerHeight + totalRows * LAYOUT.rowHeight + sectionChrome + totalDueHeight + footerHeight
 
-  const rowHeight = needed > USABLE_HEIGHT
+  const rowHeight = needed > usableHeight
     ? Math.max(
         12,
         Math.floor(
-          (USABLE_HEIGHT - headerHeight - totalDueHeight - footerHeight - 120) /
+          (usableHeight - headerHeight - totalDueHeight - footerHeight - sectionChrome) /
             Math.max(1, totalRows),
         ),
       )
-    : 20
+    : LAYOUT.rowHeight
 
-  // Drop location font when the list gets dense
-  const locationFontSize = locationRows.length > 12 ? 9 : 11
+  const locationFontSize = locationRows.length > LAYOUT.maxLocationRows - 1 ? 9 : 11
 
   // =============================================================
   // RENDER PDF
@@ -181,9 +250,9 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
   const doc = new PDFDocument({
     size: 'LETTER',
-    margin: MARGIN,
+    margin: LAYOUT.margin,
     autoFirstPage: false,
-    info: { Title: 'Cactus Invoice', Author: 'Cactus Logistics LLC' },
+    info: { Title: 'Cactus Invoice', Author: CACTUS_FROM.name },
   })
   doc.addPage()
 
@@ -194,85 +263,142 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     doc.on('error', reject)
   })
 
-  const pageLeft = MARGIN
-  const pageRight = PAGE_WIDTH - MARGIN
-  const contentWidth = pageRight - pageLeft
+  const pageRight = LAYOUT.pageWidth - LAYOUT.margin
+  const contentWidth = pageRight - LAYOUT.margin
 
   const drawDivider = (y: number, color = COLOR_DIVIDER, weight = 0.5) => {
-    doc.moveTo(pageLeft, y).lineTo(pageRight, y)
+    doc.moveTo(LAYOUT.col1X, y).lineTo(pageRight, y)
       .strokeColor(color).lineWidth(weight).stroke()
   }
 
-  // -------- HEADER --------
-  const logoW = 180
-  const logoY = 45
-  const logoH = logoW / LOGO_ASPECT
-  const logoCenter = logoY + logoH / 2
+  // -------- HEADER — two columns + floating INVOICE wordmark -----
 
-  doc.image(logoBuffer, pageLeft, logoY, { width: logoW })
+  // Left column: logo
+  const logoH = LAYOUT.logoWidth / LOGO_ASPECT
+  doc.image(logoBuffer, LAYOUT.col1X, LAYOUT.logoY, { width: LAYOUT.logoWidth })
+  const leftAfterLogoY = LAYOUT.logoY + logoH
 
+  // "INVOICE" wordmark — top-right, aligned with logo top
   const invoiceFontSize = 42
-  const invoiceTopY = logoCenter - invoiceFontSize * 0.52
   doc.font('Helvetica-Bold').fontSize(invoiceFontSize).fillColor(COLOR_INK)
-    .text('INVOICE', pageLeft, invoiceTopY, {
+    .text('INVOICE', LAYOUT.col1X, LAYOUT.headerY, {
       width: contentWidth, align: 'right', lineBreak: false,
     })
+  const invoiceWordBottom = LAYOUT.headerY + invoiceFontSize
 
-  let cursorY = Math.max(logoY + logoH, invoiceTopY + invoiceFontSize) + 16
-  drawDivider(cursorY)
-  cursorY += 28
-
-  // -------- INVOICE META (two columns) --------
+  // Left column continued: BILLED TO block (below the logo)
   const LABEL_SPACING = 0.8
-  const setLabel = () => doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
-  const setValue = () => doc.font('Helvetica').fontSize(11).fillColor(COLOR_INK)
+  let leftY = leftAfterLogoY + 14
 
-  const leftColX = pageLeft
-  const rightColX = pageLeft + Math.floor(contentWidth * 0.55)
-
-  setLabel().text('BILLED TO', leftColX, cursorY, {
-    lineBreak: false, characterSpacing: LABEL_SPACING,
-  })
-  setValue().text(orgName, leftColX, cursorY + 14, {
-    width: rightColX - leftColX - 20, lineBreak: false, ellipsis: true,
-  })
-
-  const rightPairs: [string, string][] = [
-    ['INVOICE NO', shortId],
-    ['DATE', formatDate((invoice as any).billing_period_start)],
-    ['DUE DATE', formatDate((invoice as any).due_date)],
-  ]
-
-  const pairGap = 30
-  rightPairs.forEach(([label, value], i) => {
-    const y = cursorY + i * pairGap
-    setLabel().text(label, rightColX, y, {
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
+    .text('BILLED TO', LAYOUT.col1X, leftY, {
       lineBreak: false, characterSpacing: LABEL_SPACING,
     })
-    setValue().text(value, rightColX, y + 14, {
-      width: pageRight - rightColX, lineBreak: false,
-    })
-  })
+  leftY += 14
 
-  cursorY += rightPairs.length * pairGap + 6
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(COLOR_INK)
+    .text(orgName, LAYOUT.col1X, leftY, {
+      width: LAYOUT.col2X - LAYOUT.col1X - 20, lineBreak: false, ellipsis: true,
+    })
+  leftY += 16
+
+  for (const line of billingAddress) {
+    doc.font('Helvetica').fontSize(10).fillColor(COLOR_INK)
+      .text(line, LAYOUT.col1X, leftY, {
+        width: LAYOUT.col2X - LAYOUT.col1X - 20, lineBreak: false, ellipsis: true,
+      })
+    leftY += 13
+  }
+
+  // Right column: Cactus "from" + invoice meta (starts below INVOICE wordmark)
+  const rightColWidth = pageRight - LAYOUT.col2X
+  let rightY = invoiceWordBottom + 10
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(COLOR_INK)
+    .text(CACTUS_FROM.name, LAYOUT.col2X, rightY, {
+      width: rightColWidth, lineBreak: false,
+    })
+  rightY += 14
+
+  for (const line of CACTUS_FROM.lines) {
+    doc.font('Helvetica').fontSize(9).fillColor(COLOR_MUTED)
+      .text(line, LAYOUT.col2X, rightY, {
+        width: rightColWidth, lineBreak: false,
+      })
+    rightY += 12
+  }
+
+  rightY += 10 // gap before invoice meta
+
+  const metaPairs: Array<{
+    label: string
+    value: string
+    valueFontSize: number
+    valueFont: string
+    valueColor: string
+  }> = [
+    {
+      label: 'INVOICE NO',
+      value: shortId,
+      valueFontSize: 11,
+      valueFont: 'Helvetica',
+      valueColor: COLOR_INK,
+    },
+    {
+      label: 'DATE',
+      value: `${formatDate((invoice as any).billing_period_start)} – ${formatDate((invoice as any).billing_period_end)}`,
+      valueFontSize: 10,
+      valueFont: 'Helvetica',
+      valueColor: COLOR_INK,
+    },
+    {
+      label: 'DUE DATE',
+      value: formatDate((invoice as any).due_date),
+      valueFontSize: 11,
+      valueFont: 'Helvetica-Bold',
+      valueColor: COLOR_FOREST,
+    },
+  ]
+
+  for (const pair of metaPairs) {
+    doc.font('Helvetica-Bold').fontSize(LAYOUT.labelFontSize).fillColor(COLOR_MUTED)
+      .text(pair.label, LAYOUT.col2X, rightY, {
+        lineBreak: false, characterSpacing: LABEL_SPACING,
+      })
+    rightY += 10
+    doc.font(pair.valueFont).fontSize(pair.valueFontSize).fillColor(pair.valueColor)
+      .text(pair.value, LAYOUT.col2X, rightY, {
+        width: rightColWidth, lineBreak: false,
+      })
+    rightY += pair.valueFontSize + 6
+  }
+
+  // Header closes at whichever column ended lower, plus a breathing gap.
+  let cursorY = Math.max(leftY, rightY) + 10
   drawDivider(cursorY)
-  cursorY += 20
+  cursorY += LAYOUT.sectionGap
 
   // -------- SUMMARY SECTIONS --------
   const HEADING_SPACING = 1.2
-  const shipmentsColX = pageLeft + 300
 
   const sectionHeading = (title: string, y: number) => {
     doc.font('Helvetica-Bold').fontSize(10).fillColor(COLOR_FOREST)
-      .text(title, pageLeft, y, { lineBreak: false, characterSpacing: HEADING_SPACING })
+      .text(title, LAYOUT.col1X, y, { lineBreak: false, characterSpacing: HEADING_SPACING })
   }
 
   const columnHeaders = (firstLabel: string, y: number) => {
     doc.font('Helvetica-Bold').fontSize(9).fillColor(COLOR_MUTED)
-    doc.text(firstLabel, pageLeft, y, { lineBreak: false, characterSpacing: LABEL_SPACING })
-    doc.text('SHIPMENTS', shipmentsColX, y, { lineBreak: false, characterSpacing: LABEL_SPACING })
-    doc.text('AMOUNT', pageLeft, y, {
-      width: contentWidth, align: 'right', lineBreak: false, characterSpacing: LABEL_SPACING,
+    doc.text(firstLabel, LAYOUT.col1X, y, {
+      lineBreak: false, characterSpacing: LABEL_SPACING,
+    })
+    doc.text('SHIPMENTS', LAYOUT.col3X, y, {
+      lineBreak: false, characterSpacing: LABEL_SPACING,
+    })
+    doc.text('AMOUNT', LAYOUT.col1X, y, {
+      width: LAYOUT.col4X - LAYOUT.col1X,
+      align: 'right',
+      lineBreak: false,
+      characterSpacing: LABEL_SPACING,
     })
   }
 
@@ -284,12 +410,12 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     fontSize: number,
   ) => {
     doc.font('Helvetica').fontSize(fontSize).fillColor(COLOR_INK)
-    doc.text(label, pageLeft, y, {
-      width: shipmentsColX - pageLeft - 10, lineBreak: false, ellipsis: true,
+    doc.text(label, LAYOUT.col1X, y, {
+      width: LAYOUT.col3X - LAYOUT.col1X - 10, lineBreak: false, ellipsis: true,
     })
-    doc.text(String(shipments), shipmentsColX, y, { lineBreak: false })
-    doc.text(formatMoney(amount), pageLeft, y, {
-      width: contentWidth, align: 'right', lineBreak: false,
+    doc.text(String(shipments), LAYOUT.col3X, y, { lineBreak: false })
+    doc.text(formatMoney(amount), LAYOUT.col1X, y, {
+      width: LAYOUT.col4X - LAYOUT.col1X, align: 'right', lineBreak: false,
     })
   }
 
@@ -306,16 +432,13 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     y += 18
 
     if (rows.length === 0) {
-      doc.font('Helvetica').fontSize(10).fillColor(COLOR_MUTED)
-        .text('—', pageLeft, y, { lineBreak: false })
+      doc.font('Helvetica').fontSize(LAYOUT.rowFontSize).fillColor(COLOR_MUTED)
+        .text('—', LAYOUT.col1X, y, { lineBreak: false })
       return y + 16
     }
 
     for (const row of rows) {
-      // Hard ceiling — never render a row past BODY_END_Y even if the
-      // row-height math underestimated. Extras are dropped silently
-      // rather than spilling onto a second page.
-      if (y + fontSize > BODY_END_Y) break
+      if (y + fontSize > LAYOUT.bodyEndY) break
       drawDivider(y - 3, COLOR_ROW_SEP, 0.5)
       dataRow(row.key, row.shipments, row.amount, y, fontSize)
       y += rowHeight
@@ -335,24 +458,55 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     cursorY,
     locationFontSize,
   )
+
+  // Location overflow line — sits under the table when we truncated.
+  if (overflowLocations > 0 && cursorY + 14 <= LAYOUT.bodyEndY) {
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor(COLOR_MUTED)
+      .text(
+        `+ ${overflowLocations} more location${overflowLocations > 1 ? 's' : ''} — see full detail in CSV export`,
+        LAYOUT.col1X, cursorY + 4,
+        { lineBreak: false },
+      )
+    cursorY += 16
+  }
+
   cursorY += 6
   drawDivider(cursorY)
   cursorY += 18
 
-  // -------- TOTAL DUE --------
+  // -------- TOTAL DUE — Total Shipments (left) + TOTAL DUE (right) -----
   const totalY = cursorY
+  doc.font('Helvetica').fontSize(10).fillColor(COLOR_MUTED)
+    .text(
+      `Total Shipments: ${totalShipments.toLocaleString('en-US')}`,
+      LAYOUT.col1X, totalY + 8,
+      { lineBreak: false },
+    )
   doc.font('Helvetica-Bold').fontSize(12).fillColor(COLOR_FOREST)
-    .text('TOTAL DUE', pageLeft, totalY + 4, {
-      lineBreak: false, characterSpacing: HEADING_SPACING,
+    .text('TOTAL DUE', LAYOUT.col1X, totalY + 6, {
+      width: LAYOUT.col4X - LAYOUT.col1X - 110,
+      align: 'right',
+      lineBreak: false,
+      characterSpacing: HEADING_SPACING,
     })
   doc.font('Helvetica-Bold').fontSize(18).fillColor(COLOR_FOREST)
-    .text(formatMoney(totalDue), pageLeft, totalY, {
-      width: contentWidth, align: 'right', lineBreak: false,
+    .text(formatMoney(totalDue), LAYOUT.col1X, totalY, {
+      width: LAYOUT.col4X - LAYOUT.col1X, align: 'right', lineBreak: false,
     })
   cursorY += 30
   drawDivider(cursorY)
 
   // -------- FOOTER — pinned absolute, always one page --------
+
+  // Payment instruction — sits above the values strip.
+  doc.font('Helvetica-Oblique').fontSize(8).fillColor(COLOR_MUTED)
+    .text(
+      'Payment will be automatically collected on the due date via your payment method on file.',
+      LAYOUT.margin,
+      LAYOUT.footerValuesY - 20,
+      { width: contentWidth, align: 'center', lineBreak: false },
+    )
+
   const values = [
     { word: 'Gratitude', desc: 'for people' },
     { word: 'Curiosity', desc: 'for innovation' },
@@ -373,21 +527,21 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     descWidths.reduce((s, w) => s + w, 0) +
     arrowW * (values.length - 1)
 
-  let x = pageLeft + (contentWidth - totalW) / 2
+  let x = LAYOUT.col1X + (contentWidth - totalW) / 2
 
   for (let i = 0; i < values.length; i++) {
     const v = values[i]
     doc.font('Helvetica-Oblique').fontSize(9).fillColor(COLOR_FOREST)
-      .text(v.word, x, FOOTER_VALUES_Y, { lineBreak: false })
+      .text(v.word, x, LAYOUT.footerValuesY, { lineBreak: false })
     x += wordWidths[i]
 
     doc.font('Helvetica').fontSize(8).fillColor(COLOR_MUTED)
-      .text(SPACE + v.desc, x, FOOTER_VALUES_Y + 1, { lineBreak: false })
+      .text(SPACE + v.desc, x, LAYOUT.footerValuesY + 1, { lineBreak: false })
     x += descWidths[i]
 
     if (i < values.length - 1) {
       doc.font('Helvetica').fontSize(8).fillColor(COLOR_DIVIDER)
-        .text(ARROW, x, FOOTER_VALUES_Y + 1, { lineBreak: false })
+        .text(ARROW, x, LAYOUT.footerValuesY + 1, { lineBreak: false })
       x += arrowW
     }
   }
@@ -397,8 +551,8 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   })
   doc.font('Helvetica').fontSize(8).fillColor(COLOR_MUTED)
     .text(
-      `Cactus Logistics LLC  |  cactus-logistics.com  |  Generated ${generatedOn}`,
-      pageLeft, FOOTER_CREDIT_Y,
+      `${CACTUS_FROM.name}  |  cactus-logistics.com  |  Generated ${generatedOn}`,
+      LAYOUT.col1X, LAYOUT.footerCreditY,
       { width: contentWidth, align: 'center', lineBreak: false },
     )
 
