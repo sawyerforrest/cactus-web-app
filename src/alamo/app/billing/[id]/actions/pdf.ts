@@ -2,7 +2,7 @@
 
 // =============================================================
 // CACTUS INVOICE PDF — Stage 5
-// FILE: src/alamo/app/invoices/[id]/actions/pdf.ts
+// FILE: src/alamo/app/billing/[id]/actions/pdf.ts
 //
 // Generates a one-page PDF summary for a single cactus_invoice.
 //

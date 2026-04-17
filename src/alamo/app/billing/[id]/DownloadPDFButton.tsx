@@ -1,7 +1,7 @@
 'use client'
 
 // ==========================================================
-// FILE: src/alamo/app/invoices/[id]/DownloadPDFButton.tsx
+// FILE: src/alamo/app/billing/[id]/DownloadPDFButton.tsx
 // PURPOSE: Download the one-page PDF summary for a generated
 // cactus_invoice. Fetches the PDF from the API route, creates
 // an object URL, and triggers a browser download.
@@ -22,7 +22,7 @@ export default function DownloadPDFButton({ cactusInvoiceId }: DownloadPDFButton
     setError(null)
 
     try {
-      const res = await fetch(`/api/invoices/${cactusInvoiceId}/pdf`)
+      const res = await fetch(`/api/billing/${cactusInvoiceId}/pdf`)
       if (!res.ok) {
         throw new Error(`PDF generation failed (${res.status})`)
       }

@@ -9,7 +9,6 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import MatchButton from './MatchButton'
-import DownloadPDFButton from './DownloadPDFButton'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   UPLOADED:    { label: 'Uploaded',    color: 'var(--cactus-muted)',  bg: 'var(--cactus-sand)' },
@@ -78,19 +77,31 @@ export default async function InvoiceDetailPage({
   if (!invoice) redirect('/invoices')
 
   // WHY: Lookup whether any line item on this carrier invoice
-  // has been rolled into a cactus_invoice. If so, we show the
-  // "Download PDF" button. Uses maybeSingle() so brand-new
-  // carrier invoices (no billing run yet) don't throw.
+  // has been rolled into a cactus_invoice. If so, render a
+  // small breadcrumb-bar link pointing at /billing/{id}. We
+  // also pull the org name and billing_period_start so the
+  // link can read "Billed in {org} — week of {date}".
   const lineItemIds = (lineItems ?? []).map(l => l.id)
   let cactusInvoiceId: string | null = null
+  let cactusOrgName: string | null = null
+  let cactusPeriodStart: string | null = null
   if (lineItemIds.length > 0) {
     const { data: cactusInvoiceRow } = await admin
       .from('cactus_invoice_line_items')
-      .select('cactus_invoice_id')
+      .select(`
+        cactus_invoice_id,
+        cactus_invoices (
+          billing_period_start,
+          organizations ( name )
+        )
+      `)
       .in('invoice_line_item_id', lineItemIds)
       .limit(1)
       .maybeSingle()
     cactusInvoiceId = (cactusInvoiceRow as any)?.cactus_invoice_id ?? null
+    const cInv = (cactusInvoiceRow as any)?.cactus_invoices ?? null
+    cactusOrgName = cInv?.organizations?.name ?? null
+    cactusPeriodStart = cInv?.billing_period_start ?? null
   }
 
   const status = STATUS_CONFIG[invoice.status] ?? STATUS_CONFIG.UPLOADED
@@ -132,11 +143,27 @@ export default async function InvoiceDetailPage({
             {invoice.invoice_file_name}
           </div>
 
-          {/* PDF download — only once a cactus_invoice exists for this carrier invoice */}
+          {/* "Billed in..." link — appears once a cactus_invoice
+              has been generated that includes any line on this
+              carrier invoice. PDF/CSV downloads now live on the
+              client invoice detail page itself. */}
           {cactusInvoiceId && (
-            <div style={{ marginLeft: 'auto' }}>
-              <DownloadPDFButton cactusInvoiceId={cactusInvoiceId} />
-            </div>
+            <a
+              href={`/billing/${cactusInvoiceId}`}
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 12,
+                color: 'var(--cactus-muted)',
+                textDecoration: 'none',
+              }}
+            >
+              Billed in {cactusOrgName ?? 'client invoice'}
+              {cactusPeriodStart && ` \u2014 week of ${cactusPeriodStart}`}
+              <span style={{ marginLeft: 4 }}>{'\u2192'}</span>
+            </a>
           )}
         </div>
 
