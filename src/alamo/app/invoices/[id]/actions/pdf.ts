@@ -61,8 +61,8 @@ const LAYOUT = {
   footerCreditY: 718,
   bodyEndY: 686,
   col1X: 60,   // logo + BILLED TO left edge
-  col2X: 300,  // Cactus from-block left edge
-  col3X: 430,  // invoice meta / SHIPMENTS column
+  col2X: 260,  // Cactus from-block left edge
+  col3X: 400,  // invoice meta / SHIPMENTS column
   col4X: 552,  // right edge for right-aligned text / AMOUNT column
 } as const
 
@@ -314,6 +314,11 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   // Center sub-column (col2X): Cactus from-block
   let centerY = LAYOUT.metaStartY
   const centerColWidth = LAYOUT.col3X - LAYOUT.col2X
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR_MUTED)
+    .text('FROM', LAYOUT.col2X, centerY, {
+      lineBreak: false, characterSpacing: LABEL_SPACING,
+    })
+  centerY += 12
   doc.font('Helvetica-Bold').fontSize(10).fillColor(COLOR_INK)
     .text(CACTUS_FROM.name, LAYOUT.col2X, centerY, {
       width: centerColWidth, lineBreak: false,
@@ -331,31 +336,41 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
   let rightY = LAYOUT.metaStartY
   const rightColWidth = LAYOUT.col4X - LAYOUT.col3X
 
+  // WHY values is an array: the billing-period string
+  // "April 16, 2026 – April 16, 2026" is ~160pt wide at 10pt
+  // Helvetica but the right column is only 152pt wide, so the
+  // DATE group is stacked as two lines (start / end).
   const metaPairs: Array<{
     label: string
-    value: string
+    values: string[]
     valueFont: string
     valueColor: string
   }> = [
     {
       label: 'INVOICE NO',
-      value: shortId,
+      values: [shortId],
       valueFont: 'Helvetica',
       valueColor: COLOR_INK,
     },
     {
       label: 'DATE',
-      value: `${formatDate((invoice as any).billing_period_start)} – ${formatDate((invoice as any).billing_period_end)}`,
+      values: [
+        formatDate((invoice as any).billing_period_start),
+        formatDate((invoice as any).billing_period_end),
+      ],
       valueFont: 'Helvetica',
       valueColor: COLOR_INK,
     },
     {
       label: 'DUE DATE',
-      value: formatDate((invoice as any).due_date),
+      values: [formatDate((invoice as any).due_date)],
       valueFont: 'Helvetica-Bold',
       valueColor: COLOR_FOREST,
     },
   ]
+
+  const VALUE_LINE_HEIGHT = 12
+  const PAIR_GAP = 6
 
   for (const pair of metaPairs) {
     doc.font('Helvetica-Bold').fontSize(LAYOUT.labelFontSize).fillColor(COLOR_MUTED)
@@ -363,11 +378,14 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
         lineBreak: false, characterSpacing: LABEL_SPACING,
       })
     rightY += 10
-    doc.font(pair.valueFont).fontSize(10).fillColor(pair.valueColor)
-      .text(pair.value, LAYOUT.col3X, rightY, {
-        width: rightColWidth, lineBreak: false,
-      })
-    rightY += 14
+    for (const val of pair.values) {
+      doc.font(pair.valueFont).fontSize(10).fillColor(pair.valueColor)
+        .text(val, LAYOUT.col3X, rightY, {
+          width: rightColWidth, lineBreak: false,
+        })
+      rightY += VALUE_LINE_HEIGHT
+    }
+    rightY += PAIR_GAP
   }
 
   // Row 4: second hairline divider below the tallest sub-column
