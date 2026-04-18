@@ -249,7 +249,7 @@ INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
     shipment_source, raw_carrier_cost, markup_percentage,
-    pre_ceiling_amount, final_merchant_rate,
+    pre_ceiling_amount, final_billed_rate,
     reconciled, label_printed_at
 )
 SELECT
@@ -305,7 +305,7 @@ INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
     shipment_source, raw_carrier_cost, markup_percentage,
-    pre_ceiling_amount, final_merchant_rate,
+    pre_ceiling_amount, final_billed_rate,
     reconciled, carrier_invoiced_amount
 )
 SELECT
@@ -327,7 +327,7 @@ INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
     shipment_source, raw_carrier_cost, markup_percentage,
-    pre_ceiling_amount, final_merchant_rate,
+    pre_ceiling_amount, final_billed_rate,
     reconciled, carrier_invoiced_amount
 )
 SELECT
@@ -350,7 +350,7 @@ INSERT INTO invoice_line_items (
     ship_from_address_raw, ship_from_address_normalized,
     carrier_charge, base_charge, fuel_surcharge,
     match_method, match_status,
-    markup_percentage, pre_ceiling_amount, final_merchant_rate,
+    markup_percentage, pre_ceiling_amount, final_billed_rate,
     billing_status, dispute_flag
 )
 SELECT
@@ -375,7 +375,7 @@ INSERT INTO invoice_line_items (
     ship_from_address_raw, ship_from_address_normalized,
     carrier_charge, base_charge, fuel_surcharge, residential_surcharge,
     match_method, match_status,
-    markup_percentage, pre_ceiling_amount, final_merchant_rate,
+    markup_percentage, pre_ceiling_amount, final_billed_rate,
     billing_status, dispute_flag
 )
 SELECT

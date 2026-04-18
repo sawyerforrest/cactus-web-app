@@ -1,8 +1,8 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: database-setup.sql
--- VERSION: 1.5.2
--- UPDATED: 2026-04-08
+-- VERSION: 1.6.0
+-- UPDATED: 2026-04-17
 -- FOCUS: Phase 1 — Full Billing & Rating Engine Foundation
 --
 -- STRUCTURE:
@@ -61,6 +61,25 @@
 --   - notification_type_enum: renamed TRACKING_LABEL_STALE
 --     to TRACKING_STATUS_ALERTS (expanded scope — covers all
 --     tracking anomalies not just stale labels)
+-- CHANGES IN v1.6.0:
+--   - Renamed final_merchant_rate → final_billed_rate across
+--     invoice_line_items, shipment_ledger, rate_shop_log, and
+--     cactus_invoice_line_items. "Final billed rate" reflects
+--     the actual meaning better (what the client is billed)
+--     and disentangles the term from the legacy "merchant rate"
+--     vocabulary used inconsistently elsewhere.
+--   - invoice_line_items: dropped markup_percentage and
+--     markup_flat_fee (dual-column markup was ambiguous — a
+--     flat-only account still carried a non-NULL percentage).
+--     Replaced with a single markup_type_applied (percentage|flat)
+--     + markup_value_applied (decimal fraction or flat amount)
+--     + markup_source (carrier_account|rate_card).
+--   - invoice_line_items: added is_adjustment_only BOOLEAN.
+--     TRUE when the only FRT row for a tracking number is an
+--     adjustment (no primary freight charge). Flags post-audit
+--     corrections from previous billing cycles so Match can
+--     skip variance calculation and downstream reports can
+--     surface them distinctly.
 -- ==========================================================
 
 
@@ -446,7 +465,7 @@ CREATE TABLE shipment_ledger (
     markup_percentage       DECIMAL(7,4),
     markup_flat_fee         DECIMAL(18,4),
     pre_ceiling_amount      DECIMAL(18,4) NOT NULL,
-    final_merchant_rate     DECIMAL(18,4) NOT NULL,
+    final_billed_rate       DECIMAL(18,4) NOT NULL,
     carrier_invoiced_amount DECIMAL(18,4),
     reconciled              BOOLEAN NOT NULL DEFAULT FALSE,
     reconciled_at           TIMESTAMPTZ,
@@ -460,7 +479,7 @@ COMMENT ON TABLE shipment_ledger IS
     'One row per shipment. Single-Ceiling output. Immutable. Source of truth for billing.';
 COMMENT ON COLUMN shipment_ledger.shipment_source IS
     'RATING_ENGINE = came through Cactus at label print. INVOICE_IMPORT = created from carrier invoice upload.';
-COMMENT ON COLUMN shipment_ledger.final_merchant_rate IS
+COMMENT ON COLUMN shipment_ledger.final_billed_rate IS
     'CEILING(pre_ceiling_amount * 100) / 100. What the client is billed. Always from carrier invoice data.';
 
 
@@ -616,10 +635,12 @@ CREATE TABLE invoice_line_items (
     confirmation_delivery           TEXT,
     match_method                    match_method_enum,
     match_status                    match_status_enum,
-    markup_percentage               DECIMAL(7,4),
-    markup_flat_fee                 DECIMAL(18,4),
+    markup_type_applied             TEXT,
+    markup_value_applied            DECIMAL(10,6),
+    markup_source                   TEXT,
+    is_adjustment_only              BOOLEAN NOT NULL DEFAULT FALSE,
     pre_ceiling_amount              DECIMAL(18,4),
-    final_merchant_rate             DECIMAL(18,4),
+    final_billed_rate               DECIMAL(18,4),
     quoted_rate                     DECIMAL(18,4),
     variance_amount                 DECIMAL(18,4),
     dispute_flag                    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -644,6 +665,14 @@ COMMENT ON COLUMN invoice_line_items.match_location_id IS
   'The matched locations row for this line item. Set during
    matching stage. Used for invoice summary breakdown by
    origin location and portal location filtering.';
+COMMENT ON COLUMN invoice_line_items.markup_type_applied IS
+    'percentage or flat. Locked at Stage 5 Billing Calculation. Replaces deprecated markup_percentage/markup_flat_fee dual-column approach.';
+COMMENT ON COLUMN invoice_line_items.markup_value_applied IS
+    'The actual markup value used at billing time. For percentage: decimal fraction (e.g. 0.150000 for 15%). For flat: dollar amount (e.g. 1.000000 for $1.00). Locked at Stage 5.';
+COMMENT ON COLUMN invoice_line_items.markup_source IS
+    'carrier_account or rate_card. Indicates where the BASE RATE came from (not the markup percentage). Used for analytics: rate-carded vs API-rated margin comparison.';
+COMMENT ON COLUMN invoice_line_items.is_adjustment_only IS
+    'TRUE when the only FRT row for this tracking number on this invoice is an adjustment (no primary freight charge). Indicates a post-audit correction from a previous billing cycle. Used to skip variance calculation in Match stage and for downstream reporting.';
 
 
 -- ----------------------------------------------------------
@@ -655,7 +684,7 @@ CREATE TABLE cactus_invoice_line_items (
     cactus_invoice_id       UUID NOT NULL REFERENCES cactus_invoices(id) ON DELETE CASCADE,
     invoice_line_item_id    UUID NOT NULL REFERENCES invoice_line_items(id) ON DELETE RESTRICT,
     org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-    final_merchant_rate     DECIMAL(18,4) NOT NULL,
+    final_billed_rate       DECIMAL(18,4) NOT NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(cactus_invoice_id, invoice_line_item_id)
 );
@@ -693,7 +722,7 @@ CREATE TABLE rate_shop_log (
     carrier_code            carrier_code_enum NOT NULL,
     service_level           TEXT NOT NULL,
     quoted_rate             DECIMAL(18,4) NOT NULL,
-    final_merchant_rate     DECIMAL(18,4) NOT NULL,
+    final_billed_rate       DECIMAL(18,4) NOT NULL,
     transit_days            INT,
     is_selected            BOOLEAN NOT NULL DEFAULT FALSE,
     shipment_ledger_id      UUID REFERENCES shipment_ledger(id) ON DELETE SET NULL,

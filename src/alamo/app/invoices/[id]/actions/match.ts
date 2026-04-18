@@ -38,7 +38,7 @@
 //   - No floats — all math uses decimal.js
 //   - carrier_charge is ALWAYS the billing basis
 //   - Single-Ceiling applied once per shipment total
-//   - Variance = carrier_charge - raw_carrier_cost (never vs final_merchant_rate)
+//   - Variance = carrier_charge - raw_carrier_cost (never vs final_billed_rate)
 //   - Disputed lines → HELD, never auto-billed
 // =============================================================
 
@@ -72,8 +72,33 @@ type CarrierAccount = {
   carrier_account_mode: 'lassoed_carrier_account' | 'dark_carrier_account'
   markup_percentage: string
   markup_flat_fee: string
+  use_rate_card: boolean
   dispute_threshold: string
   is_cactus_account: boolean
+}
+
+// Derive the v1.6.0 markup context fields from an org_carrier_accounts row.
+// Returns the three values we now write to invoice_line_items instead of
+// the deprecated markup_percentage / markup_flat_fee pair.
+function deriveMarkupContext(account: CarrierAccount): {
+  markup_type_applied: 'percentage' | 'flat'
+  markup_value_applied: string
+  markup_source: 'carrier_account' | 'rate_card'
+} {
+  const flat = new Decimal(account.markup_flat_fee ?? 0)
+  if (flat.greaterThan(0)) {
+    return {
+      markup_type_applied: 'flat',
+      markup_value_applied: flat.toFixed(6),
+      markup_source: account.use_rate_card ? 'rate_card' : 'carrier_account',
+    }
+  }
+  const pct = new Decimal(account.markup_percentage ?? 0)
+  return {
+    markup_type_applied: 'percentage',
+    markup_value_applied: pct.toFixed(6),
+    markup_source: account.use_rate_card ? 'rate_card' : 'carrier_account',
+  }
 }
 
 // =============================================================
@@ -83,11 +108,11 @@ type CarrierAccount = {
 function applyBillingCalc(
   carrierCharge: Decimal,
   account: CarrierAccount
-): { preCeilingAmount: Decimal; finalMerchantRate: Decimal } {
+): { preCeilingAmount: Decimal; finalBilledRate: Decimal } {
   if (!account.is_cactus_account) {
     return {
       preCeilingAmount: carrierCharge,
-      finalMerchantRate: carrierCharge,
+      finalBilledRate: carrierCharge,
     }
   }
 
@@ -98,12 +123,12 @@ function applyBillingCalc(
     .times(new Decimal(1).plus(markupPct))
     .plus(markupFlat)
 
-  const finalMerchantRate = preCeilingAmount
+  const finalBilledRate = preCeilingAmount
     .times(100)
     .ceil()
     .dividedBy(100)
 
-  return { preCeilingAmount, finalMerchantRate }
+  return { preCeilingAmount, finalBilledRate }
 }
 
 // =============================================================
@@ -124,7 +149,7 @@ async function lookupCarrierAccount(
     .from('org_carrier_accounts')
     .select(
       'id, org_id, carrier_account_mode, markup_percentage, ' +
-      'markup_flat_fee, dispute_threshold, is_cactus_account'
+      'markup_flat_fee, use_rate_card, dispute_threshold, is_cactus_account'
     )
     .eq('org_id', orgId)
     .eq('carrier_code', carrierCode)
@@ -297,8 +322,9 @@ export async function runMatchingEngine(
             .eq('id', lineItem.id)
           result.lassoed.held++
         } else {
-          const { preCeilingAmount, finalMerchantRate } =
+          const { preCeilingAmount, finalBilledRate } =
             applyBillingCalc(carrierCharge, account)
+          const markupCtx = deriveMarkupContext(account)
 
           await supabase
             .from('invoice_line_items')
@@ -311,10 +337,11 @@ export async function runMatchingEngine(
               variance_amount: varianceAmount.toFixed(4),
               billing_status: 'APPROVED',
               dispute_flag: false,
-              markup_percentage: account.markup_percentage,
-              markup_flat_fee: account.markup_flat_fee,
+              markup_type_applied: markupCtx.markup_type_applied,
+              markup_value_applied: markupCtx.markup_value_applied,
+              markup_source: markupCtx.markup_source,
               pre_ceiling_amount: preCeilingAmount.toFixed(4),
-              final_merchant_rate: finalMerchantRate.toFixed(4),
+              final_billed_rate: finalBilledRate.toFixed(4),
             })
             .eq('id', lineItem.id)
           result.lassoed.matched++
@@ -412,8 +439,9 @@ export async function runMatchingEngine(
       continue
     }
 
-    const { preCeilingAmount, finalMerchantRate } =
+    const { preCeilingAmount, finalBilledRate } =
       applyBillingCalc(carrierCharge, account)
+    const markupCtx = deriveMarkupContext(account)
 
     // Create shipment_ledger row — first time Cactus sees this dark shipment.
     // raw_carrier_cost = carrier_charge (no quoted rate exists for dark accounts).
@@ -432,7 +460,7 @@ export async function runMatchingEngine(
           markup_percentage: account.markup_percentage,
           markup_flat_fee: account.markup_flat_fee,
           pre_ceiling_amount: preCeilingAmount.toFixed(4),
-          final_merchant_rate: finalMerchantRate.toFixed(4),
+          final_billed_rate: finalBilledRate.toFixed(4),
           reconciled: true,
           reconciled_at: new Date().toISOString(),
         })
@@ -471,10 +499,11 @@ export async function runMatchingEngine(
         match_location_id: matchedLocation.id,
         billing_status: 'APPROVED',
         dispute_flag: false,
-        markup_percentage: account.markup_percentage,
-        markup_flat_fee: account.markup_flat_fee,
+        markup_type_applied: markupCtx.markup_type_applied,
+        markup_value_applied: markupCtx.markup_value_applied,
+        markup_source: markupCtx.markup_source,
         pre_ceiling_amount: preCeilingAmount.toFixed(4),
-        final_merchant_rate: finalMerchantRate.toFixed(4),
+        final_billed_rate: finalBilledRate.toFixed(4),
       })
       .eq('id', lineItem.id)
 

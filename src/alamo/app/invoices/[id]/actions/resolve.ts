@@ -93,7 +93,7 @@ export async function resolveDisputeGroup({
     .from('org_carrier_accounts')
     .select(
       'id, org_id, carrier_account_mode, markup_percentage, ' +
-      'markup_flat_fee, dispute_threshold, is_cactus_account'
+      'markup_flat_fee, use_rate_card, dispute_threshold, is_cactus_account'
     )
     .eq('org_id', orgId)
     .eq('carrier_code', carrierCode)
@@ -154,7 +154,7 @@ export async function resolveDisputeGroup({
     // Same function logic as matching engine — carrier_charge is
     // always the billing basis, never the quoted rate
     let preCeilingAmount: Decimal
-    let finalMerchantRate: Decimal
+    let finalBilledRate: Decimal
 
     if (account.is_cactus_account) {
       const markupPct = new Decimal(account.markup_percentage ?? 0)
@@ -162,14 +162,24 @@ export async function resolveDisputeGroup({
       preCeilingAmount = carrierCharge
         .times(new Decimal(1).plus(markupPct))
         .plus(markupFlat)
-      finalMerchantRate = preCeilingAmount
+      finalBilledRate = preCeilingAmount
         .times(100)
         .ceil()
         .dividedBy(100)
     } else {
       preCeilingAmount = carrierCharge
-      finalMerchantRate = carrierCharge
+      finalBilledRate = carrierCharge
     }
+
+    // Derive v1.6.0 markup context for the invoice_line_items write.
+    // Matches the rules used in match.ts: flat overrides percentage when > 0;
+    // markup_source follows use_rate_card (rate_card if true, else carrier_account).
+    const markupFlat = new Decimal(account.markup_flat_fee ?? 0)
+    const markupTypeApplied = markupFlat.greaterThan(0) ? 'flat' : 'percentage'
+    const markupValueApplied = markupFlat.greaterThan(0)
+      ? markupFlat.toFixed(6)
+      : new Decimal(account.markup_percentage ?? 0).toFixed(6)
+    const markupSource = account.use_rate_card ? 'rate_card' : 'carrier_account'
 
     // Create a shipment_ledger row for this manually resolved item.
     // WHY: Every approved line item needs a ledger row for audit trail.
@@ -190,7 +200,7 @@ export async function resolveDisputeGroup({
         markup_percentage: account.markup_percentage,
         markup_flat_fee: account.markup_flat_fee,
         pre_ceiling_amount: preCeilingAmount.toFixed(4),
-        final_merchant_rate: finalMerchantRate.toFixed(4),
+        final_billed_rate: finalBilledRate.toFixed(4),
         reconciled: true,
         reconciled_at: new Date().toISOString(),
       })
@@ -218,10 +228,11 @@ export async function resolveDisputeGroup({
         dispute_notes: notes
           ? `Manually resolved by admin: ${notes}`
           : 'Manually resolved by admin.',
-        markup_percentage: account.markup_percentage,
-        markup_flat_fee: account.markup_flat_fee,
+        markup_type_applied: markupTypeApplied,
+        markup_value_applied: markupValueApplied,
+        markup_source: markupSource,
         pre_ceiling_amount: preCeilingAmount.toFixed(4),
-        final_merchant_rate: finalMerchantRate.toFixed(4),
+        final_billed_rate: finalBilledRate.toFixed(4),
       })
       .eq('id', lineItem.id)
 

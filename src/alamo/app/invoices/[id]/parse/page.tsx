@@ -33,7 +33,8 @@ type ParsedLineItem = {
   tracking_number: string
   tracking_number_lead: string
   account_number_carrier: string
-  service_level: string
+  service_level: string | null
+  is_adjustment_only: boolean
   zone: string
   date_shipped: string | null
   date_delivered: string | null
@@ -100,6 +101,18 @@ function parseDate(val: string): string | null {
   if (mdy) return `${mdy[3]}-${mdy[1].padStart(2,'0')}-${mdy[2].padStart(2,'0')}`
   // Try YYYY-MM-DD already
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean
+  // Try M/D/YY or MM/DD/YY — real UPS detail invoices use this.
+  // Convention: 00-49 → 2000s, 50-99 → 1900s.
+  const twoDigit = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (twoDigit) {
+    const month = parseInt(twoDigit[1], 10)
+    const day = parseInt(twoDigit[2], 10)
+    const yearShort = parseInt(twoDigit[3], 10)
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const year = yearShort <= 49 ? 2000 + yearShort : 1900 + yearShort
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
   return null
 }
 
@@ -117,6 +130,45 @@ function parseDims(dimStr: string): [number|null, number|null, number|null] {
 function toDecimal(val: string): Decimal {
   if (!val || !val.trim()) return new Decimal(0)
   try { return new Decimal(val.trim()) } catch { return new Decimal(0) }
+}
+
+// Determine service_level + is_adjustment_only from the rows grouped under a
+// tracking number. UPS detail invoices leave Original Service Description
+// empty; the real service name lives on the primary FRT row's Charge
+// Description. When every FRT row is an adjustment (Shipping Charge
+// Correction or *Adjustment*), the shipment is adjustment-only — a
+// post-audit correction from a prior billing cycle.
+function determineServiceLevel(rows: Record<string, string>[]): {
+  serviceLevel: string | null
+  isAdjustmentOnly: boolean
+} {
+  const frtRows = rows.filter(
+    (r) => (r['Charge Classification Code'] ?? '').trim() === 'FRT'
+  )
+
+  if (frtRows.length === 0) {
+    console.warn(
+      `No FRT rows for tracking number ${rows[0]?.['Tracking Number'] ?? '(unknown)'}`
+    )
+    return { serviceLevel: null, isAdjustmentOnly: false }
+  }
+
+  const primary = frtRows.find((r) => {
+    const desc = (r['Charge Description'] ?? '').trim()
+    return (
+      !desc.startsWith('Shipping Charge Correction') &&
+      !desc.includes('Adjustment')
+    )
+  })
+
+  if (primary) {
+    const desc = (primary['Charge Description'] ?? '').trim()
+    return { serviceLevel: desc || null, isAdjustmentOnly: false }
+  }
+
+  // Adjustment-only case — no primary FRT row exists.
+  const desc = (frtRows[0]['Charge Description'] ?? '').trim()
+  return { serviceLevel: desc || null, isAdjustmentOnly: true }
 }
 
 // ----------------------------------------------------------
@@ -318,13 +370,24 @@ const dataLines = invoice.invoice_format === 'DETAIL'
       // Use first row for shipment-level fields (same across all rows)
       const first = rows[0]
 
+      // WHY: UPS detail invoices leave Original Service Description empty.
+      // The real service name lives on the primary FRT row's Charge
+      // Description. determineServiceLevel() also flags adjustment-only
+      // shipments — lines whose only FRT row is a post-audit correction.
+      const { serviceLevel, isAdjustmentOnly } = determineServiceLevel(rows)
+
       const item: ParsedLineItem = {
         tracking_number: trackingNumber,
         tracking_number_lead: first['Lead Shipment Number']?.trim() ?? '',
         account_number_carrier: first['Account Number']?.trim() ?? '',
-        service_level: first['Original Service Description']?.trim() ?? '',
+        service_level: serviceLevel,
+        is_adjustment_only: isAdjustmentOnly,
         zone: first['Zone']?.trim() ?? '',
-        date_shipped: parseDate(first['Shipment Date'] ?? ''),
+        // WHY: Shipment Date is empty on real UPS detail invoices. Transaction
+        // Date is always populated and is the closest proxy we have. For
+        // lassoed accounts Session B will overwrite this from shipment_events
+        // (which has the true label-print timestamp).
+        date_shipped: parseDate(first['Transaction Date'] ?? ''),
         date_delivered: parseDate(first['Shipment Delivery Date'] ?? ''),
         date_invoiced: parseDate(first['Invoice Date'] ?? ''),
         payor: first['Payor Role Code']?.trim() ?? '',
@@ -492,7 +555,8 @@ const dataLines = invoice.invoice_format === 'DETAIL'
         tracking_number: item.tracking_number || null,
         tracking_number_lead: item.tracking_number_lead || null,
         account_number_carrier: item.account_number_carrier || null,
-        service_level: item.service_level || null,
+        service_level: item.service_level,
+        is_adjustment_only: item.is_adjustment_only,
         zone: item.zone || null,
         date_shipped: item.date_shipped,
         date_delivered: item.date_delivered,

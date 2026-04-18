@@ -50,7 +50,7 @@ export type BillingRunResult = {
 type ApprovedLineItem = {
   id: string
   org_id: string
-  final_merchant_rate: string
+  final_billed_rate: string
   date_shipped: string | null
 }
 
@@ -82,7 +82,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
     .select(`
       id,
       org_id,
-      final_merchant_rate,
+      final_billed_rate,
       date_shipped,
       organizations ( name, terms_days )
     `)
@@ -123,7 +123,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
       existing.items.push({
         id: item.id,
         org_id: item.org_id,
-        final_merchant_rate: item.final_merchant_rate as string,
+        final_billed_rate: item.final_billed_rate as string,
         date_shipped: item.date_shipped,
       })
     } else {
@@ -133,7 +133,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
         items: [{
           id: item.id,
           org_id: item.org_id,
-          final_merchant_rate: item.final_merchant_rate as string,
+          final_billed_rate: item.final_billed_rate as string,
           date_shipped: item.date_shipped,
         }],
       })
@@ -144,7 +144,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
   // STEP 3: CREATE ONE CACTUS INVOICE PER ORG
   //
   // For each org:
-  //   1. Calculate total_amount = SUM(final_merchant_rate)
+  //   1. Calculate total_amount = SUM(final_billed_rate)
   //   2. Calculate billing_period_start = MIN(date_shipped)
   //   3. Calculate billing_period_end = MAX(date_shipped)
   //   4. Calculate due_date = today + terms_days
@@ -167,7 +167,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
       let periodEnd: string | null = null
 
       for (const item of group.items) {
-        totalAmount = totalAmount.plus(new Decimal(item.final_merchant_rate))
+        totalAmount = totalAmount.plus(new Decimal(item.final_billed_rate))
 
         if (item.date_shipped) {
           if (!periodStart || item.date_shipped < periodStart) {
@@ -218,7 +218,7 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
         cactus_invoice_id: newInvoice.id,
         invoice_line_item_id: item.id,
         org_id: orgId,
-        final_merchant_rate: item.final_merchant_rate,
+        final_billed_rate: item.final_billed_rate,
       }))
 
       let junctionFailed = false

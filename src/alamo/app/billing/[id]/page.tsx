@@ -70,7 +70,7 @@ export default async function BillingDetailPage({
           weight_billed,
           zone,
           carrier_charge,
-          final_merchant_rate,
+          final_billed_rate,
           org_carrier_accounts (
             carrier_account_mode,
             carrier_code
@@ -94,7 +94,7 @@ export default async function BillingDetailPage({
     weight_billed: string | null
     zone: string | null
     carrier_charge: string
-    final_merchant_rate: string | null
+    final_billed_rate: string | null
     org_carrier_accounts: {
       carrier_account_mode: string | null
       carrier_code: string | null
@@ -110,7 +110,7 @@ export default async function BillingDetailPage({
   const byLocation = new Map<string, SummaryRow>()
 
   for (const line of lines) {
-    const amount = new Decimal(line.final_merchant_rate ?? 0)
+    const amount = new Decimal(line.final_billed_rate ?? 0)
 
     const carrierKey = line.org_carrier_accounts?.carrier_code ?? 'UNKNOWN'
     const c = byCarrier.get(carrierKey)
@@ -382,8 +382,8 @@ export default async function BillingDetailPage({
 
                   {/* Final amount */}
                   <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
-                    {line.final_merchant_rate
-                      ? `$${Number(line.final_merchant_rate).toFixed(2)}`
+                    {line.final_billed_rate
+                      ? `$${Number(line.final_billed_rate).toFixed(2)}`
                       : '\u2014'}
                   </div>
                 </div>

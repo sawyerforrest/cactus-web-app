@@ -7,9 +7,9 @@
 // Generates a one-page PDF summary for a single cactus_invoice.
 //
 // Display rules (non-negotiable):
-//   - lassoed_carrier_account → show final_merchant_rate only
+//   - lassoed_carrier_account → show final_billed_rate only
 //   - dark_carrier_account    → may show carrier_charge alongside
-//   This PDF only shows aggregates (sum of final_merchant_rate),
+//   This PDF only shows aggregates (sum of final_billed_rate),
 //   so neither mode ever exposes carrier_charge.
 //
 // Single-page guarantee:
@@ -130,7 +130,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     .select(`
       invoice_line_items (
         carrier_charge,
-        final_merchant_rate,
+        final_billed_rate,
         match_location_id,
         org_carrier_accounts (
           carrier_account_mode,
@@ -157,7 +157,7 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
     const line = row.invoice_line_items as any
     if (!line) continue
 
-    const amount = new Decimal(line.final_merchant_rate ?? 0)
+    const amount = new Decimal(line.final_billed_rate ?? 0)
     totalDue = totalDue.plus(amount)
     totalShipments += 1
 

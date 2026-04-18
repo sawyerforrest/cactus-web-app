@@ -11,7 +11,7 @@
 // Display rules (non-negotiable, mirror PDF logic):
 //   - lassoed_carrier_account → Carrier Charge column is empty.
 //     (Empty string in the cell — not 0.00, not "N/A", not "—".
-//     Lassoed lines bill from final_merchant_rate alone; the
+//     Lassoed lines bill from final_billed_rate alone; the
 //     carrier charge is internal Cactus data the client should
 //     never see.)
 //   - dark_carrier_account → Carrier Charge column is populated.
@@ -81,7 +81,7 @@ export async function generateInvoiceCSV(
         weight_billed,
         zone,
         carrier_charge,
-        final_merchant_rate,
+        final_billed_rate,
         org_carrier_accounts (
           carrier_account_mode,
           carrier_code
@@ -122,7 +122,7 @@ export async function generateInvoiceCSV(
       ? ''
       : new Decimal(line.carrier_charge ?? 0).toFixed(2)
 
-    const finalAmountCell = new Decimal(line.final_merchant_rate ?? 0).toFixed(2)
+    const finalAmountCell = new Decimal(line.final_billed_rate ?? 0).toFixed(2)
 
     // Tab prefix forces Excel to read as text; Sheets ignores it.
     const trackingCell = line.tracking_number

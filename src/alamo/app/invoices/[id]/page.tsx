@@ -67,7 +67,7 @@ export default async function InvoiceDetailPage({
         dispute_flag,
         address_sender_normalized,
         variance_amount,
-        final_merchant_rate,
+        final_billed_rate,
         organizations ( name )
       `)
       .eq('carrier_invoice_id', id)
@@ -368,8 +368,8 @@ export default async function InvoiceDetailPage({
 
                   {/* Billed amount */}
                   <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
-                    {line.final_merchant_rate
-                      ? `$${Number(line.final_merchant_rate).toFixed(2)}`
+                    {line.final_billed_rate
+                      ? `$${Number(line.final_billed_rate).toFixed(2)}`
                       : '—'}
                   </div>
 

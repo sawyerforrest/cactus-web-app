@@ -183,9 +183,9 @@ SELECT
     sl.raw_carrier_cost,
     sl.markup_percentage,
     sl.pre_ceiling_amount,
-    sl.final_merchant_rate,
+    sl.final_billed_rate,
     CASE
-        WHEN sl.final_merchant_rate =
+        WHEN sl.final_billed_rate =
             (CEIL(sl.raw_carrier_cost * (1 + sl.markup_percentage) * 100) / 100)
         THEN 'PASS ✓'
         ELSE 'FAIL ✗ — check Single-Ceiling pipeline'
@@ -209,14 +209,14 @@ SELECT
     ili.ship_from_address_normalized,
     ili.carrier_charge,
     ili.markup_percentage,
-    ili.final_merchant_rate,
+    ili.final_billed_rate,
     ili.match_method,
     ili.match_status,
     ili.billing_status,
     ili.dispute_flag,
     sl.shipment_source,
     CASE
-        WHEN ili.final_merchant_rate =
+        WHEN ili.final_billed_rate =
             (CEIL(ili.carrier_charge * (1 + ili.markup_percentage) * 100) / 100)
         THEN 'PASS ✓'
         ELSE 'FAIL ✗'
