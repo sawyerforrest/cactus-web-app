@@ -64,11 +64,18 @@ Thumbs.db
 # ----------------------------------------------------------
 # CODE EDITORS & IDEs
 # (Integrated Development Environment — your coding app)
-# Cursor and VS Code create personal settings folders.
-# These are specific to your machine and should not be shared.
+# VS Code creates personal settings folders that are specific
+# to your machine and should not be shared.
+#
+# Cursor is handled with surgical precision: everything under
+# .cursor/ is ignored EXCEPT .cursor/rules/, which holds the
+# project's coding constitution (cactus-standards.mdc). Rules
+# are project-essential and must be tracked so future Claude
+# sessions across any machine read the same standards.
 # ----------------------------------------------------------
 .vscode/
-.cursor/
+.cursor/*
+!.cursor/rules/
 *.suo
 *.ntvs*
 *.njsproj
