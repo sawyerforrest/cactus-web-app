@@ -1,12 +1,12 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.5.2 | UPDATED: 2026-04-12
+# VERSION: 1.6.0 | UPDATED: 2026-04-18
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
 # Claude chat session. Claude will have full context and can
 # pick up immediately without re-explaining the project.
 #
-# KEEP UPDATED: After each session update Section 9.
+# KEEP UPDATED: After each session update Section 12.
 
 ---
 
@@ -188,19 +188,58 @@ Database: `DECIMAL(18,4)`. Application: `decimal.js`.
 Never bill from label print data or rating engine quotes.
 ```
 CORRECT: bill from carrier_invoice_line.carrier_charge
-WRONG:   bill from shipment_ledger.final_merchant_rate
+WRONG:   bill from shipment_ledger.final_billed_rate
 ```
 Rating engine quote used ONLY for reconciliation comparison.
 
-### Rule 3: Single-Ceiling applied ONCE per shipment total
-```
-carrier_charge × (1 + markup_percentage) = pre_ceiling_amount
-CEILING(pre_ceiling_amount to next whole cent) = final_merchant_rate
-```
+### Rule 3: Markup applied per markup_type — Single-Ceiling for percentage
 
-### Rule 4: Markup hierarchy
-Account-level markup is primary. Rate cards are optional children.
-If markup baked into rate card: set account markup_percentage = 0.
+Two markup types are supported:
+
+PERCENTAGE markup: applied to each charge component, summed, then
+Single-Ceiling on total. Itemized columns on client CSV show marked-up
+values. Sum equals final_billed_rate (within fractional cent rounding
+tolerance, footnoted on CSV).
+
+  base × (1 + markup) = base_marked
+  fuel × (1 + markup) = fuel_marked
+  residential × (1 + markup) = residential_marked
+  ... etc per component
+  SUM(all marked components) = pre_ceiling_total
+  CEILING(pre_ceiling_total to next cent) = final_billed_rate
+
+FLAT markup: applied ONCE to base_charge only. Surcharges pass through
+raw. NO separate markup column on client invoice — flat fee folds into
+base_charge_billed for display.
+
+  base_charge_billed = raw base + flat fee
+  surcharge_billed = surcharge (unchanged)
+  total = raw carrier total + flat fee = final_billed_rate
+
+Why this works for transparency:
+- Dark accounts know there is a Cactus markup (disclosed at onboarding)
+- Lassoed accounts saw the marked-up rate at label purchase via rate-shop
+- Total amount on invoice matches what client saw at label purchase
+  (minor variance for accessorials added post-print)
+
+### Rule 4: Markup hierarchy + source tracking
+Account-level markup is primary. Rate cards are optional children that
+replace the BASE rate only — surcharges pass through raw.
+
+If using rate card with markup baked in: set account markup to 0.
+
+Stored on every invoice_line_items row at Stage 5 Billing Calc:
+  markup_type_applied   ('percentage' | 'flat')
+  markup_value_applied  (e.g. 0.150000 for 15%, or 1.000000 for $1.00)
+  markup_source         ('carrier_account' | 'rate_card')
+
+markup_source describes where the BASE RATE came from (not where the
+markup percentage came from). Enables analytics like rate-carded vs
+API-rated margin comparison.
+
+Rate card use case examples: USPS, UniUni, GOFO (no surcharges).
+DHL with 15% rate card markup + 0% account markup so fuel surcharge
+passes through raw.
 
 ### Rule 5: Bifurcated Settlement
 USPS → Pre-paid Metered Wallet
@@ -219,6 +258,21 @@ ABS(variance) > org_carrier_account.dispute_threshold:
 ### Rule 8: 3PL billing
 Always bill the 3PL org directly. 3PLs bill their own merchants.
 That is Phase 2. Never split a 3PL invoice by sub-client in Phase 1.
+
+### Rule 9: Storage approach for billed values
+Store raw carrier values + markup context per line item. Compute
+per-charge billed values at READ time (CSV / PDF / Portal display)
+from raw values × markup context.
+
+final_billed_rate is materialized (stored) at Stage 5 because it is
+the authoritative invoice total — never recomputed at read time.
+
+Per-charge billed values are computed at display time. Bug fixes in
+display logic flow through to all historical invoices without
+violating immutability of invoice_line_items.
+
+Margin = SUM(final_billed_rate - carrier_charge) GROUP BY org_id, week.
+No parallel raw-cost table needed.
 
 ---
 
@@ -242,8 +296,8 @@ WMS prints label
 ```
 
 ### Rate Sorting
-Default: `final_merchant_rate ASC` (cheapest first)
-Optional toggle: `transit_days ASC` then `final_merchant_rate ASC`
+Default: `final_billed_rate ASC` (cheapest first)
+Optional toggle: `transit_days ASC` then `final_billed_rate ASC`
 Never: carrier-weighted or manually promoted results
 
 Residential and fuel surcharges already included in carrier
@@ -257,30 +311,99 @@ If a carrier API returns an error (not just no rate):
 
 ---
 
-## 8. INVOICE PIPELINE
+## 8. INVOICE PIPELINE — 8 STAGES (v1.6.0)
 
-```
-Upload carrier CSV/XLSX in The Alamo
-AI normalizes headers → Cactus Standard fields
-Human review queue in The Alamo
-For each line item → check carrier_account_mode:
+STAGE 1: INGESTION
+  Admin uploads carrier invoice in The Alamo
+  Selects carrier + format (DETAIL or SUMMARY)
+  File stored in Supabase Storage
+  carrier_invoices row created (status: UPLOADED)
 
-  IF lassoed:
-    Match tracking_number → shipment_ledger → org_id
-    Compare carrier_charge vs quoted_rate
-    IF variance > dispute_threshold → HELD + dispute_flag
-    ELSE → apply markup → Single-Ceiling → APPROVED
+STAGE 2: PARSING / NORMALIZATION
+  Reads file from Supabase Storage
+  Applies carrier-specific column template (carrier_invoice_formats)
+  Groups rows by tracking number
+  Routes charges via carrier_charge_routing table
+  INF rows: extract dims only, never billed
+  ADJ rows: accumulate into apv_adjustment + detail JSONB
+  Splits AG (entered dims) and HR (carrier dims) into L/W/H
+  service_level read from primary FRT row's Charge Description
+    (NOT from Original Service Description which is always empty)
+  is_adjustment_only flag set when only adjustment FRT rows exist
+  date_invoiced parsed from Invoice Date (handles MM/DD/YY)
+  date_shipped from Transaction Date (default; lassoed overwritten in Stage 3)
+  Builds address_sender_normalized for dark matching
+  Inserts invoice_line_items rows with carrier_charge populated,
+    final_billed_rate NULL, billing_status PENDING
+  status: COMPLETE
 
-  IF dark:
-    Normalize ship_from_address
-    Match → locations.normalized_address (is_billing_address=TRUE)
-    IF one match → assign org → apply markup → Single-Ceiling
-    IF zero/multiple → FLAGGED → manual Alamo review
-    Create shipment_ledger row (shipment_source = INVOICE_IMPORT)
+STAGE 3: MATCHING (UNIVERSAL — separated from Billing Calc in v1.6.0)
+  Lassoed: tracking_number → shipment_ledger → org_id
+    Pull date_shipped from shipment_events.LABEL_CREATED
+    Pull date_delivered from shipment_events.DELIVERED (if present)
+    Calculate variance = carrier_charge - raw_carrier_cost
+    ABS(variance) > dispute_threshold → HELD + dispute_flag
+    is_adjustment_only=TRUE → skip variance calc
+    ELSE → AUTO_MATCHED
+  Dark: address_sender_normalized → locations → org_id
+    date_shipped stays as Transaction Date proxy (with caveat)
+    date_delivered stays NULL until tracking webhooks (Phase 2+)
+    Exactly one match → AUTO_MATCHED + match_location_id stored
+    Zero/multiple → FLAGGED → HELD
+  Sets match_status, billing_status stays PENDING for matched, HELD for flagged
+  No markup applied at this stage
 
-Generate cactus_invoices from APPROVED line items
-Sync to QuickBooks Online
-```
+STAGE 4: DISPUTE RESOLUTION
+  Admin reviews /invoices/[id]/disputes
+  Manually assigns org to FLAGGED items
+  Approves or overrides variance disputes
+  dispute_notes per line item
+  Resolved → ready for Billing Calc (still no markup applied)
+
+STAGE 5: BILLING CALCULATION (NEW SEPARATE STAGE in v1.6.0)
+  Runs on AUTO_MATCHED + resolved-dispute lines
+  Loads org_carrier_account for each line
+    Determines markup_type, markup_value, markup_source
+    IF use_rate_card AND active rate card → base = rate_card.base_rate, source = 'rate_card'
+    ELSE → base = raw carrier base, source = 'carrier_account'
+  Applies markup per markup_type rules (see Section 6 Rule 3)
+  Writes final_billed_rate (authoritative total)
+  Writes markup_type_applied, markup_value_applied, markup_source
+  Sets billing_status = APPROVED
+  IMMUTABLE — invoice_line_items row sealed at this point
+
+STAGE 6: INVOICE GENERATION
+  Groups APPROVED lines by org_id
+  One cactus_invoices row per org per billing period
+  cactus_invoice_line_items junction rows created
+  billing_status → INVOICED
+  due_date = today + organizations.terms_days
+  Generates client-facing 85-column detail CSV
+  Generates one-page PDF summary
+
+STAGE 7: DELIVERY TO CACTUS PORTAL
+  cactus_invoices visible in Cactus Portal
+  Display rules per carrier_account_mode:
+    lassoed lines → final_billed_rate only
+    dark lines → carrier_charge + final_billed_rate
+  PDF download: one-page summary
+    Total due, total shipments
+    By carrier: shipments + amount
+    By origin location: shipments + amount
+  CSV download: 85-column detail format
+  Payment status: UNPAID → PAID
+
+STAGE 8: PAYMENT
+  USPS → pre-paid meter already settled
+  All others → auto-pull on due_date via Stripe/Fortis
+  invoice_status → PAID
+  audit_logs entry
+
+### Why Stage 3 (Match) is separated from Stage 5 (Billing Calc) in v1.6.0
+1. Auditability — distinct match timestamp vs billing timestamp
+2. Reprocessing — fix billing logic without re-running matching
+3. Dispute clarity — see "what would this cost at current markup" before resolving
+4. Future flexibility — sub-client billing, special pricing, plug into Stage 5 cleanly
 
 ### Address Normalization Format
 `"1234 MAIN ST, PHOENIX, AZ, 85001, US"`
@@ -315,7 +438,7 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 10. DATABASE SCHEMA (v1.5.0 — 19 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.6.0 — 19 TABLES — LIVE IN SUPABASE)
 
 | Table | Purpose |
 |---|---|
@@ -352,6 +475,42 @@ Never update shipment status. Always append new event rows.
 - `shipment_event_type_enum`: RATE_REQUESTED, LABEL_CREATED, LABEL_VOIDED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERY_ATTEMPTED, DELIVERED, RETURNED_TO_SENDER, LOST, EXCEPTION, APV_ADJUSTMENT, ADDRESS_CORRECTED, DAMAGED
 - `portal_role_enum`: ADMIN, FINANCE, STANDARD
 - `notification_type_enum`: METER_RELOAD, INVOICE_READY, TRACKING_STATUS_ALERTS, PAYMENT_FAILED
+
+### v1.6.0 Schema Changes (applied 2026-04-18)
+
+invoice_line_items:
+  RENAMED  final_merchant_rate → final_billed_rate
+  ADDED    markup_type_applied   TEXT
+  ADDED    markup_value_applied  DECIMAL(10,6)
+  ADDED    markup_source         TEXT
+  ADDED    is_adjustment_only    BOOLEAN NOT NULL DEFAULT FALSE
+  DROPPED  markup_percentage
+  DROPPED  markup_flat_fee
+
+shipment_ledger:
+  RENAMED  final_merchant_rate → final_billed_rate
+  (markup_percentage and markup_flat_fee NOT YET migrated —
+   Session B will unify the markup context model across both tables)
+
+rate_shop_log:
+  RENAMED  final_merchant_rate → final_billed_rate
+
+cactus_invoice_line_items:
+  RENAMED  final_merchant_rate → final_billed_rate
+
+Backfill: 952 existing rows backfilled with markup context derived
+from org_carrier_accounts at backfill time. 950 rows on test invoice
+904d933a backfilled with service_level, date_shipped, date_invoiced
+from raw_line_data JSONB. 8 adjustment-only lines flagged.
+
+Migration files (in repo):
+  database/migrations/v1.6.0-pipeline-foundation.sql
+  database/migrations/v1.6.0-backfill-existing-rows.sql
+
+NOTE: org_carrier_accounts STILL HAS markup_percentage and
+markup_flat_fee columns — these are the SOURCE OF TRUTH for carrier
+account markup configuration (set by admins in the Alamo). Only the
+markup APPLIED on invoice_line_items moved to the new context columns.
 
 ---
 
@@ -636,7 +795,7 @@ Never update shipment status. Always append new event rows.
       - generate.ts server action at src/alamo/app/invoices/actions/generate.ts
       - Sweeps ALL APPROVED invoice_line_items system-wide (not per carrier invoice)
       - Groups by org_id — one cactus_invoices row per org per billing run
-      - total_amount = SUM(final_merchant_rate) via decimal.js (no floats)
+      - total_amount = SUM(final_billed_rate) via decimal.js (no floats)
       - billing_period_start/end = MIN/MAX(date_shipped)
       - due_date = today + organizations.terms_days
       - Creates cactus_invoice_line_items junction rows
@@ -686,7 +845,7 @@ Never update shipment status. Always append new event rows.
       - Invoice meta: INVOICE NO (first 8 chars), INVOICE PERIOD (start/end collapsed if same date), DUE DATE (forest green bold)
       - Summary by carrier: shipments + amount per carrier_code
       - Summary by origin location: capped at 12 rows, "+ N more — see CSV" overflow line
-      - Display rules enforced: lassoed = final_merchant_rate only, dark = carrier_charge + final_merchant_rate
+      - Display rules enforced: lassoed = final_billed_rate only, dark = carrier_charge + final_billed_rate
       - Total Due row: total shipments count left, total amount right in forest green 18pt
       - Payment instruction: "Payment will be automatically collected on the due date via your payment method on file."
       - Values footer: Gratitude · Curiosity · Faith · Creation (middle dot separator — → arrow breaks pdfkit font encoding)
@@ -702,6 +861,45 @@ Never update shipment status. Always append new event rows.
       - Section group labels (WORKSPACE, BILLING, TOOLS) intentionally left without icons
       - Sign Out inline SVG replaced with Lucide LogOut icon
       - "—— Alamo ——" divider below logo replaces stallion horse icons
+
+- [x] Stage 5 Step 8: /billing section split from carrier invoices — complete (commit 5ab47ff merged 2026-04-17)
+      - New "Client Invoices" sidebar nav at /billing
+      - "Carrier Invoices" sidebar nav renamed from "Invoices" at /invoices
+      - Billing list page (/billing) with org/date/status filters
+      - Billing detail page (/billing/[id]) with PDF + CSV download buttons
+      - PDF generator moved from /invoices/[id]/actions/pdf.ts to /billing/[id]/actions/pdf.ts
+      - CSV generator created at /billing/[id]/actions/csv.ts (current 9-col version)
+      - API routes at /api/billing/[id]/pdf and /api/billing/[id]/csv
+      - Verified: 950 line items render on /billing/[id] for Cactus 3PL HQ
+      - PENDING: "Billed in {org} — week of {date} →" link in carrier invoice
+        breadcrumb (specced but not implemented in that session, deferred to Session B)
+
+- [x] Schema migration v1.6.0 — Pipeline Foundation — complete (commit 6e72310 merged 2026-04-18)
+      Renamed final_merchant_rate → final_billed_rate (4 tables: invoice_line_items,
+        shipment_ledger, rate_shop_log, cactus_invoice_line_items)
+      Added to invoice_line_items: markup_type_applied, markup_value_applied,
+        markup_source, is_adjustment_only
+      Dropped from invoice_line_items: markup_percentage, markup_flat_fee
+      Backfilled 952 rows with markup context
+      Backfilled 950 test rows with service_level, date_shipped, date_invoiced
+      Verified end-to-end: schema columns correct, all rows populated, no
+        billed-but-not-backfilled rows
+      shipment_ledger NOT YET unified (still has markup_percentage/markup_flat_fee)
+        — Session B will extend the new markup context pattern there
+
+- [x] UPS detail parser bug fixes — complete (commit 6e72310)
+      parseDate() now handles 2-digit year format (M/D/YY → 2026 if 00-49, 1926 if 50-99)
+      service_level read from primary FRT row's Charge Description
+        (Original Service Description is always empty in real UPS detail invoices)
+      is_adjustment_only flag set when tracking number has only adjustment FRT rows
+      date_shipped populated from Transaction Date as universal default
+        (Session B will overwrite for lassoed lines from shipment_events.LABEL_CREATED)
+      Verified: 950/950 service_level populated, 950/950 dates populated, 8 adjustment-only flagged
+
+- [x] Repo housekeeping — complete (2026-04-18)
+      All 4 stale claude/* worktree branches removed and pruned
+      All 16 local commits pushed to origin/main
+      Repo is clean: only main branch local, only origin/main remote
 
 ### Pending Phase 0 items
 - [x] EIN received
@@ -719,17 +917,65 @@ Never update shipment status. Always append new event rows.
 - [x] Configure Formspree form ID in cactus-marketing/index.html — live and working
 
 ### Next task — START HERE next session
-Stage 5 Step 8: CSV export
+Session B: Pipeline Restructure + 85-Column CSV + Polish
 
-  FILE: src/alamo/app/invoices/[id]/actions/csv.ts
-  Full line item detail export per cactus_invoice
-  Same display rules as PDF:
-    lassoed lines → final_merchant_rate only, never carrier_charge
-    dark lines → carrier_charge + final_merchant_rate
-  Columns: tracking number, carrier, service level, date shipped,
-           origin location, weight, zone, final amount (+ carrier charge if dark)
-  Client button: DownloadCSVButton.tsx alongside existing DownloadPDFButton
-  API route: src/alamo/app/api/invoices/[id]/csv/route.ts
+Bigger session — estimated 2-3 hours of Claude Code at xhigh effort.
+
+Scope:
+1. Pipeline restructure
+   - Extract markup logic from match.ts into new billing-calc.ts server action
+   - Update resolve.ts to not apply markup, route resolved lines to Stage 5
+   - Stage 5 pulls APPROVED + resolved-dispute lines, applies markup, writes
+     final_billed_rate and markup context, sets billing_status APPROVED
+
+2. Match stage shipment_events enrichment
+   - For lassoed lines: pull date_shipped from shipment_events.LABEL_CREATED
+   - For lassoed lines: pull date_delivered from shipment_events.DELIVERED if present
+   - Dark lines untouched (Transaction Date proxy from parser)
+
+3. New 85-column client CSV (DETAIL FORMAT)
+   - File: src/alamo/app/billing/[id]/actions/csv.ts (rewrite)
+   - All 85 columns from the detail format spec
+   - Per-charge billed values computed at read time from raw + markup context
+   - Per-mode display:
+     * percentage markup: itemized columns show marked-up values
+     * flat markup: itemized columns show raw values, base_charge_billed includes flat fee
+   - CSV format conventions LOCKED:
+     * Tab-prefix tracking numbers (Excel scientific-notation prevention)
+     * ISO dates (YYYY-MM-DD)
+     * Plain decimal currency, 2 places, no currency symbol
+     * Empty cells literally empty (no "NULL", no 0)
+     * RFC 4180 dialect, CRLF line endings, UTF-8 with BOM
+     * Filename: {org-slug}-cactus-invoice-{week-end-date}.csv
+     * No metadata header rows — column headers row 1, data row 2 onward
+
+4. shipment_ledger markup model unification
+   - Extend new markup_type_applied / markup_value_applied / markup_source pattern
+     to shipment_ledger so quote-time and bill-time use the same model
+   - Why deferred from Session A: shipment_ledger is touched by rating engine
+     (Stage 6 of build) and by dark-account inserts in match.ts/resolve.ts which
+     are being refactored in Session B anyway
+
+5. Polish items (carry-over from Stage 5 Step 8 + Session A)
+   - Add "Billed in {org} — week of {date} →" link to carrier invoice
+     breadcrumb at /invoices/[id]
+   - Add Service Level + Date Shipped columns to carrier invoice line
+     items table at /invoices/[id] (Possibility 1 from chat planning)
+   - Add line item drill-down panel showing all 85 columns at /billing/[id]
+     for a single shipment (Possibility 2 — true to "Logistics with Soul"
+     transparency value)
+   - Fix Service column truncation on /billing/[id] (currently shows
+     "Ground Comm..." truncated)
+
+6. Pre-existing cleanup (low priority — folded in if time permits)
+   - verify-data.sql: references dropped columns, broken pre-Session-A
+   - seed-data.sql: writes to dropped columns, will fail on fresh seed
+   - Orphaned files at old PDF paths in src/alamo/app/api/invoices/ and
+     src/alamo/app/invoices/[id]/ (DownloadPDFButton.tsx, actions/pdf.ts)
+   - 16 pre-existing TypeScript errors in match.ts/resolve.ts/disputes/page.tsx
+     (financial-critical paths, deserve careful attention)
+
+Spec to be written by Senior Architect (Claude chat) before handoff.
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -747,13 +993,24 @@ Stage 5 Step 8: CSV export
 - Variance above threshold: HELD, dispute_flag=TRUE, human review
 - shipment_source: RATING_ENGINE (lassoed) or INVOICE_IMPORT (dark)
 - All carrier accounts are Cactus/Buku master accounts
-- Single-Ceiling applied once to total — never per surcharge component
+- Markup applied per markup_type (v1.6.0):
+    PERCENTAGE: per-component, summed, Single-Ceiling on total
+    FLAT: applied once to base_charge only, surcharges pass through raw
+- Storage: raw carrier values + markup context. Per-charge billed values
+    computed at READ time. final_billed_rate materialized at Stage 5.
+- Margin analytics: SUM(final_billed_rate - carrier_charge) GROUP BY org, week
+    No parallel raw-cost table needed (immutability gives point-in-time snapshot)
+- Pipeline: 8 stages — Ingestion → Parsing → Matching → Dispute Resolution
+    → Billing Calculation → Invoice Generation → Delivery → Payment
+- Match stage SEPARATED from Billing Calculation (v1.6.0 refactor in Session B)
+- 85-column DETAIL FORMAT is the client-facing CSV standard (BukuShip
+    58-column hybrid template DEPRECATED)
 - Shadow Ledger (rate_shop_log) logs ALL rate requests async
 - Event sourcing: always append shipment_events, never update status
 - AI is central nervous system — not a feature
 - WMS handles rate display/selection UI in Phase 1-2
 - Cactus builds own WMS in Phase 3
-- Rate sort: cheapest first (final_merchant_rate ASC)
+- Rate sort: cheapest first (final_billed_rate ASC)
 - Last-mile carriers self-filter by ZIP — no lookup tables needed
 - Carrier API errors: log + exclude, never fail full response
 - FedEx rate data: reconciliation only, not AI price prediction
@@ -798,19 +1055,28 @@ Stage 5 Step 8: CSV export
 - Login page background is SVG-based — no image files, pure code
 - JetBrains Mono via Google Fonts — tracking numbers only
 - Variance logic: carrier_charge - raw_carrier_cost (both pre-markup)
-  NEVER compare carrier_charge to final_merchant_rate (apples to oranges)
-- Invoice display rules locked per carrier_account_mode:
-    lassoed → show ONLY final_merchant_rate, NEVER carrier_charge or markup
-    dark → show both carrier_charge AND final_merchant_rate
+  NEVER compare carrier_charge to final_billed_rate (apples to oranges)
+- is_adjustment_only=TRUE skips variance calc (no original quote to compare)
+- Invoice display rules locked per carrier_account_mode (v1.6.0):
+    lassoed → show ONLY final_billed_rate (per-charge billed values
+              acceptable since they sum to final_billed_rate within
+              fractional cent rounding tolerance — display rule is per
+              field, not per shipment)
+    dark → show both carrier_charge AND final_billed_rate
     This is per org_carrier_account, not per org
     An org can have lassoed UPS + dark DHL simultaneously
     Each line item checked individually via org_carrier_account_id join
-- PDF invoice = one page summary only:
+- PDF invoice = one page summary only (already shipped):
     Total amount due, total shipments
     Breakdown by carrier (shipments + amount)
     Breakdown by origin location (shipments + amount) via match_location_id
     Never shows carrier_charge or markup on lassoed lines
-- CSV export = full line item detail, same display rules as PDF
+- CSV export = full 85-column detail format (Session B will deliver):
+    Pass-through columns: tracking, dates, dims/weights entered + carrier,
+      addresses (sender + receiver), service, zone, references, etc.
+    Charge columns: per-charge billed values computed at read time
+    Single Shipment Total column = final_billed_rate (authoritative)
+    Footnote: line items may show fractional-cent rounding; total is authoritative
 - locations.name = the human-friendly location label (no separate nickname)
     Convention: use short names e.g. "Phoenix WH", "Tempe FC"
     Used in PDF summary and Cactus Portal location filter
@@ -1135,72 +1401,50 @@ a mapped field. Used to route charge rows during line item parsing.
 - Header row detection: skip if col U (tracking) doesn't start with 1Z
 - Charge routing priority: exact → class+detail → class-only
 
+### UPS Detail Format — Real File Analysis (confirmed 2026-04-18)
+
+Analyzed real anonymized UPS detail invoice (4,175 rows × 250 columns):
+
+Charge Classification distribution:
+  FRT (freight):       1,214 rows
+  ACC (accessorial):     830 rows
+  FSC (fuel surcharge): 1,211 rows
+  INF (info/dims):       919 rows
+  MSC (misc):              1 row
+
+CRITICAL: Several columns in the UPS template are ALWAYS EMPTY in
+real production invoices, despite being in the column header spec:
+
+  Original Service Description (col 230)  — 0/4,175 populated
+  Shipment Date (col 117)                 — 0/4,175 populated
+  Shipment Delivery Date (col 122)        — 0/4,175 populated
+
+ALWAYS-POPULATED columns we now rely on:
+
+  Invoice Date (col 5)         — format M/D/YY (e.g. "3/14/26")
+  Transaction Date (col 12)    — format M/D/YY
+  Invoice Due Date (col 63)    — format M/D/YY
+  Charge Description (col 46)  — service info lives here
+                                 ("Ground Commercial", "Ground Residential",
+                                  "2nd Day Air Residential", etc.)
+
+Adjustment row patterns (272 of 1,214 FRT rows = ~22%):
+  "Shipping Charge Correction Ground"
+  "Shipping Charge Correction 2nd Day Air"
+  "Shipping Charge Correction Next Day Air"
+  "Residential Adjustment"
+  "Address Correction Ground"
+  Most paired with primary FRT row on same tracking number.
+  Subset are standalone adjustments (no primary FRT row on this invoice)
+    — flagged with is_adjustment_only=TRUE, variance calc skipped.
+
 ---
 
 ## 18. FULL INVOICE PIPELINE — STAGE BY STAGE
 
-STAGE 1: INGESTION
-  Admin uploads carrier invoice in The Alamo
-  Selects carrier + format (DETAIL or SUMMARY)
-  File stored in Supabase Storage
-  carrier_invoices row created (status: UPLOADED)
-
-STAGE 2: PARSING
-  Detail format: rule-based parser (carrier_charge_routing)
-  Summary format: AI normalization → human review
-  One invoice_line_items row per tracking number
-  Charges split into named fields, dims extracted
-  address_sender_normalized built for dark matching
-  status: COMPLETE
-
-STAGE 3: MATCHING
-  Lassoed: tracking_number → shipment_ledger → org_id
-    variance = carrier_charge - raw_carrier_cost
-    ABS(variance) > dispute_threshold → HELD + dispute_flag
-    ELSE → AUTO_MATCHED
-  Dark: address_sender_normalized → locations
-    Exactly one match → AUTO_MATCHED + match_location_id stored
-    Zero/multiple → FLAGGED → HELD
-  carrier_invoices updated: matched/flagged counts
-  status: REVIEW (if flagged) or APPROVED
-
-STAGE 4: DISPUTE RESOLUTION
-  Admin reviews /invoices/[id]/disputes
-  Can manually assign org to FLAGGED items
-  Can approve or override variance disputes
-  dispute_notes per line item
-  Resolved → billing_status = APPROVED
-
-STAGE 5: BILLING CALCULATION
-  Runs on APPROVED line items only
-  final_merchant_rate = CEILING(carrier_charge × (1 + markup))
-  pre_ceiling_amount stored for audit trail
-  Immutable — never update once written
-
-STAGE 6: INVOICE GENERATION
-  Groups all APPROVED lines by org_id
-  One cactus_invoices row per org per billing period
-  cactus_invoice_line_items junction rows created
-  billing_status → INVOICED
-  due_date = today + org.terms_days
-
-STAGE 7: DELIVERY TO CACTUS PORTAL
-  cactus_invoices visible in Cactus Portal
-  Display rules per carrier_account_mode:
-    lassoed lines → final_merchant_rate only
-    dark lines → carrier_charge + final_merchant_rate
-  PDF download: one-page summary
-    Total due, total shipments
-    By carrier: shipments + amount
-    By origin location: shipments + amount
-  CSV download: full line item detail, same display rules
-  Payment status: UNPAID → PAID
-
-STAGE 8: PAYMENT
-  USPS → pre-paid meter already settled
-  All others → auto-pull on due_date via Stripe/Fortis
-  invoice_status → PAID
-  audit_logs entry
+Pipeline now lives canonically in Section 8 (collapsed in v1.6.0 to
+eliminate redundancy with Section 8 which previously had a stale version).
+See Section 8 for the 8-stage pipeline architecture.
 
 ## 19. CACTUS PORTAL — FULL VISION
 
@@ -1214,8 +1458,8 @@ Shipments
   Current tracking status
   Service level, carrier, zone, weight, dims
   Filter by location via locations.name
-  Display rules: lassoed = final_merchant_rate only
-                 dark = carrier_charge + final_merchant_rate
+  Display rules: lassoed = final_billed_rate only
+                 dark = carrier_charge + final_billed_rate
 
 Tracking Alerts
   LABEL_CREATED > 3 business days (configurable per org)
@@ -1389,7 +1633,7 @@ First target client: FulfillmentEZ (Warehance → Cactus by July 2026)
 1. Rating endpoint — POST /api/rate
    Input: org_id, origin, destination, weight, dimensions
    Output: all available rates across all active carriers, marked up,
-           sorted cheapest first (final_merchant_rate ASC)
+           sorted cheapest first (final_billed_rate ASC)
    This is the Phase 1 rating engine core.
 
 2. Purchase label endpoint — POST /api/label

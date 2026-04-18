@@ -1,5 +1,5 @@
 # Cactus Development Standards
-# VERSION: 1.4.0 | UPDATED: 2026-03-28
+# VERSION: 1.6.0 | UPDATED: 2026-04-18
 #
 # PURPOSE: This file is the "constitution" of the Cactus codebase.
 # Cursor reads this before every AI interaction in the project.
@@ -61,10 +61,10 @@ with AI capabilities that took years to build — not months.
   - ✅ `database-setup.sql`, `rating-engine.ts`
 
 - **Database Tables & Columns:** `snake_case`
-  - ✅ `org_id`, `shipment_ledger`, `final_merchant_rate`
+  - ✅ `org_id`, `shipment_ledger`, `final_billed_rate`
 
 - **Application Code (TypeScript/JavaScript):** `camelCase`
-  - ✅ `finalMerchantRate`, `calculateMarkup()`, `orgId`
+  - ✅ `finalBilledRate`, `calculateMarkup()`, `orgId`
 
 - **React Components & TypeScript Types:** `PascalCase`
   - ✅ `ShipmentCard`, `OrgType`, `RateCardProps`
@@ -88,31 +88,64 @@ with AI capabilities that took years to build — not months.
 Never bill from label print data or rating engine quotes.
 ```
 CORRECT: bill_amount = carrier_invoice_line.carrier_charge
-WRONG:   bill_amount = shipment_ledger.final_merchant_rate
+WRONG:   bill_amount = shipment_ledger.final_billed_rate
 ```
 
-### Rule 3: Single-Ceiling applied ONCE per shipment total
+### Rule 3: Markup applied per markup_type — Single-Ceiling for percentage
+
+Two markup types are supported:
+
+PERCENTAGE markup: applied to each charge component, summed, then
+Single-Ceiling on total. Itemized columns on client CSV show
+marked-up values.
+
 ```typescript
 import Decimal from 'decimal.js';
 
-const preCeilingAmount = new Decimal(carrierCharge)
-  .times(new Decimal(1).plus(markupPercentage))
-  .plus(markupFlatFee ?? 0);
+// Percentage markup, per-component
+const markupFactor = new Decimal(1).plus(markupPercentage);
+const baseMarked = new Decimal(baseRate).times(markupFactor);
+const fuelMarked = new Decimal(fuelSurcharge).times(markupFactor);
+const residentialMarked = new Decimal(residentialSurcharge).times(markupFactor);
+// ... sum all marked components ...
+const preCeilingTotal = baseMarked.plus(fuelMarked).plus(residentialMarked); // etc
 
-const finalMerchantRate = preCeilingAmount
+const finalBilledRate = preCeilingTotal
   .times(100)
   .ceil()
   .dividedBy(100);
 ```
 
-### Rule 4: Markup hierarchy
+FLAT markup: applied ONCE to base_charge only. Surcharges pass
+through raw. No separate markup column on client invoice — flat
+fee folds into base_charge_billed.
+
+```typescript
+// Flat markup — applied once to base only
+const baseCharged = new Decimal(baseRate).plus(flatFee);
+const finalBilledRate = baseCharged.plus(fuelSurcharge).plus(residentialSurcharge); // etc
+// No ceiling needed for flat — no fractional cents introduced
 ```
-org_carrier_accounts.markup_percentage  ← PRIMARY markup
-rate_cards (optional children)          ← custom rate pricing
-  └── If rate card exists: use rate card price
-      Apply account markup on top
-      If markup baked into rate card: set account markup = 0
+
+Stored on every invoice_line_items row at Stage 5 Billing Calc:
+  markup_type_applied   ('percentage' | 'flat')
+  markup_value_applied  DECIMAL(10,6)
+  markup_source         ('carrier_account' | 'rate_card')
+
+### Rule 4: Markup hierarchy + source tracking
 ```
+org_carrier_accounts.markup_percentage     ← admin-set primary markup (still lives here)
+org_carrier_accounts.markup_flat_fee       ← admin-set flat fee alternative (still lives here)
+  └── rate_cards (optional children)
+        ← replace the BASE rate only; surcharges pass through raw
+        ← if markup baked into rate card: set account markup = 0
+```
+
+At Stage 5 Billing Calc time, derived and stored on invoice_line_items:
+  markup_type_applied:   'percentage' | 'flat'
+  markup_value_applied:  the value used (e.g. 0.150000 for 15%)
+  markup_source:         'carrier_account' | 'rate_card'
+    (source tracks where BASE RATE came from, not where markup came from)
 
 ### Rule 5: Bifurcated settlement
 - **USPS → Pre-paid Metered Wallet**
@@ -248,27 +281,24 @@ Cactus purchases label → returns tracking number to WMS
 WMS prints label
 ```
 ### Rate Card Date Logic
-created_at:      auto-populated at upload — audit trail
-effective_date:  admin-set — rate card not used until this date
-deprecated_date: admin-set — rate card expires on this date
+See Section 5 "Rate Card Date Fields" for field definitions and
+future-dating / superseding behavior.
 
-Rating engine lookup:
-  effective_date <= TODAY
-  deprecated_date IS NULL OR deprecated_date > TODAY
-  ORDER BY effective_date DESC LIMIT 1
-
-Future-dating: upload new rates in advance, they go live automatically.
-Superseding: new effective_date > old effective_date → new card wins.
+Rating engine lookup query:
+  WHERE effective_date <= TODAY
+    AND (deprecated_date IS NULL OR deprecated_date > TODAY)
+  ORDER BY effective_date DESC
+  LIMIT 1
 
 ### Rate Sorting
 ```
-Default sort: final_merchant_rate ASC (cheapest first)
-Optional:     transit_days ASC then final_merchant_rate ASC
+Default sort: final_billed_rate ASC (cheapest first)
+Optional:     transit_days ASC then final_billed_rate ASC
 Never:        carrier-weighted or manually promoted results
 ```
 
 Residential and fuel surcharges are already included in
-carrier API rate responses. final_merchant_rate accounts
+carrier API rate responses. final_billed_rate accounts
 for everything. Cheapest first IS the smartest sort.
 
 ### Last-Mile Carrier ZIP Coverage
@@ -298,34 +328,43 @@ Failure to manifest = packages not collected.
 ### Variance Calculation Rule — Non-Negotiable
 variance_amount = carrier_charge - raw_carrier_cost
 Both values are pre-markup carrier costs — apples to apples.
-NEVER compare carrier_charge to final_merchant_rate.
+NEVER compare carrier_charge to final_billed_rate.
 The markup difference would create false variance on every shipment.
+is_adjustment_only=TRUE skips variance calc (no original quote exists).
 
-### Full Flow
+### Full Flow (v1.6.0 — 8 stages)
+See master briefing Section 8 for canonical stage-by-stage definitions.
+
 ```
-Upload carrier CSV/XLSX in The Alamo
-        ↓
-AI normalizes headers → Cactus Standard fields
-        ↓
-Human review queue
-        ↓
-For each line item:
-  IF lassoed:
-    Match tracking_number → shipment_ledger → org_id
-    Compare carrier_charge vs quoted_rate
-    IF variance > dispute_threshold → HELD + dispute_flag
-    ELSE → apply markup → Single-Ceiling → APPROVED
+STAGE 1: INGESTION
+  Upload carrier CSV/XLSX in The Alamo, file stored in Supabase Storage
 
-  IF dark:
-    Normalize ship_from_address
-    Match → locations.normalized_address (is_billing_address=TRUE)
-    IF one match → assign org → markup → Single-Ceiling
-    IF zero/multiple → FLAGGED → manual review
-    Create shipment_ledger row (shipment_source = INVOICE_IMPORT)
-        ↓
-Generate cactus_invoices from APPROVED line items
-        ↓
-Sync to QuickBooks Online
+STAGE 2: PARSING
+  AI normalization OR rule-based parser (per format)
+  service_level from Charge Description (primary FRT row)
+  is_adjustment_only flagged when only adjustment FRT rows exist
+
+STAGE 3: MATCHING (no markup applied at this stage)
+  Lassoed: tracking_number → shipment_ledger → org_id
+    Enrich date_shipped from shipment_events.LABEL_CREATED
+    Variance check (skip if is_adjustment_only)
+  Dark: address_sender_normalized → locations → org_id
+
+STAGE 4: DISPUTE RESOLUTION
+  Admin reviews HELD lines, assigns org or approves variance
+
+STAGE 5: BILLING CALCULATION (NEW SEPARATE STAGE)
+  Apply markup per markup_type, write final_billed_rate
+  Write markup context: markup_type_applied, markup_value_applied, markup_source
+
+STAGE 6: INVOICE GENERATION
+  Group by org, create cactus_invoices + junction rows
+
+STAGE 7: DELIVERY TO PORTAL
+  PDF summary + 85-column CSV detail format
+
+STAGE 8: PAYMENT
+  Stripe auto-pull on due_date, shipment_ledger immutable
 ```
 
 ### Address Normalization Format
@@ -377,7 +416,7 @@ await supabase
 
 ---
 
-## 9. Database Standards (v1.5.0 — 19 Tables)
+## 9. Database Standards (v1.6.0 — 19 Tables)
 
 | Table | Purpose |
 |---|---|
@@ -411,6 +450,23 @@ Removed:  `LSO` (not in carrier roadmap)
 `raw_carrier_cost` | `markup_percentage` | `markup_flat_fee` |
 `pre_ceiling_amount` | `org_carrier_accounts` | `rate_cards`
 
+### v1.6.0 Schema Changes (applied 2026-04-18)
+
+invoice_line_items:
+  RENAMED  final_merchant_rate → final_billed_rate
+  ADDED    markup_type_applied, markup_value_applied, markup_source
+  ADDED    is_adjustment_only BOOLEAN
+  DROPPED  markup_percentage, markup_flat_fee
+
+shipment_ledger | rate_shop_log | cactus_invoice_line_items:
+  RENAMED  final_merchant_rate → final_billed_rate
+
+NOTE: org_carrier_accounts STILL HAS markup_percentage and
+markup_flat_fee — source-of-truth for admin-set markup configuration.
+
+NOTE: shipment_ledger STILL HAS markup_percentage and markup_flat_fee —
+Session B will extend new markup context pattern there.
+
 ---
 
 ## 10. Product Architecture
@@ -428,21 +484,25 @@ Never shows markup, raw costs, or carrier account details.
 - Rate card management
 - Audit logs, meter health
 
-Invoice display rules per carrier_account_mode:
-  lassoed → ONLY final_merchant_rate shown to client
-  dark → carrier_charge + final_merchant_rate shown
+Invoice display rules per carrier_account_mode (v1.6.0):
+  lassoed → ONLY final_billed_rate shown to client
+  dark → carrier_charge + final_billed_rate shown
   Checked per line item, not per invoice or per org
 
-### Phase 1 Build Sequence
+### Phase 1 Build Sequence (v1.6.0)
 ```
-Stage 1: Schema v1.4.0           ✅ complete
+Stage 1: Schema v1.6.0            ✅ complete
 Stage 2: The Alamo shell          ✅ complete
-Stage 3: Org + carrier management ← CURRENT
-Stage 4: Invoice pipeline
-Stage 5: Rating engine core
-Stage 6: UPS + FedEx integrations
-Stage 7: Warehance WMS integration
-Stage 8: Cactus Portal
+Stage 3: Org + carrier management ✅ complete
+Stage 4: Invoice pipeline         ✅ complete
+Stage 5: Invoice generation       ⏳ In Progress (Session B will complete)
+  - Step 1-7: weekly billing, PDF, CSV, filters  ✅ complete
+  - Step 8: /billing section split               ✅ complete (2026-04-17)
+  - Step 9 (Session B): pipeline restructure, 85-column CSV, shipment_ledger unification
+Stage 6: Rating engine core
+Stage 7: UPS + FedEx API integrations
+Stage 8: Warehance WMS integration
+Stage 9: Cactus Portal
 Post:    Phase 2 carriers
 ```
 
@@ -522,6 +582,24 @@ the full dataset as a prop; the filter component handles display logic.
 - Export CSV is always present on invoice and report pages
 - FROM/TO date labels use 11px uppercase muted style (Alamo standard)
 
+### CSV Format Conventions (locked v1.6.0)
+
+Client-facing CSV exports use the 85-column "detail format":
+
+- Tracking numbers: tab-prefixed to prevent Excel scientific notation
+- Dates: ISO format YYYY-MM-DD
+- Currency: plain decimal, 2 places, no currency symbol
+- Empty cells: literally empty (never "NULL", never 0 for missing numerics)
+- CSV dialect: RFC 4180, CRLF line endings, UTF-8 with BOM
+- Filename: {org-slug}-cactus-invoice-{week-end-date}.csv
+- No metadata header rows — column headers row 1, data row 2 onward
+- Per-charge billed values computed at read time from raw + markup context
+- Footnote on CSV: "Shipment Total is authoritative. Line items may reflect fractional-cent display rounding."
+
+Internal Alamo CSV exports (filter/list exports) follow the same
+conventions except they MAY include Cactus-internal columns
+(carrier_charge, variance, markup context) since those views are admin-only.
+
 ---
 
 ## 11. Coding Philosophy
@@ -556,9 +634,12 @@ cactus-web-app/
 ├── README.md
 ├── cactus-master-briefing.md
 ├── database/
-│   ├── database-setup.sql         ← v1.4.0 (16 tables)
-│   ├── seed-data.sql
-│   └── verify-data.sql
+│   ├── database-setup.sql         ← v1.6.0 (19 tables)
+│   ├── seed-data.sql              ← needs cleanup pass (references dropped columns)
+│   ├── verify-data.sql            ← needs cleanup pass (references dropped columns)
+│   └── migrations/
+│       ├── v1.6.0-pipeline-foundation.sql
+│       └── v1.6.0-backfill-existing-rows.sql
 ├── docs/
 │   ├── fedex/                     ← complete
 │   ├── ups/                       ← in progress

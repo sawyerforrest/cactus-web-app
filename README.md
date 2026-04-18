@@ -117,41 +117,68 @@ Never bill from label print data or rating engine quotes.
 - **USPS → Pre-paid Metered Wallet**
 - **All others → Post-paid Weekly Invoice**
 
-### The Single-Ceiling Pipeline
-```
-carrier_charge × (1 + markup_percentage) = pre_ceiling_amount
-CEILING(pre_ceiling_amount to next whole cent) = final_merchant_rate
-```
-Applied once to the shipment total. Never per surcharge component.
+### Markup Pipeline (v1.6.0)
+Two markup types are supported:
 
-### Markup Hierarchy
+**PERCENTAGE markup** — applied to each charge component, summed,
+then Single-Ceiling on total. Itemized columns on client CSV show
+marked-up values.
 ```
-org_carrier_accounts.markup_percentage  ← primary markup
-rate_cards (optional children)          ← custom rate pricing
-  └── If rate card exists: use rate card price
-      Apply account markup on top
-      Set account markup = 0 if markup baked into rate card
+base × (1 + markup) = base_marked
+fuel × (1 + markup) = fuel_marked
+... etc per component
+SUM(marked components) = pre_ceiling_total
+CEILING(pre_ceiling_total to next cent) = final_billed_rate
 ```
+
+**FLAT markup** — applied ONCE to base_charge only. Surcharges pass
+through raw. No separate markup column on client invoice — flat fee
+folds into base_charge_billed.
+
+Storage approach: raw carrier values + markup context stored per
+line item. Per-charge billed values computed at READ time.
+`final_billed_rate` materialized at Stage 5 as the authoritative
+invoice total.
+
+### Markup Hierarchy + Source Tracking (v1.6.0)
+```
+org_carrier_accounts.markup_percentage   ← admin-set primary markup
+org_carrier_accounts.markup_flat_fee     ← admin-set flat fee alternative
+  └── rate_cards (optional children)
+        ← replace the BASE rate only; surcharges pass through raw
+        ← if markup baked into rate card: set account markup = 0
+```
+
+Stored per invoice_line_items row at Stage 5 Billing Calc:
+  `markup_type_applied`   'percentage' | 'flat'
+  `markup_value_applied`  DECIMAL(10,6)
+  `markup_source`         'carrier_account' | 'rate_card'
 
 ### Dispute Threshold
 When carrier_charge vs. raw_carrier_cost variance
-(both pre-markup — never compare to final_merchant_rate) exceeds
+(both pre-markup — never compare to final_billed_rate) exceeds
 `org_carrier_accounts.dispute_threshold`:
 → Line item flagged and held from billing
 → Alamo review required before releasing to client invoice
 
+Note: `is_adjustment_only=TRUE` lines skip variance calc (no original
+quote exists for standalone adjustments).
+
 ### Rate Sorting
-Default: cheapest first (`final_merchant_rate ASC`).
+Default: cheapest first (`final_billed_rate ASC`).
 Residential and fuel surcharges already included in carrier
 API responses — no special weighting needed.
 
 ---
 
-## Invoice Display Rules
+## Invoice Display Rules (v1.6.0)
 Per carrier_account_mode on each org_carrier_account:
-  lassoed_carrier_account → client sees ONLY final_merchant_rate
-    Never expose: carrier_charge, markup_percentage, variance
-  dark_carrier_account → client sees carrier_charge + final_merchant_rate
+  lassoed_carrier_account → client sees ONLY final_billed_rate
+    (per-charge billed values computed at read time from raw +
+     markup context — they sum to final_billed_rate within
+     fractional cent rounding tolerance)
+    Never expose: carrier_charge, markup details, variance
+  dark_carrier_account → client sees carrier_charge + final_billed_rate
 Checked per line item — an org can have lassoed UPS + dark DHL simultaneously
 
 ## Client Invoice Format
@@ -159,7 +186,11 @@ PDF: One-page summary only
   Total amount due + total shipments
   Breakdown by carrier (shipments + amount)
   Breakdown by origin location via locations.name (shipments + amount)
-CSV: Full line item detail, same display rules as PDF
+CSV: 85-column detail format (v1.6.0 — DEPRECATED the 58-column hybrid)
+  Pass-through columns: tracking, dates, dims/weights, addresses, etc.
+  Charge columns: per-charge billed values computed at read time
+  Shipment Total = `final_billed_rate` (authoritative)
+  Footnote: line items may show fractional-cent rounding
 
 ## User Roles (Cactus Portal)
 
@@ -225,7 +256,7 @@ Provider: Resend + React Email templates
 
 ---
 
-## Database Schema (v1.5.0 — 19 Tables)
+## Database Schema (v1.6.0 — 19 Tables)
 
 ```
 organizations              → Tenant root
@@ -249,17 +280,25 @@ carrier_charge_routing     → Self-improving charge routing table
 notification_preferences   → User email notification settings
 ```
 
+v1.6.0 schema changes: `invoice_line_items` renamed
+`final_merchant_rate → final_billed_rate`, added
+`markup_type_applied` / `markup_value_applied` / `markup_source` /
+`is_adjustment_only`, dropped `markup_percentage` / `markup_flat_fee`.
+Same rename applied to `shipment_ledger`, `rate_shop_log`,
+`cactus_invoice_line_items`. See `database/migrations/v1.6.0-*.sql`
+for full migration.
+
 ---
 
 ## Phase 1 Build Sequence
 
 | Stage | Focus | Status |
 |---|---|---|
-| 1 | Schema | ✅ Complete |
+| 1 | Schema v1.6.0 | ✅ Complete |
 | 2 | Alamo shell | ✅ Complete |
 | 3 | Org + carrier management | ✅ Complete |
 | 4 | Invoice pipeline + matching + disputes | ✅ Complete |
-| 5 | Invoice generation + PDF + CSV        | ⏳ In Progress |
+| 5 | Invoice generation (PDF, CSV, /billing split) | ⏳ Session B completes (pipeline restructure + 85-col CSV) |
 | 6 | Rating engine core | |
 | 7 | UPS + FedEx API integrations | |
 | 8 | Warehance WMS integration | |
