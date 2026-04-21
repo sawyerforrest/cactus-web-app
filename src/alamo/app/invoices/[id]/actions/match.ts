@@ -44,6 +44,7 @@
 
 import Decimal from 'decimal.js'
 import { createAdminSupabaseClient } from '../../../../lib/supabase-server'
+import { deriveMarkupContext } from '../../../../lib/markup-context'
 import { revalidatePath } from 'next/cache'
 
 // =============================================================
@@ -77,29 +78,9 @@ type CarrierAccount = {
   is_cactus_account: boolean
 }
 
-// Derive the v1.6.0 markup context fields from an org_carrier_accounts row.
-// Returns the three values we now write to invoice_line_items instead of
-// the deprecated markup_percentage / markup_flat_fee pair.
-function deriveMarkupContext(account: CarrierAccount): {
-  markup_type_applied: 'percentage' | 'flat'
-  markup_value_applied: string
-  markup_source: 'carrier_account' | 'rate_card'
-} {
-  const flat = new Decimal(account.markup_flat_fee ?? 0)
-  if (flat.greaterThan(0)) {
-    return {
-      markup_type_applied: 'flat',
-      markup_value_applied: flat.toFixed(6),
-      markup_source: account.use_rate_card ? 'rate_card' : 'carrier_account',
-    }
-  }
-  const pct = new Decimal(account.markup_percentage ?? 0)
-  return {
-    markup_type_applied: 'percentage',
-    markup_value_applied: pct.toFixed(6),
-    markup_source: account.use_rate_card ? 'rate_card' : 'carrier_account',
-  }
-}
+// deriveMarkupContext is now exported from src/alamo/lib/markup-context.ts
+// so match.ts, resolve.ts, and billing-calc.ts all share a single
+// implementation.
 
 // =============================================================
 // SINGLE-CEILING BILLING CALCULATION
@@ -457,8 +438,11 @@ export async function runMatchingEngine(
           carrier_code: carrierInvoice.carrier_code,
           shipment_source: 'INVOICE_IMPORT',
           raw_carrier_cost: carrierCharge.toFixed(4),
-          markup_percentage: account.markup_percentage,
-          markup_flat_fee: account.markup_flat_fee,
+          // v1.6.1: markup_percentage / markup_flat_fee were replaced by
+          // the markup context triple (same shape as invoice_line_items).
+          markup_type_applied: markupCtx.markup_type_applied,
+          markup_value_applied: markupCtx.markup_value_applied,
+          markup_source: markupCtx.markup_source,
           pre_ceiling_amount: preCeilingAmount.toFixed(4),
           final_billed_rate: finalBilledRate.toFixed(4),
           reconciled: true,

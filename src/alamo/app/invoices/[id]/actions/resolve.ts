@@ -35,6 +35,7 @@
 
 import Decimal from 'decimal.js'
 import { createAdminSupabaseClient } from '../../../../lib/supabase-server'
+import { deriveMarkupContext } from '../../../../lib/markup-context'
 import { revalidatePath } from 'next/cache'
 
 export type ResolveResult = {
@@ -171,15 +172,10 @@ export async function resolveDisputeGroup({
       finalBilledRate = carrierCharge
     }
 
-    // Derive v1.6.0 markup context for the invoice_line_items write.
-    // Matches the rules used in match.ts: flat overrides percentage when > 0;
-    // markup_source follows use_rate_card (rate_card if true, else carrier_account).
-    const markupFlat = new Decimal(account.markup_flat_fee ?? 0)
-    const markupTypeApplied = markupFlat.greaterThan(0) ? 'flat' : 'percentage'
-    const markupValueApplied = markupFlat.greaterThan(0)
-      ? markupFlat.toFixed(6)
-      : new Decimal(account.markup_percentage ?? 0).toFixed(6)
-    const markupSource = account.use_rate_card ? 'rate_card' : 'carrier_account'
+    // Derive v1.6.0 markup context for the invoice_line_items write and
+    // the v1.6.1 shipment_ledger write. Shared helper — see
+    // src/alamo/lib/markup-context.ts for edge-case documentation.
+    const markupCtx = deriveMarkupContext(account)
 
     // Create a shipment_ledger row for this manually resolved item.
     // WHY: Every approved line item needs a ledger row for audit trail.
@@ -197,8 +193,11 @@ export async function resolveDisputeGroup({
         carrier_code: carrierCode,
         shipment_source: 'INVOICE_IMPORT',
         raw_carrier_cost: carrierCharge.toFixed(4),
-        markup_percentage: account.markup_percentage,
-        markup_flat_fee: account.markup_flat_fee,
+        // v1.6.1: markup_percentage / markup_flat_fee replaced by the
+        // markup context triple (same shape as invoice_line_items).
+        markup_type_applied: markupCtx.markup_type_applied,
+        markup_value_applied: markupCtx.markup_value_applied,
+        markup_source: markupCtx.markup_source,
         pre_ceiling_amount: preCeilingAmount.toFixed(4),
         final_billed_rate: finalBilledRate.toFixed(4),
         reconciled: true,
@@ -228,9 +227,9 @@ export async function resolveDisputeGroup({
         dispute_notes: notes
           ? `Manually resolved by admin: ${notes}`
           : 'Manually resolved by admin.',
-        markup_type_applied: markupTypeApplied,
-        markup_value_applied: markupValueApplied,
-        markup_source: markupSource,
+        markup_type_applied: markupCtx.markup_type_applied,
+        markup_value_applied: markupCtx.markup_value_applied,
+        markup_source: markupCtx.markup_source,
         pre_ceiling_amount: preCeilingAmount.toFixed(4),
         final_billed_rate: finalBilledRate.toFixed(4),
       })
