@@ -62,3 +62,35 @@ export function deriveMarkupContext(
     markup_source: source,
   }
 }
+
+// =============================================================
+// SINGLE-CEILING MARKUP MATH — the ONE authoritative
+// implementation, used by:
+//   - match.ts         (for shipment_ledger row creation,
+//                       because shipment_ledger.final_billed_rate
+//                       is NOT NULL)
+//   - billing-calc.ts  (for invoice_line_items final_billed_rate)
+//
+// Semantics (per briefing): carrier_charge is ALWAYS the basis.
+//   preCeiling = carrier_charge * (1 + pct) + flat (mutually
+//                exclusive per context.markup_type_applied)
+//   final      = ceil(preCeiling * 100) / 100  — single ceiling
+//
+// Behavior-preserving w.r.t. Session A: same inputs → same
+// output within floating-point-free decimal math.
+// =============================================================
+
+export function computeSingleCeiling(
+  carrierCharge: Decimal,
+  context: MarkupContext
+): { preCeilingAmount: Decimal; finalBilledRate: Decimal } {
+  const value = new Decimal(context.markup_value_applied)
+
+  const preCeiling =
+    context.markup_type_applied === 'flat'
+      ? carrierCharge.plus(value)
+      : carrierCharge.times(new Decimal(1).plus(value))
+
+  const final = preCeiling.times(100).ceil().dividedBy(100)
+  return { preCeilingAmount: preCeiling, finalBilledRate: final }
+}

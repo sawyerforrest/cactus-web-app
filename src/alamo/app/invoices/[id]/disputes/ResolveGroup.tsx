@@ -81,6 +81,7 @@ export default function ResolveGroup({
       setResult({
         success: false,
         resolved: 0,
+        billingCalc: null,
         errors: [err instanceof Error ? err.message : 'Unknown error'],
       })
     } finally {

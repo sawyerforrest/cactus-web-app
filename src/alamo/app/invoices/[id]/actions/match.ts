@@ -1,17 +1,24 @@
 'use server'
 
 // =============================================================
-// CACTUS MATCHING ENGINE — v2
+// CACTUS MATCHING ENGINE — v3 (Session B split)
 // FILE: src/alamo/app/invoices/[id]/actions/match.ts
 //
-// ARCHITECTURE (v2 — corrected):
-// The carrier invoice arrives tagged to a carrier (e.g. UPS)
-// but NOT to a specific org. One Cactus master UPS account
-// serves multiple orgs. So we cannot determine the org from
-// the invoice itself — we must determine it per line item.
+// ARCHITECTURAL SHIFT (Session B):
+//   Matching no longer applies markup or sets billing_status =
+//   APPROVED. It only assigns org_id, sets match_status, and
+//   leaves billing_status = PENDING for eligible lines. Stage 5
+//   (billing-calc.ts) is called at the end to APPROVE the
+//   PENDING lines.
+//
+//   Shipment_ledger rows are still created here for dark
+//   accounts, because the ledger's final_billed_rate column is
+//   NOT NULL — and it IS computable at match time from
+//   carrier_charge + the account's markup config. The math is
+//   centralized in markup-context.ts; match.ts only calls the
+//   shared helpers, never implements the math itself.
 //
 // PER LINE ITEM FLOW:
-//
 //   STEP 1: Determine org_id
 //     Lassoed → tracking_number → shipment_ledger → org_id
 //     Dark    → address_sender_normalized → locations → org_id
@@ -23,28 +30,32 @@
 //       is_active = TRUE
 //       is_cactus_account = TRUE
 //
-//     Exactly one row → use its markup + mode + dispute_threshold
-//     Zero rows       → org has no active Cactus account → flag
-//     Multiple rows   → ambiguous → flag for review
-//
-//   STEP 3: Apply markup + Single-Ceiling using that account's rates
-//
-// WHY is_cactus_account = TRUE as the filter?
-//   All orgs share the same Cactus master carrier account number.
-//   is_cactus_account = TRUE identifies the Cactus-owned account
-//   that earns margin. Pass-through accounts (FALSE) are excluded.
+//   STEP 3: Set match_status + billing_status
+//     AUTO_MATCHED + PENDING — handoff to billing-calc
+//     FLAGGED    + HELD    — dispute, no billing
 //
 // FINANCIAL RULES ENFORCED:
-//   - No floats — all math uses decimal.js
+//   - No floats — decimal.js only
 //   - carrier_charge is ALWAYS the billing basis
-//   - Single-Ceiling applied once per shipment total
-//   - Variance = carrier_charge - raw_carrier_cost (never vs final_billed_rate)
+//   - Single-Ceiling happens ONCE per line, in Stage 5 for
+//     invoice_line_items, and here (via shared helper) for
+//     shipment_ledger dark-account rows
+//   - Variance = carrier_charge - raw_carrier_cost
 //   - Disputed lines → HELD, never auto-billed
+//
+// IDEMPOTENCY:
+//   Only UPDATE rows whose current match_status is UNMATCHED or
+//   whose billing_status is PENDING. Re-running on the same
+//   invoice leaves already-matched lines alone.
 // =============================================================
 
 import Decimal from 'decimal.js'
 import { createAdminSupabaseClient } from '../../../../lib/supabase-server'
-import { deriveMarkupContext } from '../../../../lib/markup-context'
+import {
+  deriveMarkupContext,
+  computeSingleCeiling,
+} from '../../../../lib/markup-context'
+import { runBillingCalc, type BillingCalcResult } from './billing-calc'
 import { revalidatePath } from 'next/cache'
 
 // =============================================================
@@ -64,6 +75,7 @@ export type MatchResult = {
     flagged: number
   }
   billingCalculated: number
+  billingCalc: BillingCalcResult | null
   errors: string[]
 }
 
@@ -76,40 +88,6 @@ type CarrierAccount = {
   use_rate_card: boolean
   dispute_threshold: string
   is_cactus_account: boolean
-}
-
-// deriveMarkupContext is now exported from src/alamo/lib/markup-context.ts
-// so match.ts, resolve.ts, and billing-calc.ts all share a single
-// implementation.
-
-// =============================================================
-// SINGLE-CEILING BILLING CALCULATION
-// =============================================================
-
-function applyBillingCalc(
-  carrierCharge: Decimal,
-  account: CarrierAccount
-): { preCeilingAmount: Decimal; finalBilledRate: Decimal } {
-  if (!account.is_cactus_account) {
-    return {
-      preCeilingAmount: carrierCharge,
-      finalBilledRate: carrierCharge,
-    }
-  }
-
-  const markupPct = new Decimal(account.markup_percentage ?? 0)
-  const markupFlat = new Decimal(account.markup_flat_fee ?? 0)
-
-  const preCeilingAmount = carrierCharge
-    .times(new Decimal(1).plus(markupPct))
-    .plus(markupFlat)
-
-  const finalBilledRate = preCeilingAmount
-    .times(100)
-    .ceil()
-    .dividedBy(100)
-
-  return { preCeilingAmount, finalBilledRate }
 }
 
 // =============================================================
@@ -181,6 +159,7 @@ export async function runMatchingEngine(
     lassoed: { matched: 0, held: 0, skipped: 0 },
     dark: { matched: 0, flagged: 0 },
     billingCalculated: 0,
+    billingCalc: null,
     errors: [],
   }
 
@@ -235,6 +214,11 @@ export async function runMatchingEngine(
 
   // =============================================================
   // PROCESS EACH LINE ITEM
+  //
+  // After Session B: matching writes org_id + match_status and
+  // leaves billing_status = PENDING. Stage 5 (runBillingCalc)
+  // runs at the end to flip PENDING → APPROVED and write
+  // final_billed_rate + markup context.
   // =============================================================
 
   for (const lineItem of lineItems) {
@@ -276,7 +260,9 @@ export async function runMatchingEngine(
           continue
         }
 
-        // variance = carrier_charge - raw_carrier_cost (both pre-markup)
+        // variance = carrier_charge - raw_carrier_cost (both pre-markup).
+        // Unchanged from Session A — variance math is NOT part of the
+        // Session B refactor.
         const rawCarrierCost = new Decimal(ledgerRow.raw_carrier_cost)
         const varianceAmount = carrierCharge.minus(rawCarrierCost)
         const disputeThreshold = new Decimal(account.dispute_threshold)
@@ -303,10 +289,8 @@ export async function runMatchingEngine(
             .eq('id', lineItem.id)
           result.lassoed.held++
         } else {
-          const { preCeilingAmount, finalBilledRate } =
-            applyBillingCalc(carrierCharge, account)
-          const markupCtx = deriveMarkupContext(account)
-
+          // Clean match — hand off to Stage 5 (billing-calc.ts) via
+          // billing_status = PENDING. No markup math written here.
           await supabase
             .from('invoice_line_items')
             .update({
@@ -316,17 +300,11 @@ export async function runMatchingEngine(
               match_method: 'TRACKING_NUMBER',
               match_status: 'AUTO_MATCHED',
               variance_amount: varianceAmount.toFixed(4),
-              billing_status: 'APPROVED',
+              billing_status: 'PENDING',
               dispute_flag: false,
-              markup_type_applied: markupCtx.markup_type_applied,
-              markup_value_applied: markupCtx.markup_value_applied,
-              markup_source: markupCtx.markup_source,
-              pre_ceiling_amount: preCeilingAmount.toFixed(4),
-              final_billed_rate: finalBilledRate.toFixed(4),
             })
             .eq('id', lineItem.id)
           result.lassoed.matched++
-          result.billingCalculated++
         }
         continue
       }
@@ -420,12 +398,19 @@ export async function runMatchingEngine(
       continue
     }
 
-    const { preCeilingAmount, finalBilledRate } =
-      applyBillingCalc(carrierCharge, account)
-    const markupCtx = deriveMarkupContext(account)
-
     // Create shipment_ledger row — first time Cactus sees this dark shipment.
     // raw_carrier_cost = carrier_charge (no quoted rate exists for dark accounts).
+    //
+    // Session B: shipment_ledger.final_billed_rate is NOT NULL on the
+    // schema, and it IS computable at match time (carrier_charge + the
+    // account's markup config). We reuse the shared computeSingleCeiling
+    // helper so this file doesn't implement markup math itself — the
+    // one authoritative implementation lives in markup-context.ts.
+    const markupCtx = deriveMarkupContext(account)
+    const { preCeilingAmount, finalBilledRate } = account.is_cactus_account
+      ? computeSingleCeiling(carrierCharge, markupCtx)
+      : { preCeilingAmount: carrierCharge, finalBilledRate: carrierCharge }
+
     const trackingNum = lineItem.tracking_number ?? `DARK-${lineItem.id}`
 
     const { data: newLedgerRow, error: ledgerInsertError } =
@@ -438,8 +423,8 @@ export async function runMatchingEngine(
           carrier_code: carrierInvoice.carrier_code,
           shipment_source: 'INVOICE_IMPORT',
           raw_carrier_cost: carrierCharge.toFixed(4),
-          // v1.6.1: markup_percentage / markup_flat_fee were replaced by
-          // the markup context triple (same shape as invoice_line_items).
+          // v1.6.1: markup context triple replaces markup_percentage /
+          // markup_flat_fee on shipment_ledger.
           markup_type_applied: markupCtx.markup_type_applied,
           markup_value_applied: markupCtx.markup_value_applied,
           markup_source: markupCtx.markup_source,
@@ -472,6 +457,8 @@ export async function runMatchingEngine(
       continue
     }
 
+    // Hand off to Stage 5 via billing_status = PENDING. No markup write
+    // on invoice_line_items here — billing-calc.ts will fill it in.
     await supabase
       .from('invoice_line_items')
       .update({
@@ -481,24 +468,18 @@ export async function runMatchingEngine(
         match_method: 'SHIP_FROM_ADDRESS',
         match_status: 'AUTO_MATCHED',
         match_location_id: matchedLocation.id,
-        billing_status: 'APPROVED',
+        billing_status: 'PENDING',
         dispute_flag: false,
-        markup_type_applied: markupCtx.markup_type_applied,
-        markup_value_applied: markupCtx.markup_value_applied,
-        markup_source: markupCtx.markup_source,
-        pre_ceiling_amount: preCeilingAmount.toFixed(4),
-        final_billed_rate: finalBilledRate.toFixed(4),
       })
       .eq('id', lineItem.id)
 
     result.dark.matched++
-    result.billingCalculated++
   }
 
   // =============================================================
   // UPDATE CARRIER INVOICE STATUS
   // REVIEW  = any lines flagged → admin must resolve disputes
-  // APPROVED = all lines matched cleanly → ready for invoice gen
+  // APPROVED = all lines matched cleanly → billing-calc runs
   // =============================================================
 
   const totalMatched = result.lassoed.matched + result.dark.matched
@@ -519,7 +500,7 @@ export async function runMatchingEngine(
     })
     .eq('id', carrierInvoiceId)
 
-  // Audit log — append only, never update or delete
+  // Audit log for the match run (billing-calc writes its own audit row).
   await supabase.from('audit_logs').insert({
     entity_type: 'carrier_invoices',
     entity_id: carrierInvoiceId,
@@ -530,11 +511,40 @@ export async function runMatchingEngine(
       totalFlagged,
       lassoed: result.lassoed,
       dark: result.dark,
-      billingCalculated: result.billingCalculated,
       newInvoiceStatus,
       errors: result.errors,
     },
   })
+
+  // =============================================================
+  // STAGE 5 HANDOFF — runBillingCalc on any newly-PENDING lines.
+  //
+  // Called unconditionally: even with zero auto-matches this run,
+  // prior runs may have left PENDING lines behind (retry, partial
+  // failure). billing-calc.ts is idempotent — it only touches
+  // lines that are still PENDING + AUTO_MATCHED/MANUAL_ASSIGNED.
+  // =============================================================
+
+  if (totalMatched > 0) {
+    try {
+      const billing = await runBillingCalc(carrierInvoiceId)
+      result.billingCalc = billing
+      result.billingCalculated = billing.approved
+
+      if (billing.errors.length > 0) {
+        result.errors.push(
+          ...billing.errors.map(
+            (e) =>
+              `billing-calc: ${e.tracking_number ?? e.line_id}: ${e.message}`
+          )
+        )
+      }
+    } catch (err) {
+      result.errors.push(
+        `billing-calc failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+  }
 
   revalidatePath(`/invoices/${carrierInvoiceId}`)
 

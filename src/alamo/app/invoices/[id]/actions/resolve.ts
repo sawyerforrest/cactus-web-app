@@ -1,63 +1,65 @@
 'use server'
 
 // =============================================================
-// CACTUS DISPUTE RESOLUTION ENGINE
+// CACTUS DISPUTE RESOLUTION ENGINE — v3 (Session B split)
 // FILE: src/alamo/app/invoices/[id]/actions/resolve.ts
 //
 // WHAT THIS FILE DOES:
-// Resolves HELD invoice line items by manually assigning an org.
-// Called from the disputes page when an admin manually assigns
-// the correct org to flagged line items.
+//   Resolves HELD invoice_line_items by manually assigning an
+//   org, then hands off to billing-calc.ts to finish Stage 5.
 //
 // WHEN IS THIS NEEDED?
-// The matching engine flags line items when it can't confidently
-// assign an org automatically. Two scenarios:
+//   The matching engine flags lines when it can't confidently
+//   assign an org automatically, or when variance exceeds the
+//   dispute threshold. Two scenarios:
+//     1. Address ambiguity — zero or multiple location matches
+//     2. Variance dispute — carrier billed beyond threshold
 //
-//   1. Multiple address matches — same sender address matches
-//      more than one location row. Admin picks the correct org.
+// SESSION B SPLIT:
+//   Resolution no longer writes final_billed_rate or
+//   billing_status = APPROVED directly. Instead it:
+//     1. Writes shipment_ledger row (dark accounts only) —
+//        ledger's final_billed_rate is NOT NULL, so the math
+//        lives here via the shared markup-context helper.
+//     2. Updates invoice_line_items to MANUAL_ASSIGNED +
+//        billing_status = PENDING.
+//     3. Calls runBillingCalc(carrierInvoiceId) which APPROVEs
+//        the PENDING line via the same helper.
 //
-//   2. Variance dispute — carrier billed more than Cactus quoted
-//      beyond the dispute threshold. Admin reviews and approves.
-//
-// WHAT HAPPENS ON RESOLUTION:
-//   1. Look up the carrier account for the assigned org
-//   2. Apply Single-Ceiling billing calc
-//   3. Create shipment_ledger row (dark accounts only)
-//   4. Update invoice_line_items → APPROVED
-//   5. Update carrier_invoices counts
-//   6. Write to audit_logs
+// PARTIAL-FAILURE HANDLING:
+//   Ledger write happens FIRST. If it fails, we throw — the
+//   line stays HELD and the admin can retry. If the ledger
+//   write succeeds but the line update fails, that's a real
+//   inconsistency — we log to audit_logs and surface the error
+//   so the admin knows to investigate. (Option b from the
+//   Session B spec — no RPC transaction needed for current
+//   load.)
 //
 // FINANCIAL RULES:
-//   - Same Single-Ceiling math as the matching engine
-//   - carrier_charge is still the billing basis (never changes)
-//   - Once APPROVED, line items are immutable
+//   - decimal.js only, no floats
+//   - carrier_charge stays the billing basis
+//   - Single-Ceiling math centralized in markup-context.ts
+//
+// IDEMPOTENCY:
+//   Resolution only touches lines currently at
+//   billing_status = HELD. Re-running is safe.
 // =============================================================
 
 import Decimal from 'decimal.js'
 import { createAdminSupabaseClient } from '../../../../lib/supabase-server'
-import { deriveMarkupContext } from '../../../../lib/markup-context'
+import {
+  deriveMarkupContext,
+  computeSingleCeiling,
+} from '../../../../lib/markup-context'
+import { runBillingCalc, type BillingCalcResult } from './billing-calc'
 import { revalidatePath } from 'next/cache'
 
 export type ResolveResult = {
   success: boolean
   resolved: number
+  billingCalc: BillingCalcResult | null
   errors: string[]
 }
-
-// =============================================================
-// RESOLVE DISPUTE GROUP
-//
-// Resolves one or more HELD line items by assigning them to
-// a specific org. Used when admin manually assigns an org
-// to flagged items from the disputes page.
-//
-// lineItemIds  — the IDs of the line items to resolve
-// orgId        — the org the admin is assigning them to
-// carrierCode  — needed to look up the correct carrier account
-// carrierInvoiceId — needed to update the parent invoice counts
-// resolvedBy   — the admin user's ID for the audit log
-// notes        — optional admin notes explaining the resolution
-// =============================================================
 
 export async function resolveDisputeGroup({
   lineItemIds,
@@ -80,14 +82,12 @@ export async function resolveDisputeGroup({
   const result: ResolveResult = {
     success: false,
     resolved: 0,
+    billingCalc: null,
     errors: [],
   }
 
   // =============================================================
   // STEP 1: LOOK UP THE CARRIER ACCOUNT FOR THE ASSIGNED ORG
-  //
-  // Same logic as the matching engine — find the active Cactus
-  // account for this org + carrier combination.
   // =============================================================
 
   const { data: accountRows, error: accountError } = await supabase
@@ -123,6 +123,7 @@ export async function resolveDisputeGroup({
   }
 
   const account = accountRows[0]
+  const markupCtx = deriveMarkupContext(account)
 
   // =============================================================
   // STEP 2: LOAD THE LINE ITEMS BEING RESOLVED
@@ -146,36 +147,24 @@ export async function resolveDisputeGroup({
 
   // =============================================================
   // STEP 3: RESOLVE EACH LINE ITEM
+  //
+  // Ledger write FIRST, then line update. If ledger write fails
+  // we skip this line and record the error; the line stays HELD
+  // and the admin can retry. If the line update fails after a
+  // successful ledger write we log loudly (inconsistency — one
+  // ledger row now exists without a corresponding resolved line).
   // =============================================================
 
   for (const lineItem of lineItems) {
     const carrierCharge = new Decimal(lineItem.carrier_charge)
 
-    // Apply Single-Ceiling billing calc
-    // Same function logic as matching engine — carrier_charge is
-    // always the billing basis, never the quoted rate
-    let preCeilingAmount: Decimal
-    let finalBilledRate: Decimal
-
-    if (account.is_cactus_account) {
-      const markupPct = new Decimal(account.markup_percentage ?? 0)
-      const markupFlat = new Decimal(account.markup_flat_fee ?? 0)
-      preCeilingAmount = carrierCharge
-        .times(new Decimal(1).plus(markupPct))
-        .plus(markupFlat)
-      finalBilledRate = preCeilingAmount
-        .times(100)
-        .ceil()
-        .dividedBy(100)
-    } else {
-      preCeilingAmount = carrierCharge
-      finalBilledRate = carrierCharge
-    }
-
-    // Derive v1.6.0 markup context for the invoice_line_items write and
-    // the v1.6.1 shipment_ledger write. Shared helper — see
-    // src/alamo/lib/markup-context.ts for edge-case documentation.
-    const markupCtx = deriveMarkupContext(account)
+    // Single-Ceiling math — same helper used by billing-calc.ts.
+    // Needed here because shipment_ledger.final_billed_rate is
+    // NOT NULL on the schema. For non-Cactus accounts we skip
+    // markup entirely.
+    const { preCeilingAmount, finalBilledRate } = account.is_cactus_account
+      ? computeSingleCeiling(carrierCharge, markupCtx)
+      : { preCeilingAmount: carrierCharge, finalBilledRate: carrierCharge }
 
     // Create a shipment_ledger row for this manually resolved item.
     // WHY: Every approved line item needs a ledger row for audit trail.
@@ -193,8 +182,7 @@ export async function resolveDisputeGroup({
         carrier_code: carrierCode,
         shipment_source: 'INVOICE_IMPORT',
         raw_carrier_cost: carrierCharge.toFixed(4),
-        // v1.6.1: markup_percentage / markup_flat_fee replaced by the
-        // markup context triple (same shape as invoice_line_items).
+        // v1.6.1 markup context triple
         markup_type_applied: markupCtx.markup_type_applied,
         markup_value_applied: markupCtx.markup_value_applied,
         markup_source: markupCtx.markup_source,
@@ -214,31 +202,49 @@ export async function resolveDisputeGroup({
       continue
     }
 
-    // Update the line item to APPROVED
-    const { error: updateError } = await supabase
+    // Update the line to MANUAL_ASSIGNED + PENDING (handoff to
+    // Stage 5 billing-calc). Idempotency guard on billing_status
+    // prevents a double-resolve if this function is re-entered.
+    const { error: updateError, data: updateData } = await supabase
       .from('invoice_line_items')
       .update({
         org_id: orgId,
         org_carrier_account_id: account.id,
         shipment_ledger_id: newLedgerRow.id,
         match_status: 'MANUAL_ASSIGNED',
-        billing_status: 'APPROVED',
+        billing_status: 'PENDING',
         dispute_flag: false,
         dispute_notes: notes
           ? `Manually resolved by admin: ${notes}`
           : 'Manually resolved by admin.',
-        markup_type_applied: markupCtx.markup_type_applied,
-        markup_value_applied: markupCtx.markup_value_applied,
-        markup_source: markupCtx.markup_source,
-        pre_ceiling_amount: preCeilingAmount.toFixed(4),
-        final_billed_rate: finalBilledRate.toFixed(4),
       })
       .eq('id', lineItem.id)
+      .eq('billing_status', 'HELD')
+      .select('id')
 
     if (updateError) {
+      // Partial-failure: ledger written, line NOT updated. Log
+      // loudly so admin can reconcile by hand.
+      await supabase.from('audit_logs').insert({
+        entity_type: 'invoice_line_items',
+        entity_id: lineItem.id,
+        action: 'RESOLVE_PARTIAL_FAILURE',
+        details: {
+          message: 'shipment_ledger written but invoice_line_items update failed',
+          ledger_id: newLedgerRow.id,
+          error: updateError.message,
+        },
+      })
       result.errors.push(
-        `Failed to update line item ${lineItem.id}: ${updateError.message}`
+        `Partial failure on line ${lineItem.id}: ledger written ` +
+        `(${newLedgerRow.id}) but line update failed — ${updateError.message}`
       )
+      continue
+    }
+
+    if (!updateData || updateData.length === 0) {
+      // Line was no longer HELD by the time the update ran. This is
+      // usually a double-submit — not an error, just a no-op.
       continue
     }
 
@@ -246,11 +252,36 @@ export async function resolveDisputeGroup({
   }
 
   // =============================================================
-  // STEP 4: UPDATE CARRIER INVOICE COUNTS
+  // STEP 4: STAGE 5 HANDOFF — runBillingCalc on newly-PENDING lines
   //
-  // Recalculate matched and flagged counts from the database
-  // rather than doing arithmetic — avoids race conditions if
-  // this action were ever called concurrently.
+  // Safe even if zero lines were just resolved: billing-calc is
+  // idempotent and a zero-eligible run is a no-op.
+  // =============================================================
+
+  if (result.resolved > 0) {
+    try {
+      const billing = await runBillingCalc(carrierInvoiceId)
+      result.billingCalc = billing
+      if (billing.errors.length > 0) {
+        result.errors.push(
+          ...billing.errors.map(
+            (e) =>
+              `billing-calc: ${e.tracking_number ?? e.line_id}: ${e.message}`
+          )
+        )
+      }
+    } catch (err) {
+      result.errors.push(
+        `billing-calc failed: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+  }
+
+  // =============================================================
+  // STEP 5: UPDATE CARRIER INVOICE COUNTS
+  //
+  // Recalculate from the DB (safer than arithmetic under
+  // concurrent writes).
   // =============================================================
 
   const { data: counts } = await supabase
@@ -276,7 +307,7 @@ export async function resolveDisputeGroup({
   }
 
   // =============================================================
-  // STEP 5: AUDIT LOG — append only
+  // STEP 6: AUDIT LOG — append only
   // =============================================================
 
   await supabase.from('audit_logs').insert({
@@ -291,6 +322,7 @@ export async function resolveDisputeGroup({
       resolved: result.resolved,
       errors: result.errors,
       notes: notes ?? null,
+      billing_calc_approved: result.billingCalc?.approved ?? 0,
     },
   })
 
