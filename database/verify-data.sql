@@ -1,13 +1,20 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: verify-data.sql
--- VERSION: 1.4.0
--- UPDATED: 2026-03-28
+-- VERSION: 1.6.1
+-- UPDATED: 2026-04-20
 --
 -- HOW TO USE:
 -- Run each query block one at a time in Supabase SQL Editor.
 -- Each check has an EXPECTED result listed above it.
 -- Run all checks after database-setup.sql and seed-data.sql.
+--
+-- CHANGES IN v1.6.1:
+--   - CHECK 7/8 reference markup_value_applied (v1.6.1) instead
+--     of markup_percentage (dropped from shipment_ledger in
+--     v1.6.1 and from invoice_line_items in v1.6.0).
+--   - CHECK 8 uses address_sender_normalized (v1.4.2 rename)
+--     rather than ship_from_address_normalized.
 -- ==========================================================
 
 
@@ -128,6 +135,12 @@ ORDER BY o.name, l.name;
 --   Cactus 3PL — FedEx lassoed — 15% markup — is_cactus = TRUE
 --   Cactus 3PL — USPS lassoed — 12% markup — is_cactus = TRUE
 --   Desert Boutique — UPS dark — 18% markup — is_cactus = TRUE
+--
+-- NOTE: org_carrier_accounts.markup_percentage / markup_flat_fee
+--       are the SOURCE OF TRUTH for admin-set markup config and
+--       remain on this table in v1.6.1 (unlike shipment_ledger
+--       and invoice_line_items, which migrated to the markup
+--       context triple).
 -- ==========================================================
 
 SELECT
@@ -136,6 +149,7 @@ SELECT
     oca.account_nickname,
     oca.carrier_account_mode,
     oca.markup_percentage,
+    oca.markup_flat_fee,
     oca.dispute_threshold,
     oca.is_cactus_account
 FROM org_carrier_accounts oca
@@ -172,6 +186,11 @@ ORDER BY mt.created_at;
 -- Lassoed: $12.3456 × 1.15 = $14.19744 → ceiling → $14.20
 -- Dark 1:  $18.4500 × 1.18 = $21.7710  → ceiling → $21.78
 -- Dark 2:  $27.3300 × 1.18 = $32.2494  → ceiling → $32.25
+--
+-- Uses the v1.6.1 markup context triple
+-- (markup_type_applied, markup_value_applied). For this test
+-- data, markup_type_applied = 'percentage' and
+-- markup_value_applied is the rate.
 -- ==========================================================
 
 SELECT
@@ -181,12 +200,19 @@ SELECT
     sl.carrier_code,
     sl.service_level,
     sl.raw_carrier_cost,
-    sl.markup_percentage,
+    sl.markup_type_applied,
+    sl.markup_value_applied,
+    sl.markup_source,
     sl.pre_ceiling_amount,
     sl.final_billed_rate,
     CASE
-        WHEN sl.final_billed_rate =
-            (CEIL(sl.raw_carrier_cost * (1 + sl.markup_percentage) * 100) / 100)
+        WHEN sl.markup_type_applied = 'percentage'
+             AND sl.final_billed_rate =
+                (CEIL(sl.raw_carrier_cost * (1 + sl.markup_value_applied) * 100) / 100)
+        THEN 'PASS ✓'
+        WHEN sl.markup_type_applied = 'flat'
+             AND sl.final_billed_rate =
+                (CEIL((sl.raw_carrier_cost + sl.markup_value_applied) * 100) / 100)
         THEN 'PASS ✓'
         ELSE 'FAIL ✗ — check Single-Ceiling pipeline'
     END                     AS ceiling_verified
@@ -201,23 +227,36 @@ ORDER BY sl.created_at;
 --   both billing_status = 'APPROVED'
 --   both match_method = 'SHIP_FROM_ADDRESS'
 --   both match_status = 'AUTO_MATCHED'
+--
+-- v1.6.0+: uses address_sender_normalized (renamed from
+-- ship_from_address_normalized in v1.4.2) and the v1.6.0
+-- markup context triple (replacing the dropped
+-- invoice_line_items.markup_percentage column).
 -- ==========================================================
 
 SELECT
     o.name                          AS org_name,
     ili.tracking_number,
-    ili.ship_from_address_normalized,
+    ili.address_sender_normalized,
     ili.carrier_charge,
-    ili.markup_percentage,
+    ili.markup_type_applied,
+    ili.markup_value_applied,
+    ili.markup_source,
     ili.final_billed_rate,
+    ili.is_adjustment_only,
     ili.match_method,
     ili.match_status,
     ili.billing_status,
     ili.dispute_flag,
     sl.shipment_source,
     CASE
-        WHEN ili.final_billed_rate =
-            (CEIL(ili.carrier_charge * (1 + ili.markup_percentage) * 100) / 100)
+        WHEN ili.markup_type_applied = 'percentage'
+             AND ili.final_billed_rate =
+                (CEIL(ili.carrier_charge * (1 + ili.markup_value_applied) * 100) / 100)
+        THEN 'PASS ✓'
+        WHEN ili.markup_type_applied = 'flat'
+             AND ili.final_billed_rate =
+                (CEIL((ili.carrier_charge + ili.markup_value_applied) * 100) / 100)
         THEN 'PASS ✓'
         ELSE 'FAIL ✗'
     END                             AS ceiling_verified
