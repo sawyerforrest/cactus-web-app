@@ -144,6 +144,65 @@ async function lookupCarrierAccount(
 }
 
 // =============================================================
+// LASSOED DATE ENRICHMENT (Phase 3, Session B)
+//
+// Pulls LABEL_CREATED → date_shipped and DELIVERED →
+// date_delivered from shipment_events. Returns a partial object
+// suitable for spreading into an invoice_line_items UPDATE.
+//
+// Empty keys are intentional: only override when the ledger
+// actually has the event, otherwise leave the parser's existing
+// values (Transaction Date proxy for date_shipped; typically
+// NULL for date_delivered).
+//
+// LIMITATION: without Stage 6 (rate engine) producing real
+// shipment_events, there's nothing to enrich against — this is
+// written for future readiness. See the Session B completion
+// summary under "VERIFICATION LIMITATIONS".
+// =============================================================
+
+type DateOverrides = {
+  date_shipped?: string
+  date_delivered?: string
+}
+
+async function loadLedgerDates(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  ledgerId: string
+): Promise<DateOverrides> {
+  const overrides: DateOverrides = {}
+
+  const { data: labelEvent } = await supabase
+    .from('shipment_events')
+    .select('carrier_timestamp')
+    .eq('shipment_ledger_id', ledgerId)
+    .eq('event_type', 'LABEL_CREATED')
+    .order('carrier_timestamp', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (labelEvent?.carrier_timestamp) {
+    // carrier_timestamp is TIMESTAMPTZ; slice to the date component.
+    overrides.date_shipped = labelEvent.carrier_timestamp.slice(0, 10)
+  }
+
+  const { data: deliveredEvent } = await supabase
+    .from('shipment_events')
+    .select('carrier_timestamp')
+    .eq('shipment_ledger_id', ledgerId)
+    .eq('event_type', 'DELIVERED')
+    .order('carrier_timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (deliveredEvent?.carrier_timestamp) {
+    overrides.date_delivered = deliveredEvent.carrier_timestamp.slice(0, 10)
+  }
+
+  return overrides
+}
+
+// =============================================================
 // MAIN MATCHING ENGINE
 // =============================================================
 
@@ -291,6 +350,14 @@ export async function runMatchingEngine(
         } else {
           // Clean match — hand off to Stage 5 (billing-calc.ts) via
           // billing_status = PENDING. No markup math written here.
+          //
+          // Lassoed-only date enrichment (Phase 3): if the ledger has
+          // a LABEL_CREATED event, prefer its timestamp as date_shipped
+          // over the parser's Transaction Date proxy. If it has a
+          // DELIVERED event, populate date_delivered. Dark lines skip
+          // this — no ledger exists pre-match.
+          const dateOverrides = await loadLedgerDates(supabase, ledgerRow.id)
+
           await supabase
             .from('invoice_line_items')
             .update({
@@ -302,6 +369,7 @@ export async function runMatchingEngine(
               variance_amount: varianceAmount.toFixed(4),
               billing_status: 'PENDING',
               dispute_flag: false,
+              ...dateOverrides,
             })
             .eq('id', lineItem.id)
           result.lassoed.matched++
