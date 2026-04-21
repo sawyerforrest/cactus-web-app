@@ -244,3 +244,72 @@ count predictable for downstream consumers.
   the columns are NOT NULL), but a stricter separation would move the
   write to billing-calc.ts. Would require a schema relaxation. Low
   priority; the current design works.
+
+## REVISION (2026-04-20, post-review)
+
+Four follow-up commits added on top of the original 7 phase commits:
+
+1. **Migration revision** (sha: `f6da92a`) — v1.6.1 migration converted
+   from destructive ADD+DROP to safe ADD+BACKFILL+DROP. Preserves 953
+   historical shipment_ledger rows from Session A (Match runs against
+   the UPS test invoice). Honors Rule 6 (immutable records). Expected
+   NOTICE on apply:
+   `shipment_ledger v1.6.1 complete: 953 total rows, 953 backfilled (0 flat, 953 percentage)`
+
+2. **DN-2 implementation** (sha: `2d584c7`) — flat markup no longer
+   applies to `is_adjustment_only = TRUE` lines per Sawyer's policy
+   decision. `computeSingleCeiling()` takes a new optional
+   `{ isAdjustmentOnly?: boolean }` parameter; `billing-calc.ts` passes
+   `line.is_adjustment_only` through. match.ts / resolve.ts dark-path
+   call sites left with TODOs (their SELECTs don't load the flag; this
+   affects only the shipment_ledger's stored final_billed_rate on the
+   rare dark-adjustment-only edge case — billing-calc.ts handles the
+   authoritative invoice_line_items side correctly).
+
+3. **Pineridge seed update** (sha: `b702919`) — row 14 final_billed_rate
+   $5.00 → $3.50, cactus_invoices total $355.77 → $354.27 to match the
+   new policy. Junction row amount and inline SQL comments updated.
+
+4. **audit_logs schema fix** (sha: `75323d1`) — every audit_logs INSERT
+   in the codebase has been silently failing since the codebase was
+   scaffolded because `action:` and `details:` are not the actual
+   schema column names (correct: `action_type:` and `metadata:`).
+   PostgREST accepts INSERTs with unknown column names without raising
+   an error — they "succeed" but write nothing useful. Empirically
+   confirmed: `SELECT COUNT(*) FROM audit_logs` returns 0 despite
+   multiple Match runs. Renamed at all 5 INSERT call sites in
+   generate.ts, match.ts, billing-calc.ts, and resolve.ts. Also fixed
+   the related SELECT in csv.ts (column 82 "Matched At" reads
+   `action`) — without that fix the CSV's Matched At column would
+   stay empty even after INSERTs started working. From this point
+   forward, audit_logs will actually persist.
+
+DN-1 (both percentage AND flat set on same account) and DN-3
+(carrier_charge basis) remain as documented — DN-1 still needs Alamo
+validation work, DN-3 is the resolved policy (carrier_charge is the
+billing basis per briefing).
+
+### Revised merge instructions
+
+Supersedes the MERGE INSTRUCTIONS section above for the migration step.
+The migration now backfills in place; Sawyer does not need to clear
+shipment_ledger before running it.
+
+After applying migration + seed:
+
+- Verify `audit_logs` starts persisting: run a Match and check
+  `SELECT COUNT(*), action_type FROM audit_logs GROUP BY action_type;`.
+  Expected non-zero rows for `MATCHING_ENGINE_RUN` and
+  `BILLING_CALC_RUN`.
+- Pineridge CSV spot check for row 14 now expects col 48 = `0.00`,
+  col 61 = `3.50`, col 66 = `3.50`. (Previously 5.00 under the pre-DN-2
+  policy.)
+
+### Follow-ups tracked separately
+
+- Comprehensive schema-vs-code audit before Stage 6 work (Rate Engine).
+  audit_logs is unlikely to be the only silent mismatch — write-and-
+  walk-away tables (rate_shop_log, shipment_events, meter_transactions)
+  are highest risk. A checklist document (`docs/schema-code-audit-checklist.md`)
+  will be added by Sawyer to track this.
+- Investigate PostgREST strict-mode to prevent this class of bug.
