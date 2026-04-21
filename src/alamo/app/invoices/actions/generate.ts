@@ -317,8 +317,8 @@ export async function runWeeklyBilling(): Promise<BillingRunResult> {
 
   await supabase.from('audit_logs').insert({
     entity_type: 'billing_run',
-    action: 'WEEKLY_BILLING_RUN',
-    details: {
+    action_type: 'WEEKLY_BILLING_RUN',
+    metadata: {
       totalOrgs: result.totalOrgs,
       totalLineItems: result.totalLineItems,
       totalAmount: result.totalAmount,

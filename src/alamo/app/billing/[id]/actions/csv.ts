@@ -620,9 +620,9 @@ export async function generateInvoiceCSV(
   if (carrierInvoiceIds.length > 0) {
     const { data: matchLogs } = await admin
       .from('audit_logs')
-      .select('entity_id, created_at, action')
+      .select('entity_id, created_at, action_type')
       .in('entity_id', carrierInvoiceIds)
-      .in('action', ['MATCH_RUN', 'MATCHING_ENGINE_RUN'])
+      .in('action_type', ['MATCH_RUN', 'MATCHING_ENGINE_RUN'])
       .order('created_at', { ascending: false })
 
     for (const log of (matchLogs ?? []) as Array<{

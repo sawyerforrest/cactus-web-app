@@ -580,8 +580,8 @@ export async function runMatchingEngine(
   await supabase.from('audit_logs').insert({
     entity_type: 'carrier_invoices',
     entity_id: carrierInvoiceId,
-    action: 'MATCHING_ENGINE_RUN',
-    details: {
+    action_type: 'MATCHING_ENGINE_RUN',
+    metadata: {
       totalProcessed: result.totalProcessed,
       totalMatched,
       totalFlagged,

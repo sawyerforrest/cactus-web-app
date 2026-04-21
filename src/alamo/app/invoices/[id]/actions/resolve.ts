@@ -234,8 +234,8 @@ export async function resolveDisputeGroup({
       await supabase.from('audit_logs').insert({
         entity_type: 'invoice_line_items',
         entity_id: lineItem.id,
-        action: 'RESOLVE_PARTIAL_FAILURE',
-        details: {
+        action_type: 'RESOLVE_PARTIAL_FAILURE',
+        metadata: {
           message: 'shipment_ledger written but invoice_line_items update failed',
           ledger_id: newLedgerRow.id,
           error: updateError.message,
@@ -319,8 +319,8 @@ export async function resolveDisputeGroup({
   await supabase.from('audit_logs').insert({
     entity_type: 'carrier_invoices',
     entity_id: carrierInvoiceId,
-    action: 'DISPUTE_RESOLVED',
-    details: {
+    action_type: 'DISPUTE_RESOLVED',
+    metadata: {
       resolvedBy,
       orgId,
       carrierCode,

@@ -285,8 +285,8 @@ export async function runBillingCalc(
   await supabase.from('audit_logs').insert({
     entity_type: 'carrier_invoices',
     entity_id: carrierInvoiceId,
-    action: 'BILLING_CALC_RUN',
-    details: {
+    action_type: 'BILLING_CALC_RUN',
+    metadata: {
       total_eligible: result.total_eligible,
       approved: result.approved,
       skipped: result.skipped,
