@@ -141,7 +141,7 @@ VALUES
    '11111111-0000-0000-0000-000000000001'::uuid,
    DATE '2026-04-11',
    DATE '2026-04-17',
-   355.77,
+   354.27,  -- DN-2 2026-04-20: was 355.77; row 14 dropped $1.50
    DATE '2026-04-27',  -- Net-10 per org.terms_days
    'UNPAID')
 ON CONFLICT (id) DO NOTHING;
@@ -154,11 +154,11 @@ ON CONFLICT (id) DO NOTHING;
 -- Single-Ceiling does not change anything because flat fees
 -- don't introduce fractional cents.
 --
--- Exception: row 14 (is_adjustment_only = TRUE). The billing
--- code as of Session B commit applies flat fee even to
--- adjustment-only lines (preserves Session A behavior). If the
--- policy is revised later to skip flat on adjustments, this
--- row's final_billed_rate should be 3.50 instead of 5.00.
+-- DN-2 EXCEPTION (resolved 2026-04-20): row 14 (is_adjustment_only = TRUE).
+-- Flat fee is NOT applied to adjustment-only lines because there is no
+-- base charge to attach the fee to. Row 14's final_billed_rate equals
+-- carrier_charge ($3.50) — flat fee is suppressed even though
+-- markup_value_applied = 1.5000 documents what was configured.
 -- --------------------------------------------------------------------------
 
 INSERT INTO invoice_line_items
@@ -460,7 +460,10 @@ VALUES
    'SHIP_FROM_ADDRESS', 'AUTO_MATCHED',
    '11111111-1000-0000-0000-000000000001'::uuid,
    'flat', 1.500000, 'carrier_account', TRUE,
-   5.00, 5.00, 'APPROVED', FALSE,
+   -- DN-2 (resolved 2026-04-20): flat fee NOT applied to adjustment-only
+   -- lines. pre_ceiling_amount and final_billed_rate equal carrier_charge
+   -- ($3.50). markup_value_applied still documents the configured fee.
+   3.50, 3.50, 'APPROVED', FALSE,
    '11111111-4000-0000-0000-000000000001'::uuid),
 
   -- Row 15: Ground Commercial, zone 6, 12 lb (address correction in other_surcharges)
@@ -531,7 +534,7 @@ VALUES
    '11111111-0000-0000-0000-000000000001'::uuid, 18.77),
   ('11111111-4000-0000-0000-000000000001'::uuid,
    '11111111-5000-0000-0000-000000000014'::uuid,
-   '11111111-0000-0000-0000-000000000001'::uuid, 5.00),
+   '11111111-0000-0000-0000-000000000001'::uuid, 3.50),  -- DN-2: was 5.00
   ('11111111-4000-0000-0000-000000000001'::uuid,
    '11111111-5000-0000-0000-000000000015'::uuid,
    '11111111-0000-0000-0000-000000000001'::uuid, 36.95)
@@ -548,7 +551,7 @@ COMMIT;
 --   SELECT ROUND(SUM(final_billed_rate), 2) AS total_billed
 --   FROM invoice_line_items
 --   WHERE carrier_invoice_id = '11111111-3000-0000-0000-000000000001';
---   -- Expected: 355.77
+--   -- Expected: 354.27 (DN-2: was 355.77; row 14 dropped $1.50)
 --
 --   SELECT tracking_number, carrier_charge, final_billed_rate,
 --          markup_type_applied, markup_value_applied, is_adjustment_only
