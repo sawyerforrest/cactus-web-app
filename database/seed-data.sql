@@ -1,18 +1,25 @@
 -- ==========================================================
 -- PROJECT: CACTUS Logistics OS
 -- FILENAME: seed-data.sql
--- VERSION: 1.4.0
--- UPDATED: 2026-03-28
+-- VERSION: 1.6.1
+-- UPDATED: 2026-04-20
 --
--- CHANGES IN v1.4.0:
---   - No seed data changes. carrier_code_enum updated in
---     database-setup.sql (LSO removed, GOFO/SHIPX/OSM added).
---     Existing seed data uses UPS and FEDEX only — unaffected.
+-- CHANGES IN v1.6.1:
+--   - shipment_ledger inserts now write the v1.6.1 markup
+--     context triple (markup_type_applied, markup_value_applied,
+--     markup_source) instead of the dropped markup_percentage /
+--     markup_flat_fee columns.
+--   - invoice_line_items inserts updated for v1.6.0 column
+--     renames (ship_from_address_* → address_sender_*;
+--     carrier_account_number → account_number_carrier) and
+--     write the markup context triple instead of the dropped
+--     markup_percentage column.
 --
 -- RUN ORDER:
 --   1. database-setup.sql
---   2. seed-data.sql (this file)
---   3. verify-data.sql
+--   2. all migrations under database/migrations/ in order
+--   3. seed-data.sql (this file)
+--   4. verify-data.sql
 -- ==========================================================
 
 
@@ -248,14 +255,16 @@ VALUES
 INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
-    shipment_source, raw_carrier_cost, markup_percentage,
+    shipment_source, raw_carrier_cost,
+    markup_type_applied, markup_value_applied, markup_source,
     pre_ceiling_amount, final_billed_rate,
     reconciled, label_printed_at
 )
 SELECT
     o.id, oca.id,
     '1Z-CACTUS-TEST-001', 'UPS', 'UPS_GROUND',
-    'RATING_ENGINE', 12.3456, 0.1500,
+    'RATING_ENGINE', 12.3456,
+    'percentage', 0.150000, 'carrier_account',
     14.1974, 14.2000,
     FALSE, now()
 FROM organizations o
@@ -304,14 +313,16 @@ LIMIT 1;
 INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
-    shipment_source, raw_carrier_cost, markup_percentage,
+    shipment_source, raw_carrier_cost,
+    markup_type_applied, markup_value_applied, markup_source,
     pre_ceiling_amount, final_billed_rate,
     reconciled, carrier_invoiced_amount
 )
 SELECT
     o.id, oca.id,
     '1Z-DARK-TEST-001', 'UPS', 'UPS_GROUND',
-    'INVOICE_IMPORT', 18.4500, 0.1800,
+    'INVOICE_IMPORT', 18.4500,
+    'percentage', 0.180000, 'carrier_account',
     21.7710, 21.7800, TRUE, 18.4500
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
@@ -326,14 +337,16 @@ LIMIT 1;
 INSERT INTO shipment_ledger (
     org_id, org_carrier_account_id,
     tracking_number, carrier_code, service_level,
-    shipment_source, raw_carrier_cost, markup_percentage,
+    shipment_source, raw_carrier_cost,
+    markup_type_applied, markup_value_applied, markup_source,
     pre_ceiling_amount, final_billed_rate,
     reconciled, carrier_invoiced_amount
 )
 SELECT
     o.id, oca.id,
     '1Z-DARK-TEST-002', 'UPS', 'UPS_GROUND',
-    'INVOICE_IMPORT', 27.3300, 0.1800,
+    'INVOICE_IMPORT', 27.3300,
+    'percentage', 0.180000, 'carrier_account',
     32.2494, 32.2500, TRUE, 27.3300
 FROM organizations o
 INNER JOIN org_carrier_accounts oca
@@ -346,11 +359,12 @@ LIMIT 1;
 -- Invoice line items for dark carrier invoice
 INSERT INTO invoice_line_items (
     carrier_invoice_id, org_id, org_carrier_account_id,
-    shipment_ledger_id, tracking_number, carrier_account_number,
-    ship_from_address_raw, ship_from_address_normalized,
+    shipment_ledger_id, tracking_number, account_number_carrier,
+    address_sender_raw, address_sender_normalized,
     carrier_charge, base_charge, fuel_surcharge,
     match_method, match_status,
-    markup_percentage, pre_ceiling_amount, final_billed_rate,
+    markup_type_applied, markup_value_applied, markup_source,
+    pre_ceiling_amount, final_billed_rate,
     billing_status, dispute_flag
 )
 SELECT
@@ -360,7 +374,8 @@ SELECT
     '999 SAGUARO WAY, SCOTTSDALE, AZ, 85251, US',
     18.4500, 16.2000, 2.2500,
     'SHIP_FROM_ADDRESS', 'AUTO_MATCHED',
-    0.1800, 21.7710, 21.7800,
+    'percentage', 0.180000, 'carrier_account',
+    21.7710, 21.7800,
     'APPROVED', FALSE
 FROM carrier_invoices ci
 INNER JOIN organizations o ON ci.org_id = o.id
@@ -371,11 +386,12 @@ LIMIT 1;
 
 INSERT INTO invoice_line_items (
     carrier_invoice_id, org_id, org_carrier_account_id,
-    shipment_ledger_id, tracking_number, carrier_account_number,
-    ship_from_address_raw, ship_from_address_normalized,
+    shipment_ledger_id, tracking_number, account_number_carrier,
+    address_sender_raw, address_sender_normalized,
     carrier_charge, base_charge, fuel_surcharge, residential_surcharge,
     match_method, match_status,
-    markup_percentage, pre_ceiling_amount, final_billed_rate,
+    markup_type_applied, markup_value_applied, markup_source,
+    pre_ceiling_amount, final_billed_rate,
     billing_status, dispute_flag
 )
 SELECT
@@ -385,7 +401,8 @@ SELECT
     '999 SAGUARO WAY, SCOTTSDALE, AZ, 85251, US',
     27.3300, 23.5000, 2.8300, 1.0000,
     'SHIP_FROM_ADDRESS', 'AUTO_MATCHED',
-    0.1800, 32.2494, 32.2500,
+    'percentage', 0.180000, 'carrier_account',
+    32.2494, 32.2500,
     'APPROVED', FALSE
 FROM carrier_invoices ci
 INNER JOIN organizations o ON ci.org_id = o.id

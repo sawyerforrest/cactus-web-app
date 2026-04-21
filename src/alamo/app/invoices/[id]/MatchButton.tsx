@@ -50,6 +50,7 @@ export default function MatchButton({ invoiceId }: MatchButtonProps) {
         lassoed: { matched: 0, held: 0, skipped: 0 },
         dark: { matched: 0, flagged: 0 },
         billingCalculated: 0,
+        billingCalc: null,
         errors: [err instanceof Error ? err.message : 'Unknown error occurred'],
       })
     } finally {

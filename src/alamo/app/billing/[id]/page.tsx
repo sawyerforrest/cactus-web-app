@@ -336,14 +336,19 @@ export default async function BillingDetailPage({
                     {line.org_carrier_accounts?.carrier_code ?? '\u2014'}
                   </div>
 
-                  {/* Service level */}
-                  <div style={{
-                    fontSize: 12,
-                    color: 'var(--cactus-muted)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}>
+                  {/* Service level — truncates in its 90px grid
+                      slot; hover reveals the full value. */}
+                  <div
+                    title={line.service_level ?? ''}
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--cactus-muted)',
+                      maxWidth: 160,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {line.service_level ?? '\u2014'}
                   </div>
 

@@ -10,6 +10,18 @@ import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import MatchButton from './MatchButton'
 
+// Short date for the tight columns on this page. "2026-03-14" →
+// "3/14/26". Null / empty input returns an em-dash.
+function formatShortDate(value: string | null | undefined): string {
+  if (!value) return '\u2014'
+  const iso = value.slice(0, 10)
+  const parts = iso.split('-')
+  if (parts.length !== 3) return iso
+  const [y, m, d] = parts
+  const yy = y.slice(-2)
+  return `${Number(m)}/${Number(d)}/${yy}`
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   UPLOADED:    { label: 'Uploaded',    color: 'var(--cactus-muted)',  bg: 'var(--cactus-sand)' },
   NORMALIZING: { label: 'Normalizing', color: 'var(--cactus-amber)',  bg: 'var(--cactus-amber-bg)' },
@@ -68,6 +80,8 @@ export default async function InvoiceDetailPage({
         address_sender_normalized,
         variance_amount,
         final_billed_rate,
+        service_level,
+        date_shipped,
         organizations ( name )
       `)
       .eq('carrier_invoice_id', id)
@@ -76,32 +90,46 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) redirect('/invoices')
 
-  // WHY: Lookup whether any line item on this carrier invoice
-  // has been rolled into a cactus_invoice. If so, render a
-  // small breadcrumb-bar link pointing at /billing/{id}. We
-  // also pull the org name and billing_period_start so the
-  // link can read "Billed in {org} — week of {date}".
+  // WHY: Lookup which cactus_invoices (if any) roll up any line
+  // on this carrier invoice. One link per cactus_invoice — a
+  // single carrier invoice can contain shipments for multiple
+  // orgs (dark accounts), each getting their own client invoice.
+  // Link text: "Billed in {org} — week of {week_end M/D/YY} →".
   const lineItemIds = (lineItems ?? []).map(l => l.id)
-  let cactusInvoiceId: string | null = null
-  let cactusOrgName: string | null = null
-  let cactusPeriodStart: string | null = null
+  type CactusBreadcrumb = {
+    cactus_invoice_id: string
+    org_name: string | null
+    billing_period_end: string | null
+  }
+  let cactusBreadcrumbs: CactusBreadcrumb[] = []
   if (lineItemIds.length > 0) {
-    const { data: cactusInvoiceRow } = await admin
+    const { data: junctionRows } = await admin
       .from('cactus_invoice_line_items')
       .select(`
         cactus_invoice_id,
         cactus_invoices (
-          billing_period_start,
+          billing_period_end,
           organizations ( name )
         )
       `)
       .in('invoice_line_item_id', lineItemIds)
-      .limit(1)
-      .maybeSingle()
-    cactusInvoiceId = (cactusInvoiceRow as any)?.cactus_invoice_id ?? null
-    const cInv = (cactusInvoiceRow as any)?.cactus_invoices ?? null
-    cactusOrgName = cInv?.organizations?.name ?? null
-    cactusPeriodStart = cInv?.billing_period_start ?? null
+
+    // Dedupe by cactus_invoice_id — one line per cactus_invoice even
+    // if multiple line items on this carrier invoice rolled into it.
+    const seen = new Set<string>()
+    for (const row of (junctionRows ?? []) as any[]) {
+      const cid = row?.cactus_invoice_id as string | null
+      if (!cid || seen.has(cid)) continue
+      seen.add(cid)
+      const cInv = row?.cactus_invoices as
+        | { billing_period_end: string | null; organizations: { name: string | null } | null }
+        | null
+      cactusBreadcrumbs.push({
+        cactus_invoice_id: cid,
+        org_name: cInv?.organizations?.name ?? null,
+        billing_period_end: cInv?.billing_period_end ?? null,
+      })
+    }
   }
 
   const status = STATUS_CONFIG[invoice.status] ?? STATUS_CONFIG.UPLOADED
@@ -143,27 +171,37 @@ export default async function InvoiceDetailPage({
             {invoice.invoice_file_name}
           </div>
 
-          {/* "Billed in..." link — appears once a cactus_invoice
-              has been generated that includes any line on this
-              carrier invoice. PDF/CSV downloads now live on the
-              client invoice detail page itself. */}
-          {cactusInvoiceId && (
-            <a
-              href={`/billing/${cactusInvoiceId}`}
-              style={{
-                marginLeft: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-                color: 'var(--cactus-muted)',
-                textDecoration: 'none',
-              }}
-            >
-              Billed in {cactusOrgName ?? 'client invoice'}
-              {cactusPeriodStart && ` \u2014 week of ${cactusPeriodStart}`}
-              <span style={{ marginLeft: 4 }}>{'\u2192'}</span>
-            </a>
+          {/* "Billed in..." link — one per cactus_invoice that
+              rolls up any line on this carrier invoice. PDF/CSV
+              downloads live on the client invoice detail page. */}
+          {cactusBreadcrumbs.length > 0 && (
+            <div style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 2,
+            }}>
+              {cactusBreadcrumbs.map(bc => (
+                <a
+                  key={bc.cactus_invoice_id}
+                  href={`/billing/${bc.cactus_invoice_id}`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 12,
+                    color: 'var(--cactus-muted)',
+                    textDecoration: 'none',
+                  }}
+                >
+                  Billed in {bc.org_name ?? 'client invoice'}
+                  {bc.billing_period_end &&
+                    ` \u2014 week of ${formatShortDate(bc.billing_period_end)}`}
+                  <span style={{ marginLeft: 4 }}>{'\u2192'}</span>
+                </a>
+              ))}
+            </div>
           )}
         </div>
 
@@ -310,12 +348,12 @@ export default async function InvoiceDetailPage({
             {/* Table header */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '2fr 1fr 100px 100px 100px 120px',
+              gridTemplateColumns: '2fr 1fr 120px 80px 100px 100px 100px 120px',
               background: 'var(--cactus-sand)',
               borderBottom: '0.5px solid var(--cactus-border)',
               padding: '8px 16px',
             }}>
-              {['Tracking / Address', 'Org', 'Carrier Charge', 'Billed Amount', 'Variance', 'Status'].map(h => (
+              {['Tracking / Address', 'Org', 'Service', 'Date Shipped', 'Carrier Charge', 'Billed Amount', 'Variance', 'Status'].map(h => (
                 <div key={h} style={{
                   fontSize: 11,
                   fontWeight: 500,
@@ -339,7 +377,7 @@ export default async function InvoiceDetailPage({
                   key={line.id}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 100px 100px 100px 120px',
+                    gridTemplateColumns: '2fr 1fr 120px 80px 100px 100px 100px 120px',
                     padding: '10px 16px',
                     alignItems: 'center',
                     borderBottom: i < (lineItems.length - 1) ? '0.5px solid var(--cactus-border)' : 'none',
@@ -359,6 +397,26 @@ export default async function InvoiceDetailPage({
                   {/* Org */}
                   <div style={{ fontSize: 12, color: 'var(--cactus-muted)' }}>
                     {lineOrg?.name ?? '—'}
+                  </div>
+
+                  {/* Service level — 120px max with ellipsis + full-text tooltip */}
+                  <div
+                    title={line.service_level ?? ''}
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--cactus-muted)',
+                      maxWidth: 120,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {line.service_level ?? '—'}
+                  </div>
+
+                  {/* Date shipped — short format for space */}
+                  <div style={{ fontSize: 12, color: 'var(--cactus-muted)' }}>
+                    {formatShortDate(line.date_shipped)}
                   </div>
 
                   {/* Carrier charge */}
