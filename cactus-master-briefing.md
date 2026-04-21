@@ -512,6 +512,44 @@ markup_flat_fee columns — these are the SOURCE OF TRUTH for carrier
 account markup configuration (set by admins in the Alamo). Only the
 markup APPLIED on invoice_line_items moved to the new context columns.
 
+### v1.6.1 Schema Changes (applied 2026-04-20)
+
+shipment_ledger:
+  ADDED    markup_type_applied   TEXT
+  ADDED    markup_value_applied  DECIMAL(10,6)
+  ADDED    markup_source         TEXT
+  DROPPED  markup_percentage
+  DROPPED  markup_flat_fee
+
+CHECK constraints added:
+  shipment_ledger_markup_type_check (allows NULL or 'percentage'/'flat')
+  shipment_ledger_markup_source_check (allows NULL or 'carrier_account'/'rate_card')
+
+Backfill: 953 existing rows backfilled with markup context derived
+from legacy markup_percentage/markup_flat_fee. Breakdown:
+  - 940 rows at markup_value_applied = 0.150000 (Cactus 3PL HQ)
+  - 13 rows at markup_value_applied = 0.180000 (older test org)
+All 953 rows: markup_type_applied = 'percentage', markup_source = 'carrier_account'.
+
+Migration file (in repo):
+  database/migrations/v1.6.1-shipment-ledger-markup-unification.sql
+
+Migration approach: ADD nullable columns → BACKFILL from legacy →
+ADD CHECK constraints → DROP legacy columns. Honors Rule 6 (immutable
+records) — historical markup values preserved through the schema change
+even though the test data has no real audit value yet. Practiced as
+discipline for production-data migrations later.
+
+shipment_ledger and invoice_line_items now use the same markup
+context model — quote-time and bill-time write the same shape.
+
+Pineridge Direct test seed (in repo):
+  database/seeds/v1.6.1-pineridge-flat-markup-seed.sql
+  - 15 invoice_line_items, $333.27 carrier_charge total, $354.27 final
+  - flat $1.50 markup on 14 normal rows
+  - row 14 is adjustment-only (no flat fee per DN-2)
+  - cactus_invoice id: 11111111-4000-0000-0000-000000000001
+
 ---
 
 ## 11. NAMING CONVENTIONS
@@ -531,6 +569,21 @@ markup APPLIED on invoice_line_items moved to the new context columns.
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] Session B (2026-04-20): Pipeline restructure — Match/Billing Calc
+      split with idempotency guards, shipment_ledger markup unification
+      (v1.6.1), shipment_events date enrichment, Pineridge Direct
+      flat-markup test data (15 rows, $354.27 total), 85-column client
+      CSV generator, polish items (service+date columns, multi-cactus
+      breadcrumb, service truncation tooltip)
+- [x] Session B.1 (2026-04-20): Migration backfill (preserved 953
+      historical shipment_ledger rows from Session A — honors Rule 6
+      immutability), DN-2 policy implementation (flat markup skipped on
+      adjustment-only lines), Pineridge seed regenerated for DN-2
+      (row 14 final_billed_rate $5.00 → $3.50, total $355.77 → $354.27),
+      audit_logs schema fix (action → action_type, details → metadata
+      across 5 INSERT call sites + 1 SELECT site that read the wrong
+      column for the CSV "Matched At" field). Discovered audit_logs
+      had silently failed since codebase scaffolding — see DN log entry.
 - [x] Cactus Logistics LLC formed in Utah
 - [x] EIN pending (Monday 8-9am MT)
 - [x] FedEx Integrator Developer account (ID: 70157774)
@@ -917,65 +970,64 @@ markup APPLIED on invoice_line_items moved to the new context columns.
 - [x] Configure Formspree form ID in cactus-marketing/index.html — live and working
 
 ### Next task — START HERE next session
-Session B: Pipeline Restructure + 85-Column CSV + Polish
 
-Bigger session — estimated 2-3 hours of Claude Code at xhigh effort.
+**Pre-Stage 6 cleanup pass.** Five related items, ordered by priority.
+Bundle them into one or two focused Claude Code sessions before
+Stage 6 (Rate Engine) work begins. Estimated total: 3-4 hours.
 
-Scope:
-1. Pipeline restructure
-   - Extract markup logic from match.ts into new billing-calc.ts server action
-   - Update resolve.ts to not apply markup, route resolved lines to Stage 5
-   - Stage 5 pulls APPROVED + resolved-dispute lines, applies markup, writes
-     final_billed_rate and markup context, sets billing_status APPROVED
+**1. Schema-vs-code audit (60-90 min) — HIGHEST PRIORITY**
+   Comprehensive sweep using `docs/schema-code-audit-checklist.md`.
+   Goal: confirm no other tables share the silent-failure pattern that
+   affected audit_logs (action vs action_type, details vs metadata —
+   fixed in Session B.1 on 2026-04-20). Highest-risk tables: rate_shop_log,
+   shipment_events, meter_transactions (write-and-walk-away patterns).
 
-2. Match stage shipment_events enrichment
-   - For lassoed lines: pull date_shipped from shipment_events.LABEL_CREATED
-   - For lassoed lines: pull date_delivered from shipment_events.DELIVERED if present
-   - Dark lines untouched (Transaction Date proxy from parser)
+**2. Schema naming convention cleanup (60-90 min)**
+   The audit will surface naming inconsistencies. Known examples:
+   - `address_*_zip` should be `address_*_postal_code`
+   - `address_*_line1` should be `address_*_line_1`
+   - `weight_billed` vs other naming patterns worth standardizing
+   Decide canonical conventions, then do all renames in one disciplined
+   pass: ALTER TABLE renames + update every code reference + regenerate
+   types + update seed-data.sql + verify-data.sql + parser code.
 
-3. New 85-column client CSV (DETAIL FORMAT)
-   - File: src/alamo/app/billing/[id]/actions/csv.ts (rewrite)
-   - All 85 columns from the detail format spec
-   - Per-charge billed values computed at read time from raw + markup context
-   - Per-mode display:
-     * percentage markup: itemized columns show marked-up values
-     * flat markup: itemized columns show raw values, base_charge_billed includes flat fee
-   - CSV format conventions LOCKED:
-     * Tab-prefix tracking numbers (Excel scientific-notation prevention)
-     * ISO dates (YYYY-MM-DD)
-     * Plain decimal currency, 2 places, no currency symbol
-     * Empty cells literally empty (no "NULL", no 0)
-     * RFC 4180 dialect, CRLF line endings, UTF-8 with BOM
-     * Filename: {org-slug}-cactus-invoice-{week-end-date}.csv
-     * No metadata header rows — column headers row 1, data row 2 onward
+**3. Dark-path adjustment-only fix (30 min)**
+   Extend the line SELECTs in `match.ts` and `resolve.ts` (dark-account
+   branches) to include `is_adjustment_only`, then pass it to
+   `computeSingleCeiling()` via `{ isAdjustmentOnly: line.is_adjustment_only }`.
+   Without this fix, dark-account adjustment-only lines under flat markup
+   get $1.50 incorrectly added to shipment_ledger (the authoritative
+   invoice_line_items value is correct, so client billing is fine, but
+   the two tables diverge on a not-uncommon line type — adjustments are
+   ~22% of UPS FRT rows in real production data).
 
-4. shipment_ledger markup model unification
-   - Extend new markup_type_applied / markup_value_applied / markup_source pattern
-     to shipment_ledger so quote-time and bill-time use the same model
-   - Why deferred from Session A: shipment_ledger is touched by rating engine
-     (Stage 6 of build) and by dark-account inserts in match.ts/resolve.ts which
-     are being refactored in Session B anyway
+**4. Install Supabase CLI + establish type regen workflow (30 min)**
+   Currently no `npm run gen-types` or equivalent in package.json.
+   Install supabase CLI, decide where generated types live
+   (likely `src/types/supabase.ts`), decide whether to commit them
+   or gitignore them, document the regen command in package.json.
+   Critical for catching schema drift early.
 
-5. Polish items (carry-over from Stage 5 Step 8 + Session A)
-   - Add "Billed in {org} — week of {date} →" link to carrier invoice
-     breadcrumb at /invoices/[id]
-   - Add Service Level + Date Shipped columns to carrier invoice line
-     items table at /invoices/[id] (Possibility 1 from chat planning)
-   - Add line item drill-down panel showing all 85 columns at /billing/[id]
-     for a single shipment (Possibility 2 — true to "Logistics with Soul"
-     transparency value)
-   - Fix Service column truncation on /billing/[id] (currently shows
-     "Ground Comm..." truncated)
+**5. Alamo carrier-accounts list view: show flat markup (15 min)**
+   The Markup column on `/orgs/[id]` carrier accounts table currently
+   shows only `markup_percentage` (e.g. "0.0%" for Pineridge despite
+   $1.50 flat markup configured). Display logic should show
+   "flat $1.50" when flat is set, "15.0%" when percentage is set.
 
-6. Pre-existing cleanup (low priority — folded in if time permits)
-   - verify-data.sql: references dropped columns, broken pre-Session-A
-   - seed-data.sql: writes to dropped columns, will fail on fresh seed
-   - Orphaned files at old PDF paths in src/alamo/app/api/invoices/ and
-     src/alamo/app/invoices/[id]/ (DownloadPDFButton.tsx, actions/pdf.ts)
-   - 16 pre-existing TypeScript errors in match.ts/resolve.ts/disputes/page.tsx
-     (financial-critical paths, deserve careful attention)
+After this cleanup: proceed with Stage 6 Rate Engine.
 
-Spec to be written by Senior Architect (Claude chat) before handoff.
+### Deferred follow-ups (from Session B)
+
+- **6C — Line-item drill-down modal** (~1-2 hours)
+  All 85 fields displayed for a single shipment on /billing/[id].
+  Non-trivial interactive component (ESC-close, click-outside).
+  Deferred from Session B Phase 6.
+
+- **7C — TypeScript error triage** (~1 hour)
+  Current baseline ~1640 errors in src/alamo. Most are Category A
+  (Supabase GenericStringError inference quirks, next/cache missing
+  types). Worth a focused pass to drive baseline down where errors
+  are real vs. tooling noise. Deferred from Session B Phase 7.
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -1167,6 +1219,61 @@ Spec to be written by Senior Architect (Claude chat) before handoff.
 
 ---
 
+## 12a. OPEN DECISIONS (DN LOG)
+
+Policy decisions surfaced during Session B that need product-level
+resolution. Status as of 2026-04-20.
+
+### DN-1 — Account with both markup_percentage > 0 AND markup_flat_fee > 0
+**Status:** OPEN. Code preserves Session A behavior (flat wins). Should be
+prevented at save time in the Alamo `/orgs/[id]/carriers/*` editor pages.
+Then strengthen `deriveMarkupContext()` in `src/alamo/lib/markup-context.ts`
+to throw on the invalid combination instead of silently picking one.
+**When to resolve:** Before first real client onboard.
+
+### DN-2 — Flat markup on is_adjustment_only = TRUE lines
+**Status:** RESOLVED 2026-04-20. Policy: flat markup applies once per
+tracking number to the base/freight charge, not to surcharges, not to
+adjustment-only lines (no base charge to attach the fee to). Implemented
+via `isAdjustmentOnly` parameter on `computeSingleCeiling()` in Session B.1.
+
+**Outstanding TODO from Session B.1:** `match.ts` and `resolve.ts` dark-path
+shipment_ledger writes call `computeSingleCeiling()` but their SELECTs
+don't yet load `is_adjustment_only`, so they pass through as `false`.
+For dark-account adjustment-only lines, this means shipment_ledger gets
+$1.50 incorrectly added while the authoritative invoice_line_items value
+(from `billing-calc.ts`) correctly skips the flat fee. The CLIENT invoice
+is correct (reads from invoice_line_items), but shipment_ledger and
+invoice_line_items will diverge on dark-account adjustment-only lines.
+Adjustment-only lines are NOT rare — Session A's real UPS data showed
+~22% of FRT rows were adjustments. Fix queued as item #3 in Section 12
+"Next task" — estimated 30 minutes.
+
+### DN-3 — Markup basis: carrier_charge vs sum-of-components
+**Status:** RESOLVED. Policy per briefing Rule 2: carrier_charge is ALWAYS
+the billing basis. Markup applies to carrier_charge directly. CSV per-
+component billed values may diverge from final_billed_rate by up to $0.01
+due to per-cell rounding accumulation; the CSV footnote addresses this.
+The two only diverge if parser stores carrier_charge ≠ sum(components),
+which shouldn't happen for clean UPS detail data.
+
+### DN-4 — audit_logs silent failure (discovered post-Session-B)
+**Status:** RESOLVED 2026-04-20. Discovered during Session B review:
+audit_logs had zero rows despite many Match runs that should have
+generated entries. Root cause: code uses `action:` and `details:`
+field names; schema columns are `action_type` and `metadata`.
+PostgREST silently accepts INSERTs with unknown column names —
+they "succeed" but write nothing. Bug existed since codebase
+scaffolding. Fixed across 5 INSERT call sites + 1 SELECT site
+(in csv.ts, reading the column for the CSV "Matched At" column 82).
+
+**Lesson for the future:** Schema-vs-code mismatches like this are
+silent in PostgREST/Supabase. The schema-vs-code audit playbook
+in `docs/schema-code-audit-checklist.md` is the systematic defense
+against discovering more of these the hard way.
+
+---
+
 ## 13. BUSINESS FORMATION STATUS
 
 | Item | Status |
@@ -1204,7 +1311,7 @@ cactus-web-app/
     core/              ← Rating, billing, normalization, AI
     adapters/          ← Carrier API adapters
   database/            ← database-setup.sql, seed-data.sql, verify-data.sql
-  docs/                ← Carrier API documentation
+  docs/                ← Carrier API documentation + internal playbooks
     amazon-shipping/
     dhl-ecommerce/
     dhl-express/
@@ -1214,7 +1321,14 @@ cactus-web-app/
     uniuni/
     ups/
     usps/
+    schema-code-audit-checklist.md
 ```
+
+### docs/ — internal playbooks
+- `docs/schema-code-audit-checklist.md` — playbook for detecting
+  schema-vs-code field-name drift; run before major sessions and after
+  migrations. Created 2026-04-20 after audit_logs silent failure was
+  discovered.
 
 ### GitHub
 - Main OS: https://github.com/sawyerforrest/cactus-web-app
