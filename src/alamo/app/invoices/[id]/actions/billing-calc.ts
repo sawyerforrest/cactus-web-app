@@ -34,17 +34,16 @@
 //     'PENDING') — NEVER remove. Prevents double-billing on
 //     retry or re-run.
 //
-// EDGE CASES (see session B completion summary for DECISIONS NEEDED):
-//   - is_adjustment_only = TRUE with flat markup: flat fee IS
-//     applied (preserves Session A behavior within $0.01).
-//     Spec default-while-stopped was to skip it; chose to
-//     preserve existing behavior to keep the refactor
-//     behavior-neutral. Revisit when a real billing policy is
-//     set with the first client.
+// EDGE CASES (resolved policies):
+//   - is_adjustment_only = TRUE with flat markup: flat fee is NOT
+//     applied (DN-2 resolved 2026-04-20). Adjustment lines pass
+//     through with final_billed_rate = carrier_charge. Per Sawyer:
+//     "flat mark-up applies once per tracking number to the base
+//     charge; adjustment-only lines have no base to apply it to."
 //   - Account has both markup_percentage > 0 AND markup_flat_fee
 //     > 0: preserves Session A behavior (flat wins). Documented
-//     as DECISION NEEDED; the Alamo org_carrier_accounts editor
-//     should probably reject this configuration at save time.
+//     as DN-1; the Alamo org_carrier_accounts editor should
+//     reject this configuration at save time (future work).
 // =============================================================
 
 import Decimal from 'decimal.js'
@@ -210,7 +209,9 @@ export async function runBillingCalc(
       const context = deriveMarkupContext(account)
       const carrierCharge = new Decimal(line.carrier_charge)
       const { preCeilingAmount, finalBilledRate } =
-        computeSingleCeiling(carrierCharge, context)
+        computeSingleCeiling(carrierCharge, context, {
+          isAdjustmentOnly: line.is_adjustment_only,
+        })
 
       updates.push({
         id: line.id,

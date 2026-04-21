@@ -72,24 +72,42 @@ export function deriveMarkupContext(
 //   - billing-calc.ts  (for invoice_line_items final_billed_rate)
 //
 // Semantics (per briefing): carrier_charge is ALWAYS the basis.
-//   preCeiling = carrier_charge * (1 + pct) + flat (mutually
-//                exclusive per context.markup_type_applied)
-//   final      = ceil(preCeiling * 100) / 100  — single ceiling
+//   PERCENTAGE: preCeiling = carrier_charge * (1 + markup_value)
+//   FLAT:       preCeiling = carrier_charge + markup_value
+//               (flat conceptually applies to base, but since
+//                surcharges pass through unchanged the math
+//                works out the same as adding to carrier_charge)
+//   ADJUSTMENT-ONLY + FLAT (DN-2 policy 2026-04-20):
+//               preCeiling = carrier_charge (no flat applied —
+//                            no base charge to attach fee to)
+//   final = ceil(preCeiling * 100) / 100  — single ceiling
 //
-// Behavior-preserving w.r.t. Session A: same inputs → same
-// output within floating-point-free decimal math.
+// Behavior-preserving w.r.t. Session A for non-adjustment lines.
+// Adjustment-only flat lines now pass through carrier_charge
+// without adding the flat fee, per DN-2.
 // =============================================================
 
 export function computeSingleCeiling(
   carrierCharge: Decimal,
-  context: MarkupContext
+  context: MarkupContext,
+  options?: {
+    /**
+     * When true, flat markup is NOT applied — the line has no base charge
+     * to attach the flat fee to (per DN-2 policy resolved 2026-04-20).
+     * Has no effect when context.markup_type_applied === 'percentage'.
+     */
+    isAdjustmentOnly?: boolean
+  }
 ): { preCeilingAmount: Decimal; finalBilledRate: Decimal } {
   const value = new Decimal(context.markup_value_applied)
+  const isFlat = context.markup_type_applied === 'flat'
+  const skipFlat = isFlat && options?.isAdjustmentOnly === true
 
-  const preCeiling =
-    context.markup_type_applied === 'flat'
-      ? carrierCharge.plus(value)
-      : carrierCharge.times(new Decimal(1).plus(value))
+  const preCeiling = skipFlat
+    ? carrierCharge                                 // adjustment-only flat: pass through
+    : isFlat
+      ? carrierCharge.plus(value)                   // normal flat: add fee
+      : carrierCharge.times(new Decimal(1).plus(value))  // percentage
 
   const final = preCeiling.times(100).ceil().dividedBy(100)
   return { preCeilingAmount: preCeiling, finalBilledRate: final }

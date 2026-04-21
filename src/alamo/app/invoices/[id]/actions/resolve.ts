@@ -162,6 +162,12 @@ export async function resolveDisputeGroup({
     // Needed here because shipment_ledger.final_billed_rate is
     // NOT NULL on the schema. For non-Cactus accounts we skip
     // markup entirely.
+    // TODO (DN-2 follow-up): the HELD-line SELECT above does not load
+    // is_adjustment_only, so we can't suppress flat markup for
+    // adjustment-only resolved lines in the shipment_ledger write.
+    // billing-calc.ts handles the invoice_line_items side correctly.
+    // If the case materializes, add is_adjustment_only to the SELECT
+    // and pass { isAdjustmentOnly: lineItem.is_adjustment_only } here.
     const { preCeilingAmount, finalBilledRate } = account.is_cactus_account
       ? computeSingleCeiling(carrierCharge, markupCtx)
       : { preCeilingAmount: carrierCharge, finalBilledRate: carrierCharge }
