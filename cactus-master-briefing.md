@@ -139,6 +139,54 @@ AMAZON: pending — add when available:
 
 ## 5. CARRIER ACCOUNT ARCHITECTURE
 
+### The three valid carrier-account configurations
+
+Every `org_carrier_accounts` row falls into one of three configurations.
+This mental model is load-bearing — reasoning about account modes without
+it leads to subtle misconceptions about who owns what and where data
+flows.
+
+**1. Cactus-owned lassoed**
+- `is_cactus_account = TRUE`
+- `carrier_account_mode = 'lassoed_carrier_account'`
+- Cactus owns the carrier relationship and pays the carrier
+- WMS integration exists — Cactus sees shipments at label creation time via `shipment_ledger` writes
+- Client sees tracking, analytics, claims via Cactus Portal
+- Markup is configured (percentage or flat); client is billed markup on top of raw carrier cost
+- **Example:** Cactus 3PL Headquarters with Cactus's UPS account integrated via Warehance WMS
+
+**2. Client-owned lassoed**
+- `is_cactus_account = FALSE`
+- `carrier_account_mode = 'lassoed_carrier_account'`
+- Client owns the carrier relationship and receives the carrier bill directly
+- WMS integration exists — Cactus sees shipments at label creation time for portal/tracking/claims/analytics
+- Cactus does NOT receive the carrier invoice (goes to client directly)
+- Markup is 0% or $0 — Cactus's value is the portal and operational features, not billing reselling
+- Eventually this configuration will support "Cactus Portal as billing tool for 3PLs billing their own brands"
+- **Example:** A 3PL client with their own UPS account, hosting it in Cactus for dashboards only
+
+**3. Cactus-owned dark**
+- `is_cactus_account = TRUE`
+- `carrier_account_mode = 'dark_carrier_account'`
+- Cactus owns the carrier relationship and pays the carrier
+- No WMS integration — Cactus sees shipments ONLY when the carrier invoice arrives (post-ship)
+- Shipments matched to clients via ship-from address against `locations.normalized_address`
+- Most new clients start here until the relevant WMS integration (Warehance, Packiyo, Logiwa, Extensiv) is built
+- Markup is configured (percentage or flat); client is billed markup on top of raw carrier cost
+- **Example:** Desert Boutique, a new client without WMS integration yet, using Cactus's UPS account
+
+**Why there is no "client-owned dark"**
+
+If a client owns the carrier account AND Cactus has no WMS integration, there is no data flowing to Cactus at all — no shipments seen, no carrier invoice received. There is nothing to process, match, or bill. Such a configuration would be a logical null in the data model and produces no value or billing activity. The `org_carrier_accounts` data model does not forbid it syntactically (nothing stops someone from inserting `is_cactus_account = FALSE` + `dark_carrier_account`), but it would produce zero signal and is not a supported product configuration.
+
+**Data-flow implications**
+
+| Configuration | Cactus receives carrier invoice? | WMS writes to shipment_ledger? | Client sees portal? | Billing path |
+|---|---|---|---|---|
+| Cactus-owned lassoed | Yes | Yes | Yes | Match via tracking → invoice_line_items → cactus_invoice |
+| Client-owned lassoed | No | Yes | Yes | No billing (0% markup); portal-only |
+| Cactus-owned dark | Yes | No | Not yet (future) | Match via ship-from address → invoice_line_items → cactus_invoice |
+
 ### Two Modes — Official Cactus Terminology
 
 **`lassoed_carrier_account`**
@@ -569,6 +617,17 @@ Pineridge Direct test seed (in repo):
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] DN-5 investigation (2026-04-23): Claude Code investigated the
+      "CSV 11-row gap" reported on 2026-04-21. Diagnosis: not a bug —
+      the CSV generator is correctly partitioning a wholesale UPS
+      carrier invoice (904d933a, 950 line items) across two client
+      cactus_invoices (939 rows Cactus 3PL HQ + 11 rows Desert Boutique
+      sharing a Cactus-owned UPS dark account). Architecture verified
+      as correct multi-org billing. Desert Boutique CSV downloaded and
+      confirmed ($557.60 total = $503.57 from 904d933a + $54.03 from
+      earlier synthetic test data). Updated `docs/schema-code-audit-checklist.md`
+      with a new diagnostic lesson about foreign-key partitioning.
+      No code changes committed.
 - [x] CSV review session (2026-04-21): Generated both client CSVs
       (Cactus 3PL HQ percentage markup, Pineridge Direct flat markup)
       via the new 85-column CSV generator. Verified UTF-8 BOM, CRLF,
@@ -979,31 +1038,18 @@ Pineridge Direct test seed (in repo):
 
 ### Next task — START HERE next session
 
-**Seven prioritized items before Stage 6 (Rate Engine). Estimated total: 6-8 hours across 2-3 sessions.**
+**Six prioritized items before Stage 6 (Rate Engine). Estimated total: 5-7 hours across 2-3 sessions.**
 
-The items are ordered by risk to client trust. Items 1-6 should complete before any real client onboards. Item 7 can happen later but before shipping real client invoices.
+The items are ordered by risk to client trust. Items 1-5 should complete before any real client onboards. Item 6 can happen later but before shipping real client invoices.
 
-**1. Fix CSV 11-row gap (45 min) — HIGHEST PRIORITY**
-   The Cactus 3PL HQ CSV renders 939 data rows but the database has 950
-   invoice_line_items for that invoice. All 950 are properly INVOICED
-   and in the cactus_invoice_line_items junction. The CSV generator
-   (src/alamo/app/billing/[id]/actions/csv.ts) is silently filtering 11
-   rows somewhere. Read the generator in full, trace the query, identify
-   the root cause. Likely culprits: an implicit PostgREST row limit, a
-   WHERE clause excluding specific status combinations, or a join condition
-   dropping rows. Critical for client trust — we cannot send clients an
-   invoice missing 1% of their shipments.
-
-   Tracked as DN-5 in Section 12a (DN LOG).
-
-**2. Schema-vs-code audit (60-90 min)**
+**1. Schema-vs-code audit (60-90 min) — HIGHEST PRIORITY**
    Comprehensive sweep using `docs/schema-code-audit-checklist.md`.
    Goal: confirm no other tables share the silent-failure pattern that
    affected audit_logs (action vs action_type, details vs metadata —
    fixed in Session B.1 on 2026-04-20). Highest-risk tables: rate_shop_log,
    shipment_events, meter_transactions (write-and-walk-away patterns).
 
-**3. Schema naming convention cleanup (60-90 min)**
+**2. Schema naming convention cleanup (60-90 min)**
    The audit will surface naming inconsistencies. Known examples:
    - `address_*_zip` should be `address_*_postal_code`
    - `address_*_line1` should be `address_*_line_1`
@@ -1012,7 +1058,7 @@ The items are ordered by risk to client trust. Items 1-6 should complete before 
    pass: ALTER TABLE renames + update every code reference + regenerate
    types + update seed-data.sql + verify-data.sql + parser code.
 
-**4. Dark-path adjustment-only fix (30 min)**
+**3. Dark-path adjustment-only fix (30 min)**
    Extend the line SELECTs in `match.ts` and `resolve.ts` (dark-account
    branches) to include `is_adjustment_only`, then pass it to
    `computeSingleCeiling()` via `{ isAdjustmentOnly: line.is_adjustment_only }`.
@@ -1022,20 +1068,20 @@ The items are ordered by risk to client trust. Items 1-6 should complete before 
    the two tables diverge on a not-uncommon line type — adjustments are
    ~22% of UPS FRT rows in real production data).
 
-**5. Install Supabase CLI + establish type regen workflow (30 min)**
+**4. Install Supabase CLI + establish type regen workflow (30 min)**
    Currently no `npm run gen-types` or equivalent in package.json.
    Install supabase CLI, decide where generated types live
    (likely `src/types/supabase.ts`), decide whether to commit them
    or gitignore them, document the regen command in package.json.
    Critical for catching schema drift early.
 
-**6. Alamo carrier-accounts list view: show flat markup (15 min)**
+**5. Alamo carrier-accounts list view: show flat markup (15 min)**
    The Markup column on `/orgs/[id]` carrier accounts table currently
    shows only `markup_percentage` (e.g. "0.0%" for Pineridge despite
    $1.50 flat markup configured). Display logic should show
    "flat $1.50" when flat is set, "15.0%" when percentage is set.
 
-**7. Session B.2 — Client CSV revision (3-4 hours, own session)**
+**6. Session B.2 — Client CSV revision (3-4 hours, own session)**
    After the CSV review on 2026-04-21, Sawyer identified multiple format
    and data issues. Full spec saved separately as
    `cactus-session-b2-revision-spec.md`. Changes bundled there:
@@ -1047,10 +1093,11 @@ The items are ordered by risk to client trust. Items 1-6 should complete before 
      (`248dc801`) with sequential `CX-0001` format; requires new column
      on cactus_invoices, sequence, backfill migration v1.6.2
    - **Remove carrier-cost columns from client CSV** — per policy:
-     client never sees raw carrier charges. Remove columns 46 (Carrier
-     Charge pre-markup), 47 (Carrier Charge Currency), 63 (Carrier Total
-     pre-markup), 67 (Variance Amount). Flat-markup surcharges already
-     pass through at raw values through the existing "billed" columns.
+     client never sees raw carrier charges, regardless of account
+     configuration. Remove columns 46 (Carrier Charge pre-markup),
+     47 (Carrier Charge Currency), 63 (Carrier Total pre-markup),
+     67 (Variance Amount). Flat-markup surcharges already pass through
+     at raw values through the existing "billed" columns.
    - **Weight column restructure** — replace single Weight/Billable
      Weight with 7-column gravity+DIM split:
      Weight Gravity Entered, Weight DIM Entered, Weight Entered Unit,
@@ -1070,7 +1117,7 @@ The items are ordered by risk to client trust. Items 1-6 should complete before 
      reconciliation. Client CSV (~60 cols) has no internal fields.
      Defer if session time constrained.
 
-After these 7 items: proceed with Stage 6 Rate Engine.
+After these 6 items: proceed with Stage 6 Rate Engine.
 
 ### Deferred follow-ups (from Session B)
 
@@ -1328,30 +1375,49 @@ silent in PostgREST/Supabase. The schema-vs-code audit playbook
 in `docs/schema-code-audit-checklist.md` is the systematic defense
 against discovering more of these the hard way.
 
-### DN-5 — CSV 11-row gap on Cactus 3PL HQ invoice
-**Status:** OPEN. Discovered during 2026-04-21 CSV review.
+### DN-5 — CSV "11-row gap" on Cactus 3PL HQ invoice
+**Status:** RESOLVED 2026-04-23 — NOT A BUG. The CSV generator is
+partitioning a single wholesale UPS carrier invoice across two
+client-facing cactus_invoices, which is correct multi-org billing
+architecture working as designed.
 
-The Session B 85-column client CSV for carrier invoice
-`904d933a-daa1-4006-acf9-c3983547f679` renders 939 data rows. The
-database has 950 invoice_line_items for that invoice. All 950 rows
-are verified:
-- `billing_status = 'INVOICED'`
-- `cactus_invoice_id` populated (none NULL)
-- Present in `cactus_invoice_line_items` junction (verified 0 missing)
-- All 8 is_adjustment_only rows ARE present in the CSV
+**Full picture (investigated by Claude Code, 2026-04-23):**
 
-So the filter is NOT excluding by billing_status, NOT excluding by
-adjustment-only, NOT a missing junction entry. The filter lives inside
-`src/alamo/app/billing/[id]/actions/csv.ts` — likely in the query
-(implicit PostgREST limit, hidden WHERE clause, or join condition).
+Carrier invoice `904d933a-daa1-4006-acf9-c3983547f679` is a single UPS
+wholesale bill to Cactus for 950 shipments totaling $16,482.47. Those
+shipments belong to two different Cactus clients sharing a
+Cactus-owned UPS account:
 
-Impact: if sent to a real client, invoice would undercharge by ~$214
-(11 shipments × ~$19.44 average) and erode trust. Real client cannot
-see an invoice missing 1% of their shipments without asking "what
-else is missing?"
+| Client org | Mode | Rows | Billed |
+|------------|------|------|--------|
+| Cactus 3PL Headquarters | lassoed | 939 | $18,468.42 |
+| Desert Boutique | dark | 11 | $503.57 |
 
-**Resolution:** Tracked as item #1 in Section 12 "Next task" — highest
-priority before any real client onboard. Estimated 45 minutes.
+Each client gets their own `cactus_invoice` with only their shipments.
+`cactus_invoice_line_items` junction correctly partitions by
+`cactus_invoice_id`. The CSV generator at
+`src/alamo/app/billing/[id]/actions/csv.ts` correctly filters by the
+requested cactus_invoice_id and renders only rows for that client.
+
+Desert Boutique's CSV (verified 2026-04-23) contains 13 rows total —
+11 from this UPS invoice plus 2 earlier synthetic `1Z-DARK-TEST-*`
+rows, totaling $557.60 billed. Raw carrier cost columns populated
+correctly for dark mode (currently, pending Session B.2 Change #3
+which will remove those columns from ALL client CSVs).
+
+**No code changes committed.** Claude Code correctly hit Halt Point #1
+from the session spec and refused to "fix" a non-bug.
+
+**Lesson captured:** `docs/schema-code-audit-checklist.md` was updated
+on 2026-04-23 with a diagnostic rule: when row counts differ between
+database and output, check foreign-key partitioning BEFORE concluding
+there's a filter bug. Applies to any one-to-many relationship
+(carrier_invoice → cactus_invoice, org → location, etc.).
+
+**Architectural verification:** This investigation empirically proved
+that multi-org dark-account billing produces correct per-client
+invoices from a single wholesale carrier invoice. Useful validation
+of a core capability of the Cactus Logistics OS.
 
 ---
 

@@ -18,6 +18,40 @@ This checklist exists so that pattern doesn't lurk elsewhere undetected.
 
 ---
 
+## Diagnostic lesson: foreign-key partitioning
+
+**When row counts differ between database and output, check foreign-key
+partitioning BEFORE concluding there's a filter bug.**
+
+Example: On 2026-04-23, the team investigated a suspected "CSV 11-row
+gap" where a carrier invoice had 950 line items in the database but
+the client CSV showed only 939. Three rounds of SQL diagnostics ran
+against `carrier_invoice_id` assuming the "missing" rows were being
+filtered out somewhere. The actual explanation: the 11 rows belonged
+to a DIFFERENT client's cactus_invoice (same wholesale carrier invoice,
+different client org). The CSV generator was correctly filtering by
+`cactus_invoice_id` to partition wholesale bills into per-client
+invoices — correct multi-org billing behavior.
+
+**The diagnostic rule that would have caught this faster:**
+
+For any one-to-many relationship (carrier_invoice → cactus_invoice,
+org → location, user → session), when row counts differ between source
+and output:
+
+1. First check if the output is filtering by the *child* foreign key
+   (e.g., `cactus_invoice_id`) while the source query is grouping by
+   the *parent* (e.g., `carrier_invoice_id`)
+2. If yes, the "missing" rows are probably correctly partitioned to
+   other children — query `SELECT child_fk, COUNT(*) FROM junction
+   GROUP BY child_fk` to confirm
+3. Only after ruling out partitioning should you assume a filter bug
+
+**Applies to:** Any table with a one-to-many or many-to-many
+relationship where the output is scoped to one side of the relationship.
+
+---
+
 ## Fast path (5-10 minutes — run before every major session)
 
 ### Step 1 — Inventory every table the code touches
@@ -164,5 +198,6 @@ Tables LESS at risk because failures would be visible in normal operation:
 |---|---|---|---|
 | 2026-04-20 | Sawyer + Claude (Session B review) | audit_logs only | `action:` should be `action_type:`, `details:` should be `metadata:`. Fixed in Session B.1 across 5 INSERT call sites. |
 | (next entry: comprehensive sweep before Stage 6) | | | |
+| 2026-04-23 | Sawyer + Claude (DN-5 investigation) | CSV generator filter logic | NOT A BUG — row count gap was correct multi-org partitioning. Diagnostic lesson about foreign-key partitioning added above. |
 
 Add an entry every time you run this checklist.
