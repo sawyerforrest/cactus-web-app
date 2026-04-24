@@ -569,6 +569,14 @@ Pineridge Direct test seed (in repo):
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] CSV review session (2026-04-21): Generated both client CSVs
+      (Cactus 3PL HQ percentage markup, Pineridge Direct flat markup)
+      via the new 85-column CSV generator. Verified UTF-8 BOM, CRLF,
+      tab-prefixed tracking numbers, math correctness ($0.01 fractional-
+      cent drift as predicted, Pineridge adjustment-only row correctly
+      shows $3.50 not $5.00 per DN-2). Identified 11-row gap bug
+      (DN-5) and Session B.2 revision scope. Pushed Session B + B.1
+      to origin/main (commit 402a556).
 - [x] Session B (2026-04-20): Pipeline restructure — Match/Billing Calc
       split with idempotency guards, shipment_ledger markup unification
       (v1.6.1), shipment_events date enrichment, Pineridge Direct
@@ -971,18 +979,31 @@ Pineridge Direct test seed (in repo):
 
 ### Next task — START HERE next session
 
-**Pre-Stage 6 cleanup pass.** Five related items, ordered by priority.
-Bundle them into one or two focused Claude Code sessions before
-Stage 6 (Rate Engine) work begins. Estimated total: 3-4 hours.
+**Seven prioritized items before Stage 6 (Rate Engine). Estimated total: 6-8 hours across 2-3 sessions.**
 
-**1. Schema-vs-code audit (60-90 min) — HIGHEST PRIORITY**
+The items are ordered by risk to client trust. Items 1-6 should complete before any real client onboards. Item 7 can happen later but before shipping real client invoices.
+
+**1. Fix CSV 11-row gap (45 min) — HIGHEST PRIORITY**
+   The Cactus 3PL HQ CSV renders 939 data rows but the database has 950
+   invoice_line_items for that invoice. All 950 are properly INVOICED
+   and in the cactus_invoice_line_items junction. The CSV generator
+   (src/alamo/app/billing/[id]/actions/csv.ts) is silently filtering 11
+   rows somewhere. Read the generator in full, trace the query, identify
+   the root cause. Likely culprits: an implicit PostgREST row limit, a
+   WHERE clause excluding specific status combinations, or a join condition
+   dropping rows. Critical for client trust — we cannot send clients an
+   invoice missing 1% of their shipments.
+
+   Tracked as DN-5 in Section 12a (DN LOG).
+
+**2. Schema-vs-code audit (60-90 min)**
    Comprehensive sweep using `docs/schema-code-audit-checklist.md`.
    Goal: confirm no other tables share the silent-failure pattern that
    affected audit_logs (action vs action_type, details vs metadata —
    fixed in Session B.1 on 2026-04-20). Highest-risk tables: rate_shop_log,
    shipment_events, meter_transactions (write-and-walk-away patterns).
 
-**2. Schema naming convention cleanup (60-90 min)**
+**3. Schema naming convention cleanup (60-90 min)**
    The audit will surface naming inconsistencies. Known examples:
    - `address_*_zip` should be `address_*_postal_code`
    - `address_*_line1` should be `address_*_line_1`
@@ -991,7 +1012,7 @@ Stage 6 (Rate Engine) work begins. Estimated total: 3-4 hours.
    pass: ALTER TABLE renames + update every code reference + regenerate
    types + update seed-data.sql + verify-data.sql + parser code.
 
-**3. Dark-path adjustment-only fix (30 min)**
+**4. Dark-path adjustment-only fix (30 min)**
    Extend the line SELECTs in `match.ts` and `resolve.ts` (dark-account
    branches) to include `is_adjustment_only`, then pass it to
    `computeSingleCeiling()` via `{ isAdjustmentOnly: line.is_adjustment_only }`.
@@ -1001,20 +1022,55 @@ Stage 6 (Rate Engine) work begins. Estimated total: 3-4 hours.
    the two tables diverge on a not-uncommon line type — adjustments are
    ~22% of UPS FRT rows in real production data).
 
-**4. Install Supabase CLI + establish type regen workflow (30 min)**
+**5. Install Supabase CLI + establish type regen workflow (30 min)**
    Currently no `npm run gen-types` or equivalent in package.json.
    Install supabase CLI, decide where generated types live
    (likely `src/types/supabase.ts`), decide whether to commit them
    or gitignore them, document the regen command in package.json.
    Critical for catching schema drift early.
 
-**5. Alamo carrier-accounts list view: show flat markup (15 min)**
+**6. Alamo carrier-accounts list view: show flat markup (15 min)**
    The Markup column on `/orgs/[id]` carrier accounts table currently
    shows only `markup_percentage` (e.g. "0.0%" for Pineridge despite
    $1.50 flat markup configured). Display logic should show
    "flat $1.50" when flat is set, "15.0%" when percentage is set.
 
-After this cleanup: proceed with Stage 6 Rate Engine.
+**7. Session B.2 — Client CSV revision (3-4 hours, own session)**
+   After the CSV review on 2026-04-21, Sawyer identified multiple format
+   and data issues. Full spec saved separately as
+   `cactus-session-b2-revision-spec.md`. Changes bundled there:
+
+   - **Date format fix** — tab-prefix all date columns to prevent Excel
+     locale conversion (dates currently render as M/DD/YY in Excel
+     despite being stored as YYYY-MM-DD)
+   - **Human-readable invoice numbers** — replace truncated UUID
+     (`248dc801`) with sequential `CX-0001` format; requires new column
+     on cactus_invoices, sequence, backfill migration v1.6.2
+   - **Remove carrier-cost columns from client CSV** — per policy:
+     client never sees raw carrier charges. Remove columns 46 (Carrier
+     Charge pre-markup), 47 (Carrier Charge Currency), 63 (Carrier Total
+     pre-markup), 67 (Variance Amount). Flat-markup surcharges already
+     pass through at raw values through the existing "billed" columns.
+   - **Weight column restructure** — replace single Weight/Billable
+     Weight with 7-column gravity+DIM split:
+     Weight Gravity Entered, Weight DIM Entered, Weight Entered Unit,
+     Weight Gravity Billed, Weight DIM Billed, Weight Billed Final
+     (MAX of gravity/DIM — the value carrier actually billed on),
+     Weight Billed Unit. Schema + parser + shipment_ledger changes.
+     Enables clients to see when DIM exceeds gravity (DIM-driven cost).
+   - **Parser unit translation fix** — UPS uses 'L' for pounds; parser
+     should translate to 'LB'. Same for 'K'→'KG', 'O'→'OZ'.
+   - **Parser surcharge routing investigation** — columns 52-59 (DIM
+     Weight Charge, Saturday Delivery, Signature, Large Package, Hazmat,
+     Return to Sender) were all empty on test data. Verify if parser
+     routes these charge codes correctly when they appear. May require
+     acquiring a UPS invoice with more varied surcharges for testing.
+   - **Client vs Admin CSV split (optional)** — separate endpoints,
+     role-gated. Admin CSV shows raw+billed side-by-side for dispute
+     reconciliation. Client CSV (~60 cols) has no internal fields.
+     Defer if session time constrained.
+
+After these 7 items: proceed with Stage 6 Rate Engine.
 
 ### Deferred follow-ups (from Session B)
 
@@ -1271,6 +1327,31 @@ scaffolding. Fixed across 5 INSERT call sites + 1 SELECT site
 silent in PostgREST/Supabase. The schema-vs-code audit playbook
 in `docs/schema-code-audit-checklist.md` is the systematic defense
 against discovering more of these the hard way.
+
+### DN-5 — CSV 11-row gap on Cactus 3PL HQ invoice
+**Status:** OPEN. Discovered during 2026-04-21 CSV review.
+
+The Session B 85-column client CSV for carrier invoice
+`904d933a-daa1-4006-acf9-c3983547f679` renders 939 data rows. The
+database has 950 invoice_line_items for that invoice. All 950 rows
+are verified:
+- `billing_status = 'INVOICED'`
+- `cactus_invoice_id` populated (none NULL)
+- Present in `cactus_invoice_line_items` junction (verified 0 missing)
+- All 8 is_adjustment_only rows ARE present in the CSV
+
+So the filter is NOT excluding by billing_status, NOT excluding by
+adjustment-only, NOT a missing junction entry. The filter lives inside
+`src/alamo/app/billing/[id]/actions/csv.ts` — likely in the query
+(implicit PostgREST limit, hidden WHERE clause, or join condition).
+
+Impact: if sent to a real client, invoice would undercharge by ~$214
+(11 shipments × ~$19.44 average) and erode trust. Real client cannot
+see an invoice missing 1% of their shipments without asking "what
+else is missing?"
+
+**Resolution:** Tracked as item #1 in Section 12 "Next task" — highest
+priority before any real client onboard. Estimated 45 minutes.
 
 ---
 
