@@ -617,6 +617,23 @@ Pineridge Direct test seed (in repo):
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] Schema-vs-code audit complete (2026-04-23 late evening): Full 19-table
+      sweep verified zero silent-failure bugs across all write operations.
+      The Session B.1 audit_logs fix was the only bug of its class; no other
+      tables share the pattern. Critical-path tables verified clean
+      (invoice_line_items 14 writes, carrier_invoices 8 writes, shipment_ledger
+      2 writes, cactus_invoices 1 write, cactus_invoice_line_items 1 write,
+      audit_logs 5 writes). Lower-priority tables verified clean (organizations,
+      locations, org_carrier_accounts, carrier_invoice_mappings). 5 tables
+      legitimately unused by code (Phase 2/3 scope: org_users, meters,
+      meter_transactions, rate_shop_log, notification_preferences). 4 tables
+      read-only (static configs + shipment_events). Full findings report
+      saved as `schema-audit-findings-2026-04-23.md`. Audit surfaced 3 new
+      pre-onboarding issues now tracked in Next task: (1) shared address
+      normalization helper needed, (2) locations form bug where
+      normalized_address is never populated, (3) flat-markup input missing
+      from carrier-account form. Two Claude Code specs written (C.1 and C.2)
+      to address these alongside the schema naming cleanup.
 - [x] DN-5 investigation (2026-04-23): Claude Code investigated the
       "CSV 11-row gap" reported on 2026-04-21. Diagnosis: not a bug —
       the CSV generator is correctly partitioning a wholesale UPS
@@ -1038,86 +1055,56 @@ Pineridge Direct test seed (in repo):
 
 ### Next task — START HERE next session
 
-**Six prioritized items before Stage 6 (Rate Engine). Estimated total: 5-7 hours across 2-3 sessions.**
+**Four prioritized items. Estimated total: 3-4 hours across 2-3 sessions.**
 
-The items are ordered by risk to client trust. Items 1-5 should complete before any real client onboards. Item 6 can happen later but before shipping real client invoices.
+Items 1-3 should complete before any real client onboards (3-week target). Item 4 can happen in parallel with client onboarding prep.
 
-**1. Schema-vs-code audit (60-90 min) — HIGHEST PRIORITY**
-   Comprehensive sweep using `docs/schema-code-audit-checklist.md`.
-   Goal: confirm no other tables share the silent-failure pattern that
-   affected audit_logs (action vs action_type, details vs metadata —
-   fixed in Session B.1 on 2026-04-20). Highest-risk tables: rate_shop_log,
-   shipment_events, meter_transactions (write-and-walk-away patterns).
+**1. Session C.1 — Schema naming cleanup + address normalization (2-3 hours)**
+   Claude Code spec saved as `cactus-session-c1-schema-naming-cleanup-spec.md`
+   in the Desktop archive. Bundles:
+   - 8 column renames: `zip` → `postal_code`, `line1/line2` → `line_1/line_2`
+     across invoice_line_items (6 cols) and locations (2 cols)
+   - Shared `normalizeAddress()` helper in `src/alamo/lib/address.ts`
+   - Parser updated to use the helper AND include address_line_2 (was missing —
+     causing potential collision on multi-suite shipping origins)
+   - Location form bug fix: `/orgs/[id]/locations/new/page.tsx` now populates
+     `locations.normalized_address` on INSERT (bug discovered during audit —
+     every newly-created location was silently missing this field, breaking
+     dark-account matching for new locations)
+   - Backfill Utah Test location (only pre-existing row missing normalized_address)
+   - Backfill existing invoice_line_items.address_sender_normalized to include
+     address_line_2 for consistency
 
-**2. Schema naming convention cleanup (60-90 min)**
-   The audit will surface naming inconsistencies. Known examples:
-   - `address_*_zip` should be `address_*_postal_code`
-   - `address_*_line1` should be `address_*_line_1`
-   - `weight_billed` vs other naming patterns worth standardizing
-   Decide canonical conventions, then do all renames in one disciplined
-   pass: ALTER TABLE renames + update every code reference + regenerate
-   types + update seed-data.sql + verify-data.sql + parser code.
+**2. Session C.2 — Flat-markup input on carrier-account creation form (30-45 min)**
+   Claude Code spec saved as `cactus-session-c2-flat-markup-form-spec.md`.
+   The audit revealed that `/orgs/[id]/carriers/new` form has no flat-markup
+   input field — flat-markup accounts today can only be created via direct
+   DB seed (how Pineridge was set up). This blocks onboarding a real
+   flat-markup client through the UI. Spec adds:
+   - Radio toggle for "Percentage" vs "Flat fee" markup type
+   - Conditional inputs based on selection
+   - Server-side DN-1 validation (rejects both markup fields set)
+   - Fixes `/orgs/[id]` list display to show "flat $X.XX" instead of "0.0%"
+     when flat-markup is configured (addresses old Section 12 item #5)
 
 **3. Dark-path adjustment-only fix (30 min)**
    Extend the line SELECTs in `match.ts` and `resolve.ts` (dark-account
    branches) to include `is_adjustment_only`, then pass it to
    `computeSingleCeiling()` via `{ isAdjustmentOnly: line.is_adjustment_only }`.
    Without this fix, dark-account adjustment-only lines under flat markup
-   get $1.50 incorrectly added to shipment_ledger (the authoritative
-   invoice_line_items value is correct, so client billing is fine, but
-   the two tables diverge on a not-uncommon line type — adjustments are
-   ~22% of UPS FRT rows in real production data).
+   get $1.50 incorrectly added to shipment_ledger. Adjustments are ~22%
+   of UPS FRT rows in real production data — not rare.
 
 **4. Install Supabase CLI + establish type regen workflow (30 min)**
-   Currently no `npm run gen-types` or equivalent in package.json.
-   Install supabase CLI, decide where generated types live
-   (likely `src/types/supabase.ts`), decide whether to commit them
-   or gitignore them, document the regen command in package.json.
-   Critical for catching schema drift early.
+   Currently no `npm run gen-types` in package.json. After C.1's column
+   renames, regenerated types would reflect the new column names
+   automatically. Without it, TypeScript noise from the renames will
+   linger until the types are updated manually or the CLI is installed.
 
-**5. Alamo carrier-accounts list view: show flat markup (15 min)**
-   The Markup column on `/orgs/[id]` carrier accounts table currently
-   shows only `markup_percentage` (e.g. "0.0%" for Pineridge despite
-   $1.50 flat markup configured). Display logic should show
-   "flat $1.50" when flat is set, "15.0%" when percentage is set.
+**After these 4 items: Session B.2 (Client CSV revision, 3-4 hours, spec
+already exists at `cactus-session-b2-revision-spec.md` in archives).**
 
-**6. Session B.2 — Client CSV revision (3-4 hours, own session)**
-   After the CSV review on 2026-04-21, Sawyer identified multiple format
-   and data issues. Full spec saved separately as
-   `cactus-session-b2-revision-spec.md`. Changes bundled there:
-
-   - **Date format fix** — tab-prefix all date columns to prevent Excel
-     locale conversion (dates currently render as M/DD/YY in Excel
-     despite being stored as YYYY-MM-DD)
-   - **Human-readable invoice numbers** — replace truncated UUID
-     (`248dc801`) with sequential `CX-0001` format; requires new column
-     on cactus_invoices, sequence, backfill migration v1.6.2
-   - **Remove carrier-cost columns from client CSV** — per policy:
-     client never sees raw carrier charges, regardless of account
-     configuration. Remove columns 46 (Carrier Charge pre-markup),
-     47 (Carrier Charge Currency), 63 (Carrier Total pre-markup),
-     67 (Variance Amount). Flat-markup surcharges already pass through
-     at raw values through the existing "billed" columns.
-   - **Weight column restructure** — replace single Weight/Billable
-     Weight with 7-column gravity+DIM split:
-     Weight Gravity Entered, Weight DIM Entered, Weight Entered Unit,
-     Weight Gravity Billed, Weight DIM Billed, Weight Billed Final
-     (MAX of gravity/DIM — the value carrier actually billed on),
-     Weight Billed Unit. Schema + parser + shipment_ledger changes.
-     Enables clients to see when DIM exceeds gravity (DIM-driven cost).
-   - **Parser unit translation fix** — UPS uses 'L' for pounds; parser
-     should translate to 'LB'. Same for 'K'→'KG', 'O'→'OZ'.
-   - **Parser surcharge routing investigation** — columns 52-59 (DIM
-     Weight Charge, Saturday Delivery, Signature, Large Package, Hazmat,
-     Return to Sender) were all empty on test data. Verify if parser
-     routes these charge codes correctly when they appear. May require
-     acquiring a UPS invoice with more varied surcharges for testing.
-   - **Client vs Admin CSV split (optional)** — separate endpoints,
-     role-gated. Admin CSV shows raw+billed side-by-side for dispute
-     reconciliation. Client CSV (~60 cols) has no internal fields.
-     Defer if session time constrained.
-
-After these 6 items: proceed with Stage 6 Rate Engine.
+**After B.2: proceed with Stage 6 Rate Engine.**
 
 ### Deferred follow-ups (from Session B)
 
@@ -1418,6 +1405,65 @@ there's a filter bug. Applies to any one-to-many relationship
 that multi-org dark-account billing produces correct per-client
 invoices from a single wholesale carrier invoice. Useful validation
 of a core capability of the Cactus Logistics OS.
+
+### DN-6 — locations.normalized_address not populated by form
+**Status:** OPEN. Discovered during 2026-04-23 audit. Will be resolved by Session C.1.
+
+The `/orgs/[id]/locations/new/page.tsx` form INSERT does not set
+`locations.normalized_address`. No trigger exists on the table to
+auto-populate it. Result: every location created through the UI has
+`normalized_address = NULL`, which silently breaks dark-account
+matching for that location (invoice_line_items.address_sender_normalized
+= locations.normalized_address comparison returns false for NULL).
+
+Current state:
+- 21 of 22 locations have populated normalized_address (from earlier
+  seed/backfill)
+- 1 location (Utah Test under Desert Boutique, id 429a0963-...) has NULL
+- Any new locations created via the form going forward will have NULL
+
+Impact:
+- For the 3-week first-client target, this would cause the first
+  dark-account client's shipments to fail matching if their locations
+  were added through the form. Zero margin for error.
+
+Resolution (C.1 Session):
+- Extract normalization logic into shared helper `src/alamo/lib/address.ts`
+- Parser and location form both call the helper
+- Location form populates normalized_address on INSERT
+- One-time backfill for the Utah Test row
+- Parser update also includes address_line_2 in normalization (was missing —
+  latent bug that could have caused collision between different suites at
+  the same building)
+
+### DN-7 — Parser omits address_line_2 from normalization
+**Status:** OPEN. Will be resolved by Session C.1 alongside DN-6.
+
+Parser at `parse/page.tsx:577-584` builds `address_sender_normalized`
+from line1, city, state, zip, country — but NOT line2. UPS detail
+invoices include address line 2. Omitting it causes different
+shipments from the same building (different suites) to produce
+identical normalized strings, potentially routing shipments to the
+wrong org or to no org.
+
+Confirmed during 2026-04-23 audit that UPS detail format includes
+address_line_2. Fix bundled into C.1 since both DN-6 and DN-7 share
+the same shared helper.
+
+### DN-8 — Carrier-account creation form lacks flat-markup input
+**Status:** OPEN. Will be resolved by Session C.2.
+
+The `/orgs/[id]/carriers/new` form INSERT does not set `markup_flat_fee`.
+Schema has the column; UI has no input. Flat-markup accounts today must
+be created via direct DB seed (how Pineridge was set up). This blocks
+onboarding a real flat-markup client through the UI.
+
+Resolution (C.2 Session):
+- Radio toggle for Percentage vs Flat fee markup type
+- Conditional inputs based on selection
+- DN-1 validation (rejects both markup fields set at save time)
+- Updates /orgs/[id] carrier-accounts list to show "flat $X.XX" instead
+  of "0.0%" when flat-markup is configured
 
 ---
 

@@ -177,11 +177,16 @@ Consider adding one of:
 Based on the audit_logs precedent, these tables share the "write-and-forget" pattern that makes silent failures hard to detect:
 
 - `audit_logs` — already discovered broken, fixed in Session B.1
-- `rate_shop_log` — async write, never read by transactional code paths (Shadow Ledger AI dataset)
 - `shipment_events` — append-only event log, read mostly by future analytics
-- `meter_transactions` — written from USPS purchase flow; reads happen only on wallet balance checks
 
 **Prioritize these in the next sweep.**
+
+Tables previously flagged as high-risk that are ACTUALLY inert (never touched
+by code): rate_shop_log, meter_transactions, notification_preferences.
+These can't have silent failures since no code writes to them. The different
+risk for these tables is that their intended capabilities (Shadow Ledger,
+USPS wallet, notifications) are not yet exercised — that's a product gap,
+not a data-integrity risk.
 
 Tables LESS at risk because failures would be visible in normal operation:
 
@@ -199,5 +204,6 @@ Tables LESS at risk because failures would be visible in normal operation:
 | 2026-04-20 | Sawyer + Claude (Session B review) | audit_logs only | `action:` should be `action_type:`, `details:` should be `metadata:`. Fixed in Session B.1 across 5 INSERT call sites. |
 | (next entry: comprehensive sweep before Stage 6) | | | |
 | 2026-04-23 | Sawyer + Claude (DN-5 investigation) | CSV generator filter logic | NOT A BUG — row count gap was correct multi-org partitioning. Diagnostic lesson about foreign-key partitioning added above. |
+| 2026-04-23 (late) | Sawyer + Claude (full-time kickoff) | Full 19-table comprehensive sweep | ZERO silent failures found. All critical-path writes clean (6 tables, 31 writes). All low-priority writes clean (4 tables, 4 writes). 5 tables legitimately unused (Phase 2/3 scope). Confirmed schema naming inconsistency between locations (clean) and invoice_line_items (prefixed) — addressed by Session C.1. Surfaced 3 new pre-onboarding follow-ups tracked as DN-6 (locations.normalized_address bug), DN-7 (parser line_2 omission), DN-8 (flat-markup form field missing). |
 
 Add an entry every time you run this checklist.
