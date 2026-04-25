@@ -54,7 +54,7 @@ ON CONFLICT (id) DO NOTHING;
 -- --------------------------------------------------------------------------
 INSERT INTO locations
   (id, org_id, name, location_type,
-   address_line1, city, state, postal_code, country,
+   address_line_1, city, state, postal_code, country,
    normalized_address, is_billing_address, is_active)
 VALUES
   ('11111111-1000-0000-0000-000000000001'::uuid,
@@ -168,10 +168,10 @@ INSERT INTO invoice_line_items
    weight_billed, weight_unit_billed,
    length_carrier, width_carrier, height_carrier,
    date_shipped, date_delivered, date_invoiced,
-   address_sender_line1, address_sender_city, address_sender_state,
-   address_sender_zip, address_sender_country, address_sender_normalized,
-   address_receiver_line1, address_receiver_city, address_receiver_state,
-   address_receiver_zip, address_receiver_country,
+   address_sender_line_1, address_sender_city, address_sender_state,
+   address_sender_postal_code, address_sender_country, address_sender_normalized,
+   address_receiver_line_1, address_receiver_city, address_receiver_state,
+   address_receiver_postal_code, address_receiver_country,
    base_charge, fuel_surcharge, residential_surcharge,
    delivery_area_surcharge, additional_handling, other_surcharges,
    apv_adjustment,
