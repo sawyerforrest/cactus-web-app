@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { normalizeAddress } from '@/lib/address'
 
 export default async function NewLocationPage({
   params,
@@ -30,13 +31,22 @@ export default async function NewLocationPage({
 
     const name = formData.get('name') as string
     const location_type = formData.get('location_type') as string
-    const address_line1 = formData.get('address_line1') as string
-    const address_line2 = (formData.get('address_line2') as string) || null
+    const address_line_1 = formData.get('address_line_1') as string
+    const address_line_2 = (formData.get('address_line_2') as string) || null
     const city = formData.get('city') as string
     const state = formData.get('state') as string
     const postal_code = formData.get('postal_code') as string
     const country = formData.get('country_code') as string
     const is_billing_address = formData.get('is_billing_address') === 'true'
+
+    const normalized_address = normalizeAddress({
+      line_1: address_line_1,
+      line_2: address_line_2,
+      city,
+      state,
+      postal_code,
+      country,
+    })
 
     const { error } = await admin
       .from('locations')
@@ -44,13 +54,14 @@ export default async function NewLocationPage({
         org_id: id,
         name,
         location_type,
-        address_line1,
-        address_line2,
+        address_line_1,
+        address_line_2,
         city,
         state,
         postal_code,
         country,
         is_billing_address,
+        normalized_address,
       })
 
     if (error) throw new Error(error.message)
@@ -143,7 +154,7 @@ export default async function NewLocationPage({
             <div style={{ marginBottom: 20 }}>
               <label style={label('Address line 1')}>Address line 1</label>
               <input
-                name="address_line1"
+                name="address_line_1"
                 type="text"
                 required
                 placeholder="e.g. 1234 Main St"
@@ -155,7 +166,7 @@ export default async function NewLocationPage({
             <div style={{ marginBottom: 20 }}>
               <label style={label('Address line 2 (optional)')}>Address line 2 (optional)</label>
               <input
-                name="address_line2"
+                name="address_line_2"
                 type="text"
                 placeholder="e.g. Suite 100"
                 style={input}
