@@ -106,8 +106,8 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
         name,
         terms_days,
         locations (
-          address_line1,
-          address_line2,
+          address_line_1,
+          address_line_2,
           city,
           state,
           postal_code,
@@ -212,8 +212,8 @@ export async function generateInvoicePDF(cactusInvoiceId: string): Promise<Buffe
 
   const billingAddress: string[] = billingLocation
     ? [
-        billingLocation.address_line1,
-        billingLocation.address_line2,
+        billingLocation.address_line_1,
+        billingLocation.address_line_2,
         cityStatePostal,
       ].filter((line: unknown) => typeof line === 'string' && line.trim().length > 0)
     : []
