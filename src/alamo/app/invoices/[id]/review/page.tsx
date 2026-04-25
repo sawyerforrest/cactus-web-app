@@ -54,18 +54,18 @@ const CACTUS_STANDARD_FIELDS = [
   { value: 'payor',                 label: 'Payor' },
   { value: 'packaging_type',        label: 'Packaging Type' },
   // Sender address
-  { value: 'address_sender_line1',  label: 'Sender Address Line 1' },
-  { value: 'address_sender_line2',  label: 'Sender Address Line 2' },
-  { value: 'address_sender_city',   label: 'Sender City' },
-  { value: 'address_sender_state',  label: 'Sender State' },
-  { value: 'address_sender_zip',    label: 'Sender Zip' },
-  { value: 'address_sender_country',label: 'Sender Country' },
+  { value: 'address_sender_line_1',  label: 'Sender Address Line 1' },
+  { value: 'address_sender_line_2',  label: 'Sender Address Line 2' },
+  { value: 'address_sender_city',    label: 'Sender City' },
+  { value: 'address_sender_state',   label: 'Sender State' },
+  { value: 'address_sender_postal_code', label: 'Sender Postal Code' },
+  { value: 'address_sender_country', label: 'Sender Country' },
   // Receiver address
-  { value: 'address_receiver_line1','label': 'Receiver Address Line 1' },
-  { value: 'address_receiver_line2','label': 'Receiver Address Line 2' },
-  { value: 'address_receiver_city', label: 'Receiver City' },
-  { value: 'address_receiver_state',label: 'Receiver State' },
-  { value: 'address_receiver_zip',  label: 'Receiver Zip' },
+  { value: 'address_receiver_line_1','label': 'Receiver Address Line 1' },
+  { value: 'address_receiver_line_2','label': 'Receiver Address Line 2' },
+  { value: 'address_receiver_city',  label: 'Receiver City' },
+  { value: 'address_receiver_state', label: 'Receiver State' },
+  { value: 'address_receiver_postal_code', label: 'Receiver Postal Code' },
   { value: 'address_receiver_country', label: 'Receiver Country' },
   // References
   { value: 'reference_1',           label: 'Reference 1' },
@@ -137,7 +137,7 @@ Important mapping rules:
 - "Account Number" or similar → account_number_carrier
 - "Service Level" or similar → service_level
 - "Weight" alone → weight_billed
-- "Sender Street" or similar → address_sender_line1
+- "Sender Street" or similar → address_sender_line_1
 - "Pickup Date" or "Ship Date" → date_shipped
 - "Invoice Date" → date_invoiced
 - "Incentive Credit" or adjustment fields → apv_adjustment
