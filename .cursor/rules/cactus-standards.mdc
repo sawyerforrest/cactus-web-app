@@ -1,5 +1,5 @@
 # Cactus Development Standards
-# VERSION: 1.6.0 | UPDATED: 2026-04-18
+# VERSION: 1.7.0 | UPDATED: 2026-04-25
 #
 # PURPOSE: This file is the "constitution" of the Cactus codebase.
 # Cursor reads this before every AI interaction in the project.
@@ -74,6 +74,45 @@ with AI capabilities that took years to build — not months.
 
 - **Carrier Account Modes:** exact enum values only
   - ✅ `lassoed_carrier_account`, `dark_carrier_account`
+
+### Address & Postal Code Conventions (canonical, locked v1.7.0)
+
+These are the empirical conventions established by the Session C.1
+migration. All new schema, code, and documentation MUST follow them.
+
+- **Address line columns:** `address_line_1` / `address_line_2`
+  (underscore between word and number — matches the existing
+  `reference_1` / `reference_2` convention already in the schema)
+  - ✅ `address_sender_line_1`, `address_receiver_line_2`,
+        `locations.address_line_1`
+  - ❌ `address_line1`, `address_sender_line2` (legacy — renamed in v1.7.0)
+
+- **Postal codes:** ALWAYS `postal_code`, NEVER `zip`
+  - The schema serves international shipping (DHL eCommerce / Express)
+  - "ZIP" is a US Postal Service trademark — misleading on non-US rows
+  - ✅ `address_sender_postal_code`, `address_receiver_postal_code`
+  - ❌ `address_sender_zip`, `address_receiver_zip` (legacy — renamed in v1.7.0)
+
+### Address Normalization — Single Source of Truth
+
+**All address-matching writes (parser, location form, future writers)
+MUST use the shared helper at `src/alamo/lib/address.ts` —
+`normalizeAddress()`.**
+
+Never inline the normalization logic in a writer. This rule keeps
+writers consistent so dark-account matching works regardless of
+write path.
+
+- ✅ `import { normalizeAddress } from '@/lib/address'` then call it
+- ❌ Hand-rolled `[line1, city, state, postal].join(', ').toUpperCase()`
+     in a parser, form action, or migration script
+
+**Why this rule exists:** DN-6 and DN-7 (resolved 2026-04-25 in
+Session C.1) both stemmed from inline normalization that drifted
+from the canonical format. The locations form silently wrote
+`normalized_address = NULL` for every new location; the parser
+omitted `address_line_2` and produced collisions between different
+suites at the same building. One helper, one convention, no drift.
 
 ---
 
@@ -416,7 +455,7 @@ await supabase
 
 ---
 
-## 9. Database Standards (v1.6.0 — 19 Tables)
+## 9. Database Standards (v1.7.0 — 19 Tables)
 
 | Table | Purpose |
 |---|---|
@@ -466,6 +505,28 @@ markup_flat_fee — source-of-truth for admin-set markup configuration.
 
 NOTE: shipment_ledger STILL HAS markup_percentage and markup_flat_fee —
 Session B will extend new markup context pattern there.
+
+### v1.7.0 Schema Changes (applied 2026-04-25)
+
+invoice_line_items:
+  RENAMED  address_sender_zip      → address_sender_postal_code
+  RENAMED  address_receiver_zip    → address_receiver_postal_code
+  RENAMED  address_sender_line1    → address_sender_line_1
+  RENAMED  address_sender_line2    → address_sender_line_2
+  RENAMED  address_receiver_line1  → address_receiver_line_1
+  RENAMED  address_receiver_line2  → address_receiver_line_2
+
+locations:
+  RENAMED  address_line1 → address_line_1
+  RENAMED  address_line2 → address_line_2
+
+Index renamed:
+  idx_invoice_line_items_address_receiver_zip
+    → idx_invoice_line_items_address_receiver_postal_code
+
+Companion code change: shared `normalizeAddress()` helper at
+src/alamo/lib/address.ts — used by parser AND locations form.
+See Section 3 "Address Normalization — Single Source of Truth".
 
 ---
 

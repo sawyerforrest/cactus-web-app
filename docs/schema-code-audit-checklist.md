@@ -207,3 +207,15 @@ Tables LESS at risk because failures would be visible in normal operation:
 | 2026-04-23 (late) | Sawyer + Claude (full-time kickoff) | Full 19-table comprehensive sweep | ZERO silent failures found. All critical-path writes clean (6 tables, 31 writes). All low-priority writes clean (4 tables, 4 writes). 5 tables legitimately unused (Phase 2/3 scope). Confirmed schema naming inconsistency between locations (clean) and invoice_line_items (prefixed) — addressed by Session C.1. Surfaced 3 new pre-onboarding follow-ups tracked as DN-6 (locations.normalized_address bug), DN-7 (parser line_2 omission), DN-8 (flat-markup form field missing). |
 
 Add an entry every time you run this checklist.
+
+---
+
+## Audit closures log
+
+2026-04-25 — Session C.1 closed three audit findings:
+  - 8 schema column renames executed (zip → postal_code, line1/2 → line_1/2)
+  - DN-6 RESOLVED: locations form normalized_address bug
+  - DN-7 RESOLVED: parser line_2 normalization gap
+Worktree-based execution + dry-run pre-flight pattern proved out — surfaced
+3 unanticipated files and 1 stale index that the original spec missed.
+Pattern recommended for future MEDIUM-HIGH risk sessions.

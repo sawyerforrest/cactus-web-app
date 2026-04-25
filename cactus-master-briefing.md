@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.6.0 | UPDATED: 2026-04-18
+# VERSION: 1.7.0 | UPDATED: 2026-04-25
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -486,7 +486,7 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 10. DATABASE SCHEMA (v1.6.0 — 19 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.7.0 — 19 TABLES — LIVE IN SUPABASE)
 
 | Table | Purpose |
 |---|---|
@@ -598,6 +598,50 @@ Pineridge Direct test seed (in repo):
   - row 14 is adjustment-only (no flat fee per DN-2)
   - cactus_invoice id: 11111111-4000-0000-0000-000000000001
 
+### v1.7.0 Schema Changes (applied 2026-04-25)
+
+8 column renames standardizing on `postal_code` (not `zip`) and
+`line_1` / `line_2` (not `line1` / `line2`). Schema now serves
+international shipping (DHL eCommerce / Express) — `zip` is
+US-centric and was misleading for non-US addresses.
+
+invoice_line_items (6 renames):
+  RENAMED  address_sender_zip      → address_sender_postal_code
+  RENAMED  address_receiver_zip    → address_receiver_postal_code
+  RENAMED  address_sender_line1    → address_sender_line_1
+  RENAMED  address_sender_line2    → address_sender_line_2
+  RENAMED  address_receiver_line1  → address_receiver_line_1
+  RENAMED  address_receiver_line2  → address_receiver_line_2
+
+locations (2 renames):
+  RENAMED  address_line1 → address_line_1
+  RENAMED  address_line2 → address_line_2
+
+Index renamed in lockstep:
+  idx_invoice_line_items_address_receiver_zip
+    → idx_invoice_line_items_address_receiver_postal_code
+
+Data backfill:
+  - 4 rows in carrier_invoice_mappings.cactus_standard_field updated
+    to reflect the new column-name strings
+  - normalized_address backfill on Utah Test location (only historical
+    locations row missing it)
+  - 477 invoice_line_items rows had address_sender_normalized
+    re-normalized to include line_2 data (DN-7 historical fix)
+
+Migration applied as a single atomic transaction (`BEGIN;...COMMIT;`)
+with a `DO $$ ... RAISE EXCEPTION` verification block that rolls back
+the entire migration if any rename failed. Pattern recommended for
+future MEDIUM-HIGH risk schema work.
+
+Migration file (in repo):
+  database/migrations/v1.7.0-schema-naming-cleanup.sql
+
+Companion code change: shared address normalization helper added at
+src/alamo/lib/address.ts. `normalizeAddress()` is now used by both
+the parser and the locations form — keeps writers consistent so
+dark-account matching works regardless of write path.
+
 ---
 
 ## 11. NAMING CONVENTIONS
@@ -617,6 +661,22 @@ Pineridge Direct test seed (in repo):
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] Session C.1 (2026-04-25): Schema naming cleanup + address normalization helper.
+      Migration v1.7.0 applied — 8 column renames across invoice_line_items (6) and
+      locations (2), standardizing on postal_code/line_1/line_2 conventions. Index
+      renamed in lockstep. Created shared src/alamo/lib/address.ts with
+      normalizeAddress() helper now used by parser and locations form. Fixed DN-6
+      (locations form INSERT was silently missing normalized_address — broke
+      dark-account matching for newly-created locations). Fixed DN-7 (parser
+      omitted address_line_2 from normalization — caused multi-suite collisions).
+      Backfilled Utah Test location's normalized_address (the one historical row
+      missing it) and re-normalized 477 invoice_line_items rows that had line_2
+      data. Smoke-tested live: form submission writes normalized_address correctly
+      with line_2 included. 9 commits merged via --no-ff (4ceb060..e68c43d).
+      Dry-run before execution surfaced 3 files outside spec scope (database-setup.sql,
+      pineridge-flat-markup-seed.sql, review/page.tsx field-mapping config) and
+      1 cosmetic stale index name — all folded into execution. Zero halt-point
+      escalations during execution.
 - [x] Schema-vs-code audit complete (2026-04-23 late evening): Full 19-table
       sweep verified zero silent-failure bugs across all write operations.
       The Session B.1 audit_logs fix was the only bug of its class; no other
@@ -1055,27 +1115,11 @@ Pineridge Direct test seed (in repo):
 
 ### Next task — START HERE next session
 
-**Four prioritized items. Estimated total: 3-4 hours across 2-3 sessions.**
+**Three prioritized items. Estimated total: 1.5-2 hours across 1-2 sessions.**
 
-Items 1-3 should complete before any real client onboards (3-week target). Item 4 can happen in parallel with client onboarding prep.
+Items 1-2 should complete before any real client onboards (3-week target). Item 3 can happen in parallel with client onboarding prep.
 
-**1. Session C.1 — Schema naming cleanup + address normalization (2-3 hours)**
-   Claude Code spec saved as `cactus-session-c1-schema-naming-cleanup-spec.md`
-   in the Desktop archive. Bundles:
-   - 8 column renames: `zip` → `postal_code`, `line1/line2` → `line_1/line_2`
-     across invoice_line_items (6 cols) and locations (2 cols)
-   - Shared `normalizeAddress()` helper in `src/alamo/lib/address.ts`
-   - Parser updated to use the helper AND include address_line_2 (was missing —
-     causing potential collision on multi-suite shipping origins)
-   - Location form bug fix: `/orgs/[id]/locations/new/page.tsx` now populates
-     `locations.normalized_address` on INSERT (bug discovered during audit —
-     every newly-created location was silently missing this field, breaking
-     dark-account matching for new locations)
-   - Backfill Utah Test location (only pre-existing row missing normalized_address)
-   - Backfill existing invoice_line_items.address_sender_normalized to include
-     address_line_2 for consistency
-
-**2. Session C.2 — Flat-markup input on carrier-account creation form (30-45 min)**
+**1. Session C.2 — Flat-markup input on carrier-account creation form (30-45 min)**
    Claude Code spec saved as `cactus-session-c2-flat-markup-form-spec.md`.
    The audit revealed that `/orgs/[id]/carriers/new` form has no flat-markup
    input field — flat-markup accounts today can only be created via direct
@@ -1087,7 +1131,7 @@ Items 1-3 should complete before any real client onboards (3-week target). Item 
    - Fixes `/orgs/[id]` list display to show "flat $X.XX" instead of "0.0%"
      when flat-markup is configured (addresses old Section 12 item #5)
 
-**3. Dark-path adjustment-only fix (30 min)**
+**2. Dark-path adjustment-only fix (30 min)**
    Extend the line SELECTs in `match.ts` and `resolve.ts` (dark-account
    branches) to include `is_adjustment_only`, then pass it to
    `computeSingleCeiling()` via `{ isAdjustmentOnly: line.is_adjustment_only }`.
@@ -1095,7 +1139,7 @@ Items 1-3 should complete before any real client onboards (3-week target). Item 
    get $1.50 incorrectly added to shipment_ledger. Adjustments are ~22%
    of UPS FRT rows in real production data — not rare.
 
-**4. Install Supabase CLI + establish type regen workflow (30 min)**
+**3. Install Supabase CLI + establish type regen workflow (30 min)**
    Currently no `npm run gen-types` in package.json. After C.1's column
    renames, regenerated types would reflect the new column names
    automatically. Without it, TypeScript noise from the renames will
@@ -1114,10 +1158,19 @@ already exists at `cactus-session-b2-revision-spec.md` in archives).**
   Deferred from Session B Phase 6.
 
 - **7C — TypeScript error triage** (~1 hour)
-  Current baseline ~1640 errors in src/alamo. Most are Category A
-  (Supabase GenericStringError inference quirks, next/cache missing
-  types). Worth a focused pass to drive baseline down where errors
-  are real vs. tooling noise. Deferred from Session B Phase 7.
+  Current baseline 2377 errors (was reported as ~1640 in pre-C.1
+  briefing — discovered to be stale during C.1 dry-run). Most are
+  Category A (Supabase GenericStringError inference quirks, next/cache
+  missing types). Worth a focused pass to drive baseline down where
+  errors are real vs. tooling noise. Deferred from Session B Phase 7.
+  (C.1 added +2 errors, all type-inference noise from un-regenerated
+  Supabase types)
+
+- **TS baseline drift investigation** (~30 min)
+  Pre-C.1 dry-run measured 2375 errors against a briefing-stated baseline
+  of ~1640. ~735-error drift is unaccounted for — likely Supabase type-regen
+  artifacts or Next.js 16 upgrade noise. Worth a focused investigation
+  before treating any future baseline as authoritative.
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -1407,7 +1460,7 @@ invoices from a single wholesale carrier invoice. Useful validation
 of a core capability of the Cactus Logistics OS.
 
 ### DN-6 — locations.normalized_address not populated by form
-**Status:** OPEN. Discovered during 2026-04-23 audit. Will be resolved by Session C.1.
+**Status:** RESOLVED 2026-04-25 in Session C.1. Discovered during 2026-04-23 audit.
 
 The `/orgs/[id]/locations/new/page.tsx` form INSERT does not set
 `locations.normalized_address`. No trigger exists on the table to
@@ -1436,8 +1489,12 @@ Resolution (C.1 Session):
   latent bug that could have caused collision between different suites at
   the same building)
 
+RESOLVED 2026-04-25 in Session C.1. Locations form now uses
+`normalizeAddress()` helper and explicitly populates `normalized_address`
+on INSERT. Utah Test row backfilled. Smoke-tested live.
+
 ### DN-7 — Parser omits address_line_2 from normalization
-**Status:** OPEN. Will be resolved by Session C.1 alongside DN-6.
+**Status:** RESOLVED 2026-04-25 in Session C.1. Resolved alongside DN-6.
 
 Parser at `parse/page.tsx:577-584` builds `address_sender_normalized`
 from line1, city, state, zip, country — but NOT line2. UPS detail
@@ -1449,6 +1506,10 @@ wrong org or to no org.
 Confirmed during 2026-04-23 audit that UPS detail format includes
 address_line_2. Fix bundled into C.1 since both DN-6 and DN-7 share
 the same shared helper.
+
+RESOLVED 2026-04-25 in Session C.1. Parser now uses shared
+`normalizeAddress()` helper which includes `line_2`. 477 historical
+invoice_line_items rows re-normalized to include line_2 data.
 
 ### DN-8 — Carrier-account creation form lacks flat-markup input
 **Status:** OPEN. Will be resolved by Session C.2.
@@ -1655,15 +1716,15 @@ Incentive Credit, Invoice Section, Invoice Type, Invoice Due Date
 - Zone                         → zone
 - Pickup Date                  → date_shipped
 - Invoice Date                 → date_invoiced
-- Sender Street                → address_sender_line1
+- Sender Street                → address_sender_line_1
 - Sender City                  → address_sender_city
 - Sender State                 → address_sender_state
-- Sender Zip Code              → address_sender_zip
+- Sender Zip Code              → address_sender_postal_code
 - Concatenated sender fields   → address_sender_normalized (dark matching)
-- Receiver Street              → address_receiver_line1
+- Receiver Street              → address_receiver_line_1
 - Receiver City                → address_receiver_city
 - Receiver State               → address_receiver_state
-- Receiver Zip Code            → address_receiver_zip
+- Receiver Zip Code            → address_receiver_postal_code
 - Receiver Country or Territory → address_receiver_country
 - Third Party                  → payor
 - Reference No.1/2/3           → reference_1/reference_2/reference_3

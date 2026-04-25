@@ -256,7 +256,7 @@ Provider: Resend + React Email templates
 
 ---
 
-## Database Schema (v1.6.0 — 19 Tables)
+## Database Schema (v1.7.0 — 19 Tables)
 
 ```
 organizations              → Tenant root
@@ -287,6 +287,14 @@ v1.6.0 schema changes: `invoice_line_items` renamed
 Same rename applied to `shipment_ledger`, `rate_shop_log`,
 `cactus_invoice_line_items`. See `database/migrations/v1.6.0-*.sql`
 for full migration.
+
+### Recent Changes
+- **v1.7.0 (2026-04-25 — Session C.1):** Schema naming cleanup. 8 column
+  renames standardizing on `postal_code` (not `zip`) and `line_1`/`line_2`
+  (not `line1`/`line2`) across `invoice_line_items` and `locations`. Index
+  renamed in lockstep. Shared `src/alamo/lib/address.ts` `normalizeAddress()`
+  helper now used by parser and locations form. Last migration applied:
+  v1.7.0 on 2026-04-25.
 
 ---
 
