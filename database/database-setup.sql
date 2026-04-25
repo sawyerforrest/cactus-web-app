@@ -274,8 +274,8 @@ CREATE TABLE locations (
     org_id                  UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name                    TEXT NOT NULL,
     location_type           location_type_enum NOT NULL DEFAULT 'SHIP_FROM',
-    address_line1           TEXT NOT NULL,
-    address_line2           TEXT,
+    address_line_1          TEXT NOT NULL,
+    address_line_2          TEXT,
     city                    TEXT NOT NULL,
     state                   CHAR(2) NOT NULL,
     postal_code             TEXT NOT NULL,
@@ -573,17 +573,17 @@ CREATE TABLE invoice_line_items (
     account_number_carrier          TEXT,
     address_sender_raw              TEXT,
     address_sender_normalized       TEXT,
-    address_sender_line1            TEXT,
-    address_sender_line2            TEXT,
+    address_sender_line_1           TEXT,
+    address_sender_line_2           TEXT,
     address_sender_city             TEXT,
     address_sender_state            TEXT,
-    address_sender_zip              TEXT,
+    address_sender_postal_code      TEXT,
     address_sender_country          TEXT,
-    address_receiver_line1          TEXT,
-    address_receiver_line2          TEXT,
+    address_receiver_line_1         TEXT,
+    address_receiver_line_2         TEXT,
     address_receiver_city           TEXT,
     address_receiver_state          TEXT,
-    address_receiver_zip            TEXT,
+    address_receiver_postal_code    TEXT,
     address_receiver_country        TEXT,
     carrier_charge                  DECIMAL(18,4) NOT NULL,
     base_charge                     DECIMAL(18,4),
@@ -1109,8 +1109,8 @@ CREATE INDEX idx_invoice_line_items_tracking
 CREATE INDEX idx_invoice_line_items_address_sender_normalized
     ON invoice_line_items(address_sender_normalized);
 
-CREATE INDEX idx_invoice_line_items_address_receiver_zip
-    ON invoice_line_items(address_receiver_zip);
+CREATE INDEX idx_invoice_line_items_address_receiver_postal_code
+    ON invoice_line_items(address_receiver_postal_code);
 
 CREATE INDEX idx_invoice_line_items_is_dim_billed
     ON invoice_line_items(is_dim_billed)

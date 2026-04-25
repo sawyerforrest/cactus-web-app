@@ -13,6 +13,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import Decimal from 'decimal.js'
+import { normalizeAddress } from '@/lib/address'
 
 // ----------------------------------------------------------
 // TYPES
@@ -46,17 +47,17 @@ type ParsedLineItem = {
   reference_3: string
   reference_4: string
   reference_5: string
-  address_sender_line1: string
-  address_sender_line2: string
+  address_sender_line_1: string
+  address_sender_line_2: string
   address_sender_city: string
   address_sender_state: string
-  address_sender_zip: string
+  address_sender_postal_code: string
   address_sender_country: string
-  address_receiver_line1: string
-  address_receiver_line2: string
+  address_receiver_line_1: string
+  address_receiver_line_2: string
   address_receiver_city: string
   address_receiver_state: string
-  address_receiver_zip: string
+  address_receiver_postal_code: string
   address_receiver_country: string
   weight_entered: number | null
   weight_unit_entered: string
@@ -397,17 +398,17 @@ const dataLines = invoice.invoice_format === 'DETAIL'
         reference_3: first['Package Reference Number 1']?.trim() ?? '',
         reference_4: first['Package Reference Number 2']?.trim() ?? '',
         reference_5: first['Package Reference Number 3']?.trim() ?? '',
-        address_sender_line1: first['Sender Address Line 1']?.trim() ?? '',
-        address_sender_line2: first['Sender Address Line 2']?.trim() ?? '',
+        address_sender_line_1: first['Sender Address Line 1']?.trim() ?? '',
+        address_sender_line_2: first['Sender Address Line 2']?.trim() ?? '',
         address_sender_city: first['Sender City']?.trim() ?? '',
         address_sender_state: first['Sender State']?.trim() ?? '',
-        address_sender_zip: first['Sender Postal']?.trim() ?? '',
+        address_sender_postal_code: first['Sender Postal']?.trim() ?? '',
         address_sender_country: first['Sender Country']?.trim() ?? '',
-        address_receiver_line1: first['Receiver Address Line 1']?.trim() ?? '',
-        address_receiver_line2: first['Receiver Address Line 2']?.trim() ?? '',
+        address_receiver_line_1: first['Receiver Address Line 1']?.trim() ?? '',
+        address_receiver_line_2: first['Receiver Address Line 2']?.trim() ?? '',
         address_receiver_city: first['Receiver City']?.trim() ?? '',
         address_receiver_state: first['Receiver State']?.trim() ?? '',
-        address_receiver_zip: first['Receiver Postal']?.trim() ?? '',
+        address_receiver_postal_code: first['Receiver Postal']?.trim() ?? '',
         address_receiver_country: first['Receiver Country']?.trim() ?? '',
         weight_entered: parseFloat(first['Entered Weight'] ?? '') || null,
         weight_unit_entered: first['Entered Weight Unit of Measure']?.trim() || 'LB',
@@ -568,25 +569,25 @@ const dataLines = invoice.invoice_format === 'DETAIL'
         reference_3: item.reference_3 || null,
         reference_4: item.reference_4 || null,
         reference_5: item.reference_5 || null,
-        address_sender_line1: item.address_sender_line1 || null,
-        address_sender_line2: item.address_sender_line2 || null,
+        address_sender_line_1: item.address_sender_line_1 || null,
+        address_sender_line_2: item.address_sender_line_2 || null,
         address_sender_city: item.address_sender_city || null,
         address_sender_state: item.address_sender_state || null,
-        address_sender_zip: item.address_sender_zip || null,
+        address_sender_postal_code: item.address_sender_postal_code || null,
         address_sender_country: item.address_sender_country || null,
-        // Build normalized sender address for dark matching
-        address_sender_normalized: [
-          item.address_sender_line1,
-          item.address_sender_city,
-          item.address_sender_state,
-          item.address_sender_zip,
-          item.address_sender_country,
-        ].filter(Boolean).join(', ').toUpperCase() || null,
-        address_receiver_line1: item.address_receiver_line1 || null,
-        address_receiver_line2: item.address_receiver_line2 || null,
+        address_sender_normalized: normalizeAddress({
+          line_1: item.address_sender_line_1,
+          line_2: item.address_sender_line_2,
+          city: item.address_sender_city,
+          state: item.address_sender_state,
+          postal_code: item.address_sender_postal_code,
+          country: item.address_sender_country,
+        }),
+        address_receiver_line_1: item.address_receiver_line_1 || null,
+        address_receiver_line_2: item.address_receiver_line_2 || null,
         address_receiver_city: item.address_receiver_city || null,
         address_receiver_state: item.address_receiver_state || null,
-        address_receiver_zip: item.address_receiver_zip || null,
+        address_receiver_postal_code: item.address_receiver_postal_code || null,
         address_receiver_country: item.address_receiver_country || null,
         weight_entered: item.weight_entered,
         weight_unit_entered: item.weight_unit_entered,

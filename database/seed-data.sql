@@ -48,7 +48,7 @@ LIMIT 1;
 -- 3PL main warehouse (Phoenix)
 INSERT INTO locations (
     org_id, name, location_type,
-    address_line1, city, state, postal_code, country,
+    address_line_1, city, state, postal_code, country,
     normalized_address, is_billing_address
 )
 SELECT
@@ -66,7 +66,7 @@ LIMIT 1;
 -- 3PL second warehouse (Dallas)
 INSERT INTO locations (
     org_id, name, location_type,
-    address_line1, city, state, postal_code, country,
+    address_line_1, city, state, postal_code, country,
     normalized_address, is_billing_address
 )
 SELECT
@@ -84,7 +84,7 @@ LIMIT 1;
 -- Desert Boutique warehouse (Scottsdale)
 INSERT INTO locations (
     org_id, name, location_type,
-    address_line1, city, state, postal_code, country,
+    address_line_1, city, state, postal_code, country,
     normalized_address, is_billing_address
 )
 SELECT

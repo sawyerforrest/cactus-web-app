@@ -310,17 +310,17 @@ type LineRow = {
   length_carrier: string | number | null
   width_carrier: string | number | null
   height_carrier: string | number | null
-  address_sender_line1: string | null
-  address_sender_line2: string | null
+  address_sender_line_1: string | null
+  address_sender_line_2: string | null
   address_sender_city: string | null
   address_sender_state: string | null
-  address_sender_zip: string | null
+  address_sender_postal_code: string | null
   address_sender_country: string | null
-  address_receiver_line1: string | null
-  address_receiver_line2: string | null
+  address_receiver_line_1: string | null
+  address_receiver_line_2: string | null
   address_receiver_city: string | null
   address_receiver_state: string | null
-  address_receiver_zip: string | null
+  address_receiver_postal_code: string | null
   address_receiver_country: string | null
   reference_1: string | null
   reference_2: string | null
@@ -436,21 +436,21 @@ function transformRow(row: LineRow): string[] {
     // Sender address (25-32)
     '',                                                  // 25 — no column on schema
     '',                                                  // 26
-    formatString(row.address_sender_line1),              // 27
-    formatString(row.address_sender_line2),              // 28
+    formatString(row.address_sender_line_1),             // 27
+    formatString(row.address_sender_line_2),             // 28
     formatString(row.address_sender_city),               // 29
     formatString(row.address_sender_state),              // 30
-    formatString(row.address_sender_zip),                // 31
+    formatString(row.address_sender_postal_code),        // 31
     formatString(row.address_sender_country),            // 32
 
     // Receiver address (33-40)
     '',                                                  // 33
     '',                                                  // 34
-    formatString(row.address_receiver_line1),            // 35
-    formatString(row.address_receiver_line2),            // 36
+    formatString(row.address_receiver_line_1),           // 35
+    formatString(row.address_receiver_line_2),           // 36
     formatString(row.address_receiver_city),             // 37
     formatString(row.address_receiver_state),            // 38
-    formatString(row.address_receiver_zip),              // 39
+    formatString(row.address_receiver_postal_code),      // 39
     formatString(row.address_receiver_country),          // 40
 
     // References (41-45)
@@ -570,12 +570,12 @@ export async function generateInvoiceCSV(
         weight_entered, weight_unit_entered,
         length_entered, width_entered, height_entered,
         length_carrier, width_carrier, height_carrier,
-        address_sender_line1, address_sender_line2,
+        address_sender_line_1, address_sender_line_2,
         address_sender_city, address_sender_state,
-        address_sender_zip, address_sender_country,
-        address_receiver_line1, address_receiver_line2,
+        address_sender_postal_code, address_sender_country,
+        address_receiver_line_1, address_receiver_line_2,
         address_receiver_city, address_receiver_state,
-        address_receiver_zip, address_receiver_country,
+        address_receiver_postal_code, address_receiver_country,
         reference_1, reference_2, reference_3,
         carrier_charge, base_charge, fuel_surcharge,
         residential_surcharge, delivery_area_surcharge,
@@ -676,17 +676,17 @@ export async function generateInvoiceCSV(
       length_carrier: (line.length_carrier as string | number | null) ?? null,
       width_carrier: (line.width_carrier as string | number | null) ?? null,
       height_carrier: (line.height_carrier as string | number | null) ?? null,
-      address_sender_line1: (line.address_sender_line1 as string | null) ?? null,
-      address_sender_line2: (line.address_sender_line2 as string | null) ?? null,
+      address_sender_line_1: (line.address_sender_line_1 as string | null) ?? null,
+      address_sender_line_2: (line.address_sender_line_2 as string | null) ?? null,
       address_sender_city: (line.address_sender_city as string | null) ?? null,
       address_sender_state: (line.address_sender_state as string | null) ?? null,
-      address_sender_zip: (line.address_sender_zip as string | null) ?? null,
+      address_sender_postal_code: (line.address_sender_postal_code as string | null) ?? null,
       address_sender_country: (line.address_sender_country as string | null) ?? null,
-      address_receiver_line1: (line.address_receiver_line1 as string | null) ?? null,
-      address_receiver_line2: (line.address_receiver_line2 as string | null) ?? null,
+      address_receiver_line_1: (line.address_receiver_line_1 as string | null) ?? null,
+      address_receiver_line_2: (line.address_receiver_line_2 as string | null) ?? null,
       address_receiver_city: (line.address_receiver_city as string | null) ?? null,
       address_receiver_state: (line.address_receiver_state as string | null) ?? null,
-      address_receiver_zip: (line.address_receiver_zip as string | null) ?? null,
+      address_receiver_postal_code: (line.address_receiver_postal_code as string | null) ?? null,
       address_receiver_country: (line.address_receiver_country as string | null) ?? null,
       reference_1: (line.reference_1 as string | null) ?? null,
       reference_2: (line.reference_2 as string | null) ?? null,
