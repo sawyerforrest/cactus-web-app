@@ -1,0 +1,1586 @@
+==========================================
+TABLE: organizations
+==========================================
+src/alamo/app/invoices/[id]/disputes/page.tsx:62:      .from('organizations')
+src/alamo/app/invoices/[id]/disputes/page.tsx-63-      .select('id, name')
+src/alamo/app/invoices/[id]/disputes/page.tsx-64-      .eq('is_active', true)
+src/alamo/app/invoices/[id]/disputes/page.tsx-65-      .order('name', { ascending: true }),
+src/alamo/app/invoices/[id]/disputes/page.tsx-66-  ])
+src/alamo/app/invoices/[id]/disputes/page.tsx-67-
+src/alamo/app/invoices/[id]/disputes/page.tsx-68-  if (!invoice) redirect('/invoices')
+src/alamo/app/invoices/[id]/disputes/page.tsx-69-
+src/alamo/app/invoices/[id]/disputes/page.tsx-70-  // If no held items, redirect back to the invoice
+src/alamo/app/invoices/[id]/disputes/page.tsx-71-  // (nothing to review here)
+src/alamo/app/invoices/[id]/disputes/page.tsx-72-  if (!heldItems || heldItems.length === 0) {
+src/alamo/app/invoices/[id]/disputes/page.tsx-73-    redirect(`/invoices/${id}`)
+src/alamo/app/invoices/[id]/disputes/page.tsx-74-  }
+src/alamo/app/invoices/[id]/disputes/page.tsx-75-
+src/alamo/app/invoices/[id]/disputes/page.tsx-76-  // =============================================================
+src/alamo/app/invoices/[id]/disputes/page.tsx-77-  // GROUP LINE ITEMS BY DISPUTE REASON
+--
+src/alamo/app/orgs/new/page.tsx:24:      .from('organizations')
+src/alamo/app/orgs/new/page.tsx-25-      .insert({ name, org_type, terms_days })
+src/alamo/app/orgs/new/page.tsx-26-
+src/alamo/app/orgs/new/page.tsx-27-    if (error) throw new Error(error.message)
+src/alamo/app/orgs/new/page.tsx-28-
+src/alamo/app/orgs/new/page.tsx-29-    redirect('/orgs')
+src/alamo/app/orgs/new/page.tsx-30-  }
+src/alamo/app/orgs/new/page.tsx-31-
+src/alamo/app/orgs/new/page.tsx-32-  return (
+src/alamo/app/orgs/new/page.tsx-33-    <div style={{
+src/alamo/app/orgs/new/page.tsx-34-      marginLeft: 200,
+src/alamo/app/orgs/new/page.tsx-35-      minHeight: '100vh',
+src/alamo/app/orgs/new/page.tsx-36-      background: 'var(--cactus-sand)',
+src/alamo/app/orgs/new/page.tsx-37-    }}>
+src/alamo/app/orgs/new/page.tsx-38-      <Sidebar />
+src/alamo/app/orgs/new/page.tsx-39-
+--
+src/alamo/app/orgs/[id]/locations/new/page.tsx:19:    .from('organizations')
+src/alamo/app/orgs/[id]/locations/new/page.tsx-20-    .select('id, name')
+src/alamo/app/orgs/[id]/locations/new/page.tsx-21-    .eq('id', id)
+src/alamo/app/orgs/[id]/locations/new/page.tsx-22-    .single()
+src/alamo/app/orgs/[id]/locations/new/page.tsx-23-
+src/alamo/app/orgs/[id]/locations/new/page.tsx-24-  if (!org) redirect('/orgs')
+src/alamo/app/orgs/[id]/locations/new/page.tsx-25-
+src/alamo/app/orgs/[id]/locations/new/page.tsx-26-  async function createLocation(formData: FormData) {
+src/alamo/app/orgs/[id]/locations/new/page.tsx-27-    'use server'
+src/alamo/app/orgs/[id]/locations/new/page.tsx-28-
+src/alamo/app/orgs/[id]/locations/new/page.tsx-29-    const admin = createAdminSupabaseClient()
+src/alamo/app/orgs/[id]/locations/new/page.tsx-30-
+src/alamo/app/orgs/[id]/locations/new/page.tsx-31-    const name = formData.get('name') as string
+src/alamo/app/orgs/[id]/locations/new/page.tsx-32-    const location_type = formData.get('location_type') as string
+src/alamo/app/orgs/[id]/locations/new/page.tsx-33-    const address_line1 = formData.get('address_line1') as string
+src/alamo/app/orgs/[id]/locations/new/page.tsx-34-    const address_line2 = (formData.get('address_line2') as string) || null
+--
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx:19:    .from('organizations')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-20-    .select('id, name')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-21-    .eq('id', id)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-22-    .single()
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-23-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-24-  if (!org) redirect('/orgs')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-25-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-26-  const { data: account } = await admin
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-27-    .from('org_carrier_accounts')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-28-    .select('*')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-29-    .eq('id', carrierId)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-30-    .single()
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-31-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-32-  if (!account) redirect(`/orgs/${id}`)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-33-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-34-  const { data: rateCards } = await admin
+--
+src/alamo/app/orgs/[id]/carriers/new/page.tsx:19:    .from('organizations')
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-20-    .select('id, name')
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-21-    .eq('id', id)
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-22-    .single()
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-23-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-24-  if (!org) redirect('/orgs')
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-25-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-26-  async function createCarrierAccount(formData: FormData) {
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-27-    'use server'
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-28-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-29-    const admin = createAdminSupabaseClient()
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-30-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-31-    const account_nickname = formData.get('account_nickname') as string
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-32-    const account_number = formData.get('account_number') as string
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-33-    const carrier_code = formData.get('carrier_code') as string
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-34-    const carrier_account_mode = formData.get('carrier_account_mode') as string
+--
+src/alamo/app/orgs/[id]/page.tsx:19:    .from('organizations')
+src/alamo/app/orgs/[id]/page.tsx-20-    .select('*')
+src/alamo/app/orgs/[id]/page.tsx-21-    .eq('id', id)
+src/alamo/app/orgs/[id]/page.tsx-22-    .single()
+src/alamo/app/orgs/[id]/page.tsx-23-
+src/alamo/app/orgs/[id]/page.tsx-24-  if (!org) redirect('/orgs')
+src/alamo/app/orgs/[id]/page.tsx-25-
+src/alamo/app/orgs/[id]/page.tsx-26-  const { data: carriers } = await admin
+src/alamo/app/orgs/[id]/page.tsx-27-    .from('org_carrier_accounts')
+src/alamo/app/orgs/[id]/page.tsx-28-    .select('*')
+src/alamo/app/orgs/[id]/page.tsx-29-    .eq('org_id', id)
+src/alamo/app/orgs/[id]/page.tsx-30-    .order('created_at', { ascending: true })
+src/alamo/app/orgs/[id]/page.tsx-31-
+src/alamo/app/orgs/[id]/page.tsx-32-  const { data: locations } = await admin
+src/alamo/app/orgs/[id]/page.tsx-33-    .from('locations')
+src/alamo/app/orgs/[id]/page.tsx-34-    .select('*')
+--
+src/alamo/app/orgs/page.tsx:12:  .from('organizations')
+src/alamo/app/orgs/page.tsx-13-  .select(`
+src/alamo/app/orgs/page.tsx-14-    id,
+src/alamo/app/orgs/page.tsx-15-    name,
+src/alamo/app/orgs/page.tsx-16-    org_type,
+src/alamo/app/orgs/page.tsx-17-    terms_days,
+src/alamo/app/orgs/page.tsx-18-    is_active,
+src/alamo/app/orgs/page.tsx-19-    created_at,
+src/alamo/app/orgs/page.tsx-20-    parent_org_id
+src/alamo/app/orgs/page.tsx-21-  `)
+src/alamo/app/orgs/page.tsx-22-  .order('created_at', { ascending: true })
+src/alamo/app/orgs/page.tsx-23-
+src/alamo/app/orgs/page.tsx-24-  return (
+src/alamo/app/orgs/page.tsx-25-    <div style={{
+src/alamo/app/orgs/page.tsx-26-      marginLeft: 200,
+src/alamo/app/orgs/page.tsx-27-      minHeight: '100vh',
+--
+src/alamo/app/dashboard/page.tsx:13:      .from('organizations')
+src/alamo/app/dashboard/page.tsx-14-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-15-    
+src/alamo/app/dashboard/page.tsx-16-    const { count: carrierCount } = await admin
+src/alamo/app/dashboard/page.tsx-17-      .from('org_carrier_accounts')
+src/alamo/app/dashboard/page.tsx-18-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-19-    
+src/alamo/app/dashboard/page.tsx-20-    const { count: shipmentCount } = await admin
+src/alamo/app/dashboard/page.tsx-21-      .from('shipment_ledger')
+src/alamo/app/dashboard/page.tsx-22-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-23-
+src/alamo/app/dashboard/page.tsx-24-  return (
+src/alamo/app/dashboard/page.tsx-25-    <div style={{
+src/alamo/app/dashboard/page.tsx-26-      marginLeft: 200,
+src/alamo/app/dashboard/page.tsx-27-      minHeight: '100vh',
+src/alamo/app/dashboard/page.tsx-28-      background: 'var(--cactus-sand)',
+
+
+==========================================
+TABLE: org_users
+==========================================
+
+
+==========================================
+TABLE: locations
+==========================================
+src/alamo/app/invoices/[id]/actions/match.ts:262:    .from('locations')
+src/alamo/app/invoices/[id]/actions/match.ts-263-    .select('id, org_id, normalized_address, name')
+src/alamo/app/invoices/[id]/actions/match.ts-264-    .eq('is_billing_address', true)
+src/alamo/app/invoices/[id]/actions/match.ts-265-    .eq('is_active', true)
+src/alamo/app/invoices/[id]/actions/match.ts-266-
+src/alamo/app/invoices/[id]/actions/match.ts-267-  if (locationsError) {
+src/alamo/app/invoices/[id]/actions/match.ts-268-    result.errors.push(`Could not load locations: ${locationsError.message}`)
+src/alamo/app/invoices/[id]/actions/match.ts-269-    return result
+src/alamo/app/invoices/[id]/actions/match.ts-270-  }
+src/alamo/app/invoices/[id]/actions/match.ts-271-
+src/alamo/app/invoices/[id]/actions/match.ts-272-  const locations = allLocations ?? []
+src/alamo/app/invoices/[id]/actions/match.ts-273-
+src/alamo/app/invoices/[id]/actions/match.ts-274-  // =============================================================
+src/alamo/app/invoices/[id]/actions/match.ts-275-  // PROCESS EACH LINE ITEM
+src/alamo/app/invoices/[id]/actions/match.ts-276-  //
+src/alamo/app/invoices/[id]/actions/match.ts-277-  // After Session B: matching writes org_id + match_status and
+--
+src/alamo/app/orgs/[id]/locations/new/page.tsx:42:      .from('locations')
+src/alamo/app/orgs/[id]/locations/new/page.tsx-43-      .insert({
+src/alamo/app/orgs/[id]/locations/new/page.tsx-44-        org_id: id,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-45-        name,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-46-        location_type,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-47-        address_line1,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-48-        address_line2,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-49-        city,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-50-        state,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-51-        postal_code,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-52-        country,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-53-        is_billing_address,
+src/alamo/app/orgs/[id]/locations/new/page.tsx-54-      })
+src/alamo/app/orgs/[id]/locations/new/page.tsx-55-
+src/alamo/app/orgs/[id]/locations/new/page.tsx-56-    if (error) throw new Error(error.message)
+src/alamo/app/orgs/[id]/locations/new/page.tsx-57-
+--
+src/alamo/app/orgs/[id]/page.tsx:33:    .from('locations')
+src/alamo/app/orgs/[id]/page.tsx-34-    .select('*')
+src/alamo/app/orgs/[id]/page.tsx-35-    .eq('org_id', id)
+src/alamo/app/orgs/[id]/page.tsx-36-    .order('created_at', { ascending: true })
+src/alamo/app/orgs/[id]/page.tsx-37-
+src/alamo/app/orgs/[id]/page.tsx-38-  return (
+src/alamo/app/orgs/[id]/page.tsx-39-    <div style={{
+src/alamo/app/orgs/[id]/page.tsx-40-      marginLeft: 200,
+src/alamo/app/orgs/[id]/page.tsx-41-      minHeight: '100vh',
+src/alamo/app/orgs/[id]/page.tsx-42-      background: 'var(--cactus-sand)',
+src/alamo/app/orgs/[id]/page.tsx-43-    }}>
+src/alamo/app/orgs/[id]/page.tsx-44-      <Sidebar />
+src/alamo/app/orgs/[id]/page.tsx-45-
+src/alamo/app/orgs/[id]/page.tsx-46-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+src/alamo/app/orgs/[id]/page.tsx-47-
+src/alamo/app/orgs/[id]/page.tsx-48-        {/* Topbar */}
+
+
+==========================================
+TABLE: org_carrier_accounts
+==========================================
+src/alamo/app/invoices/[id]/actions/match.ts:108:    .from('org_carrier_accounts')
+src/alamo/app/invoices/[id]/actions/match.ts-109-    .select(
+src/alamo/app/invoices/[id]/actions/match.ts-110-      'id, org_id, carrier_account_mode, markup_percentage, ' +
+src/alamo/app/invoices/[id]/actions/match.ts-111-      'markup_flat_fee, use_rate_card, dispute_threshold, is_cactus_account'
+src/alamo/app/invoices/[id]/actions/match.ts-112-    )
+src/alamo/app/invoices/[id]/actions/match.ts-113-    .eq('org_id', orgId)
+src/alamo/app/invoices/[id]/actions/match.ts-114-    .eq('carrier_code', carrierCode)
+src/alamo/app/invoices/[id]/actions/match.ts-115-    .eq('is_active', true)
+src/alamo/app/invoices/[id]/actions/match.ts-116-    .eq('is_cactus_account', true)
+src/alamo/app/invoices/[id]/actions/match.ts-117-
+src/alamo/app/invoices/[id]/actions/match.ts-118-  if (error) {
+src/alamo/app/invoices/[id]/actions/match.ts-119-    return {
+src/alamo/app/invoices/[id]/actions/match.ts-120-      account: null,
+src/alamo/app/invoices/[id]/actions/match.ts-121-      reason: `Carrier account lookup failed: ${error.message}`,
+src/alamo/app/invoices/[id]/actions/match.ts-122-    }
+src/alamo/app/invoices/[id]/actions/match.ts-123-  }
+--
+src/alamo/app/invoices/[id]/actions/billing-calc.ts:148:    .from('org_carrier_accounts')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-149-    .select(
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-150-      'id, is_cactus_account, markup_percentage, markup_flat_fee, use_rate_card'
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-151-    )
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-152-    .in('id', uniqueAccountIds)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-153-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-154-  if (accErr) {
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-155-    throw new Error(`billing-calc: failed to load accounts: ${accErr.message}`)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-156-  }
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-157-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-158-  const accountMap = new Map<string, AccountRow>(
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-159-    (accounts ?? []).map((a) => [a.id as string, a as AccountRow])
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-160-  )
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-161-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-162-  // --- Step 3: build per-line updates
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-163-  type PendingUpdate = {
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:94:    .from('org_carrier_accounts')
+src/alamo/app/invoices/[id]/actions/resolve.ts-95-    .select(
+src/alamo/app/invoices/[id]/actions/resolve.ts-96-      'id, org_id, carrier_account_mode, markup_percentage, ' +
+src/alamo/app/invoices/[id]/actions/resolve.ts-97-      'markup_flat_fee, use_rate_card, dispute_threshold, is_cactus_account'
+src/alamo/app/invoices/[id]/actions/resolve.ts-98-    )
+src/alamo/app/invoices/[id]/actions/resolve.ts-99-    .eq('org_id', orgId)
+src/alamo/app/invoices/[id]/actions/resolve.ts-100-    .eq('carrier_code', carrierCode)
+src/alamo/app/invoices/[id]/actions/resolve.ts-101-    .eq('is_active', true)
+src/alamo/app/invoices/[id]/actions/resolve.ts-102-    .eq('is_cactus_account', true)
+src/alamo/app/invoices/[id]/actions/resolve.ts-103-
+src/alamo/app/invoices/[id]/actions/resolve.ts-104-  if (accountError) {
+src/alamo/app/invoices/[id]/actions/resolve.ts-105-    result.errors.push(`Carrier account lookup failed: ${accountError.message}`)
+src/alamo/app/invoices/[id]/actions/resolve.ts-106-    return result
+src/alamo/app/invoices/[id]/actions/resolve.ts-107-  }
+src/alamo/app/invoices/[id]/actions/resolve.ts-108-
+src/alamo/app/invoices/[id]/actions/resolve.ts-109-  if (!accountRows || accountRows.length === 0) {
+--
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx:27:    .from('org_carrier_accounts')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-28-    .select('*')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-29-    .eq('id', carrierId)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-30-    .single()
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-31-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-32-  if (!account) redirect(`/orgs/${id}`)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-33-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-34-  const { data: rateCards } = await admin
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-35-    .from('rate_cards')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-36-    .select('*')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-37-    .eq('org_carrier_account_id', carrierId)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-38-    .order('effective_date', { ascending: false })
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-39-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-40-  const today = new Date().toISOString().split('T')[0]
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-41-  const isLassoed = account.carrier_account_mode === 'lassoed_carrier_account'
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-42-
+--
+src/alamo/app/orgs/[id]/carriers/new/page.tsx:42:      .from('org_carrier_accounts')
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-43-      .insert({
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-44-        org_id: id,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-45-        account_nickname,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-46-        account_number,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-47-        carrier_code,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-48-        carrier_account_mode,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-49-        markup_percentage,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-50-        dispute_threshold,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-51-        is_cactus_account,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-52-        use_rate_card: false,
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-53-      })
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-54-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-55-    if (error) throw new Error(error.message)
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-56-
+src/alamo/app/orgs/[id]/carriers/new/page.tsx-57-    redirect(`/orgs/${id}`)
+--
+src/alamo/app/orgs/[id]/page.tsx:27:    .from('org_carrier_accounts')
+src/alamo/app/orgs/[id]/page.tsx-28-    .select('*')
+src/alamo/app/orgs/[id]/page.tsx-29-    .eq('org_id', id)
+src/alamo/app/orgs/[id]/page.tsx-30-    .order('created_at', { ascending: true })
+src/alamo/app/orgs/[id]/page.tsx-31-
+src/alamo/app/orgs/[id]/page.tsx-32-  const { data: locations } = await admin
+src/alamo/app/orgs/[id]/page.tsx-33-    .from('locations')
+src/alamo/app/orgs/[id]/page.tsx-34-    .select('*')
+src/alamo/app/orgs/[id]/page.tsx-35-    .eq('org_id', id)
+src/alamo/app/orgs/[id]/page.tsx-36-    .order('created_at', { ascending: true })
+src/alamo/app/orgs/[id]/page.tsx-37-
+src/alamo/app/orgs/[id]/page.tsx-38-  return (
+src/alamo/app/orgs/[id]/page.tsx-39-    <div style={{
+src/alamo/app/orgs/[id]/page.tsx-40-      marginLeft: 200,
+src/alamo/app/orgs/[id]/page.tsx-41-      minHeight: '100vh',
+src/alamo/app/orgs/[id]/page.tsx-42-      background: 'var(--cactus-sand)',
+--
+src/alamo/app/dashboard/page.tsx:17:      .from('org_carrier_accounts')
+src/alamo/app/dashboard/page.tsx-18-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-19-    
+src/alamo/app/dashboard/page.tsx-20-    const { count: shipmentCount } = await admin
+src/alamo/app/dashboard/page.tsx-21-      .from('shipment_ledger')
+src/alamo/app/dashboard/page.tsx-22-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-23-
+src/alamo/app/dashboard/page.tsx-24-  return (
+src/alamo/app/dashboard/page.tsx-25-    <div style={{
+src/alamo/app/dashboard/page.tsx-26-      marginLeft: 200,
+src/alamo/app/dashboard/page.tsx-27-      minHeight: '100vh',
+src/alamo/app/dashboard/page.tsx-28-      background: 'var(--cactus-sand)',
+src/alamo/app/dashboard/page.tsx-29-    }}>
+src/alamo/app/dashboard/page.tsx-30-
+src/alamo/app/dashboard/page.tsx-31-      <Sidebar />
+src/alamo/app/dashboard/page.tsx-32-
+--
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx:19:    .from('org_carrier_accounts')
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-20-    .select('id')
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-21-    .eq('carrier_code', carrier)
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-22-
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-23-  const accountIds = accounts?.map(a => a.id) ?? []
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-24-
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-25-  const { data: rateCards } = await admin
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-26-    .from('rate_cards')
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-27-    .select(`
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-28-      id,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-29-      nickname,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-30-      service_level,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-31-      effective_date,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-32-      deprecated_date,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-33-      created_at,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-34-      org_carrier_accounts (
+--
+src/alamo/app/rate-cards/[carrier]/page.tsx:20:    .from('org_carrier_accounts')
+src/alamo/app/rate-cards/[carrier]/page.tsx-21-    .select('id')
+src/alamo/app/rate-cards/[carrier]/page.tsx-22-    .eq('carrier_code', carrier)
+src/alamo/app/rate-cards/[carrier]/page.tsx-23-
+src/alamo/app/rate-cards/[carrier]/page.tsx-24-  const accountIds = accounts?.map(a => a.id) ?? []
+src/alamo/app/rate-cards/[carrier]/page.tsx-25-
+src/alamo/app/rate-cards/[carrier]/page.tsx-26-  // Get all rate cards for those accounts
+src/alamo/app/rate-cards/[carrier]/page.tsx-27-  const { data: rateCards } = await admin
+src/alamo/app/rate-cards/[carrier]/page.tsx-28-    .from('rate_cards')
+src/alamo/app/rate-cards/[carrier]/page.tsx-29-    .select('service_level')
+src/alamo/app/rate-cards/[carrier]/page.tsx-30-    .in('org_carrier_account_id', accountIds)
+src/alamo/app/rate-cards/[carrier]/page.tsx-31-
+src/alamo/app/rate-cards/[carrier]/page.tsx-32-  // Get unique service levels with counts
+src/alamo/app/rate-cards/[carrier]/page.tsx-33-  const countByService: Record<string, number> = {}
+src/alamo/app/rate-cards/[carrier]/page.tsx-34-  rateCards?.forEach(rc => {
+src/alamo/app/rate-cards/[carrier]/page.tsx-35-    countByService[rc.service_level] = (countByService[rc.service_level] ?? 0) + 1
+--
+src/alamo/app/carriers/[carrier]/page.tsx:18:    .from('org_carrier_accounts')
+src/alamo/app/carriers/[carrier]/page.tsx-19-    .select(`
+src/alamo/app/carriers/[carrier]/page.tsx-20-      id,
+src/alamo/app/carriers/[carrier]/page.tsx-21-      account_nickname,
+src/alamo/app/carriers/[carrier]/page.tsx-22-      carrier_account_mode,
+src/alamo/app/carriers/[carrier]/page.tsx-23-      markup_percentage,
+src/alamo/app/carriers/[carrier]/page.tsx-24-      dispute_threshold,
+src/alamo/app/carriers/[carrier]/page.tsx-25-      use_rate_card,
+src/alamo/app/carriers/[carrier]/page.tsx-26-      is_cactus_account,
+src/alamo/app/carriers/[carrier]/page.tsx-27-      is_active,
+src/alamo/app/carriers/[carrier]/page.tsx-28-      organizations ( name )
+src/alamo/app/carriers/[carrier]/page.tsx-29-    `)
+src/alamo/app/carriers/[carrier]/page.tsx-30-    .eq('carrier_code', carrier)
+src/alamo/app/carriers/[carrier]/page.tsx-31-    .order('created_at', { ascending: true })
+src/alamo/app/carriers/[carrier]/page.tsx-32-
+src/alamo/app/carriers/[carrier]/page.tsx-33-  return (
+--
+src/alamo/app/carriers/page.tsx:14:    .from('org_carrier_accounts')
+src/alamo/app/carriers/page.tsx-15-    .select('carrier_code, id')
+src/alamo/app/carriers/page.tsx-16-
+src/alamo/app/carriers/page.tsx-17-  // Count accounts per carrier
+src/alamo/app/carriers/page.tsx-18-  const countByCarrier: Record<string, number> = {}
+src/alamo/app/carriers/page.tsx-19-  accounts?.forEach(a => {
+src/alamo/app/carriers/page.tsx-20-    countByCarrier[a.carrier_code] = (countByCarrier[a.carrier_code] ?? 0) + 1
+src/alamo/app/carriers/page.tsx-21-  })
+src/alamo/app/carriers/page.tsx-22-
+src/alamo/app/carriers/page.tsx-23-  return (
+src/alamo/app/carriers/page.tsx-24-    <div style={{
+src/alamo/app/carriers/page.tsx-25-      marginLeft: 200,
+src/alamo/app/carriers/page.tsx-26-      minHeight: '100vh',
+src/alamo/app/carriers/page.tsx-27-      background: 'var(--cactus-sand)',
+src/alamo/app/carriers/page.tsx-28-    }}>
+src/alamo/app/carriers/page.tsx-29-      <Sidebar />
+
+
+==========================================
+TABLE: rate_cards
+==========================================
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx:35:    .from('rate_cards')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-36-    .select('*')
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-37-    .eq('org_carrier_account_id', carrierId)
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-38-    .order('effective_date', { ascending: false })
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-39-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-40-  const today = new Date().toISOString().split('T')[0]
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-41-  const isLassoed = account.carrier_account_mode === 'lassoed_carrier_account'
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-42-
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-43-  return (
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-44-    <div style={{
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-45-      marginLeft: 200,
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-46-      minHeight: '100vh',
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-47-      background: 'var(--cactus-sand)',
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-48-    }}>
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-49-      <Sidebar />
+src/alamo/app/orgs/[id]/carriers/[carrierId]/page.tsx-50-
+--
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx:26:    .from('rate_cards')
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-27-    .select(`
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-28-      id,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-29-      nickname,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-30-      service_level,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-31-      effective_date,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-32-      deprecated_date,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-33-      created_at,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-34-      org_carrier_accounts (
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-35-        account_nickname,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-36-        markup_percentage,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-37-        use_rate_card,
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-38-        organizations ( name )
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-39-      )
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-40-    `)
+src/alamo/app/rate-cards/[carrier]/[service_level]/page.tsx-41-    .in('org_carrier_account_id', accountIds)
+--
+src/alamo/app/rate-cards/[carrier]/page.tsx:28:    .from('rate_cards')
+src/alamo/app/rate-cards/[carrier]/page.tsx-29-    .select('service_level')
+src/alamo/app/rate-cards/[carrier]/page.tsx-30-    .in('org_carrier_account_id', accountIds)
+src/alamo/app/rate-cards/[carrier]/page.tsx-31-
+src/alamo/app/rate-cards/[carrier]/page.tsx-32-  // Get unique service levels with counts
+src/alamo/app/rate-cards/[carrier]/page.tsx-33-  const countByService: Record<string, number> = {}
+src/alamo/app/rate-cards/[carrier]/page.tsx-34-  rateCards?.forEach(rc => {
+src/alamo/app/rate-cards/[carrier]/page.tsx-35-    countByService[rc.service_level] = (countByService[rc.service_level] ?? 0) + 1
+src/alamo/app/rate-cards/[carrier]/page.tsx-36-  })
+src/alamo/app/rate-cards/[carrier]/page.tsx-37-
+src/alamo/app/rate-cards/[carrier]/page.tsx-38-  const serviceLevels = Object.keys(countByService).sort()
+src/alamo/app/rate-cards/[carrier]/page.tsx-39-
+src/alamo/app/rate-cards/[carrier]/page.tsx-40-  return (
+src/alamo/app/rate-cards/[carrier]/page.tsx-41-    <div style={{
+src/alamo/app/rate-cards/[carrier]/page.tsx-42-      marginLeft: 200,
+src/alamo/app/rate-cards/[carrier]/page.tsx-43-      minHeight: '100vh',
+--
+src/alamo/app/rate-cards/page.tsx:14:    .from('rate_cards')
+src/alamo/app/rate-cards/page.tsx-15-    .select(`
+src/alamo/app/rate-cards/page.tsx-16-      id,
+src/alamo/app/rate-cards/page.tsx-17-      service_level,
+src/alamo/app/rate-cards/page.tsx-18-      org_carrier_accounts ( carrier_code )
+src/alamo/app/rate-cards/page.tsx-19-    `)
+src/alamo/app/rate-cards/page.tsx-20-
+src/alamo/app/rate-cards/page.tsx-21-  // Count rate cards per carrier
+src/alamo/app/rate-cards/page.tsx-22-  const countByCarrier: Record<string, number> = {}
+src/alamo/app/rate-cards/page.tsx-23-  rateCards?.forEach(rc => {
+src/alamo/app/rate-cards/page.tsx-24-    const carrier = (rc.org_carrier_accounts as any)?.carrier_code
+src/alamo/app/rate-cards/page.tsx-25-    if (carrier) {
+src/alamo/app/rate-cards/page.tsx-26-      countByCarrier[carrier] = (countByCarrier[carrier] ?? 0) + 1
+src/alamo/app/rate-cards/page.tsx-27-    }
+src/alamo/app/rate-cards/page.tsx-28-  })
+src/alamo/app/rate-cards/page.tsx-29-
+
+
+==========================================
+TABLE: meters
+==========================================
+
+
+==========================================
+TABLE: meter_transactions
+==========================================
+
+
+==========================================
+TABLE: carrier_invoice_mappings
+==========================================
+src/alamo/app/invoices/[id]/review/page.tsx:191:        .from('carrier_invoice_mappings')
+src/alamo/app/invoices/[id]/review/page.tsx-192-        .upsert({
+src/alamo/app/invoices/[id]/review/page.tsx-193-          carrier_code: invoice.carrier_code,
+src/alamo/app/invoices/[id]/review/page.tsx-194-          raw_header_name: mapping.raw_header,
+src/alamo/app/invoices/[id]/review/page.tsx-195-          cactus_standard_field: mapping.cactus_field,
+src/alamo/app/invoices/[id]/review/page.tsx-196-          ai_suggested: true,
+src/alamo/app/invoices/[id]/review/page.tsx-197-          ai_confidence_score: mapping.confidence,
+src/alamo/app/invoices/[id]/review/page.tsx-198-          effective_date: new Date().toISOString().split('T')[0],
+src/alamo/app/invoices/[id]/review/page.tsx-199-        }, {
+src/alamo/app/invoices/[id]/review/page.tsx-200-          onConflict: 'carrier_code,raw_header_name,effective_date',
+src/alamo/app/invoices/[id]/review/page.tsx-201-        })
+src/alamo/app/invoices/[id]/review/page.tsx-202-    }
+src/alamo/app/invoices/[id]/review/page.tsx-203-
+src/alamo/app/invoices/[id]/review/page.tsx-204-    // WHY: Advance status to REVIEW so the admin can see
+src/alamo/app/invoices/[id]/review/page.tsx-205-    // and confirm the mappings on this page.
+src/alamo/app/invoices/[id]/review/page.tsx-206-    await admin
+--
+src/alamo/app/invoices/[id]/review/page.tsx:249:      .from('carrier_invoice_mappings')
+src/alamo/app/invoices/[id]/review/page.tsx-250-      .select('raw_header_name, cactus_standard_field, ai_suggested, ai_confidence_score')
+src/alamo/app/invoices/[id]/review/page.tsx-251-      .eq('carrier_code', 'UPS') // WHY: scoped to carrier — will use invoice.carrier_code dynamically
+src/alamo/app/invoices/[id]/review/page.tsx-252-      .order('created_at', { ascending: false }),
+src/alamo/app/invoices/[id]/review/page.tsx-253-  ])
+src/alamo/app/invoices/[id]/review/page.tsx-254-
+src/alamo/app/invoices/[id]/review/page.tsx-255-  if (!invoice) redirect('/invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-256-
+src/alamo/app/invoices/[id]/review/page.tsx-257-  const rawHeaders = (invoice.raw_headers as string[]) ?? []
+src/alamo/app/invoices/[id]/review/page.tsx-258-
+src/alamo/app/invoices/[id]/review/page.tsx-259-  // WHY: Build a lookup map of existing mappings so we can
+src/alamo/app/invoices/[id]/review/page.tsx-260-  // show the current suggested value for each header.
+src/alamo/app/invoices/[id]/review/page.tsx-261-  const mappingLookup: Record<string, { field: string; confidence: number; aiSuggested: boolean }> = {}
+src/alamo/app/invoices/[id]/review/page.tsx-262-  for (const m of mappings ?? []) {
+src/alamo/app/invoices/[id]/review/page.tsx-263-    if (!mappingLookup[m.raw_header_name]) {
+src/alamo/app/invoices/[id]/review/page.tsx-264-      mappingLookup[m.raw_header_name] = {
+
+
+==========================================
+TABLE: shipment_ledger
+==========================================
+src/alamo/app/invoices/[id]/actions/match.ts:292:        .from('shipment_ledger')
+src/alamo/app/invoices/[id]/actions/match.ts-293-        .select('id, org_id, org_carrier_account_id, raw_carrier_cost')
+src/alamo/app/invoices/[id]/actions/match.ts-294-        .eq('tracking_number', lineItem.tracking_number)
+src/alamo/app/invoices/[id]/actions/match.ts-295-        .single()
+src/alamo/app/invoices/[id]/actions/match.ts-296-
+src/alamo/app/invoices/[id]/actions/match.ts-297-      if (ledgerRow) {
+src/alamo/app/invoices/[id]/actions/match.ts-298-        // Found in ledger — lassoed shipment
+src/alamo/app/invoices/[id]/actions/match.ts-299-        const { account, reason } = await lookupCarrierAccount(
+src/alamo/app/invoices/[id]/actions/match.ts-300-          supabase,
+src/alamo/app/invoices/[id]/actions/match.ts-301-          ledgerRow.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-302-          carrierInvoice.carrier_code
+src/alamo/app/invoices/[id]/actions/match.ts-303-        )
+src/alamo/app/invoices/[id]/actions/match.ts-304-
+src/alamo/app/invoices/[id]/actions/match.ts-305-        if (!account) {
+src/alamo/app/invoices/[id]/actions/match.ts-306-          await supabase
+src/alamo/app/invoices/[id]/actions/match.ts-307-            .from('invoice_line_items')
+--
+src/alamo/app/invoices/[id]/actions/match.ts:494:        .from('shipment_ledger')
+src/alamo/app/invoices/[id]/actions/match.ts-495-        .insert({
+src/alamo/app/invoices/[id]/actions/match.ts-496-          org_id: matchedLocation.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-497-          org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/match.ts-498-          tracking_number: trackingNum,
+src/alamo/app/invoices/[id]/actions/match.ts-499-          carrier_code: carrierInvoice.carrier_code,
+src/alamo/app/invoices/[id]/actions/match.ts-500-          shipment_source: 'INVOICE_IMPORT',
+src/alamo/app/invoices/[id]/actions/match.ts-501-          raw_carrier_cost: carrierCharge.toFixed(4),
+src/alamo/app/invoices/[id]/actions/match.ts-502-          // v1.6.1: markup context triple replaces markup_percentage /
+src/alamo/app/invoices/[id]/actions/match.ts-503-          // markup_flat_fee on shipment_ledger.
+src/alamo/app/invoices/[id]/actions/match.ts-504-          markup_type_applied: markupCtx.markup_type_applied,
+src/alamo/app/invoices/[id]/actions/match.ts-505-          markup_value_applied: markupCtx.markup_value_applied,
+src/alamo/app/invoices/[id]/actions/match.ts-506-          markup_source: markupCtx.markup_source,
+src/alamo/app/invoices/[id]/actions/match.ts-507-          pre_ceiling_amount: preCeilingAmount.toFixed(4),
+src/alamo/app/invoices/[id]/actions/match.ts-508-          final_billed_rate: finalBilledRate.toFixed(4),
+src/alamo/app/invoices/[id]/actions/match.ts-509-          reconciled: true,
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:183:      .from('shipment_ledger')
+src/alamo/app/invoices/[id]/actions/resolve.ts-184-      .insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-185-        org_id: orgId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-186-        org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-187-        tracking_number: trackingNum,
+src/alamo/app/invoices/[id]/actions/resolve.ts-188-        carrier_code: carrierCode,
+src/alamo/app/invoices/[id]/actions/resolve.ts-189-        shipment_source: 'INVOICE_IMPORT',
+src/alamo/app/invoices/[id]/actions/resolve.ts-190-        raw_carrier_cost: carrierCharge.toFixed(4),
+src/alamo/app/invoices/[id]/actions/resolve.ts-191-        // v1.6.1 markup context triple
+src/alamo/app/invoices/[id]/actions/resolve.ts-192-        markup_type_applied: markupCtx.markup_type_applied,
+src/alamo/app/invoices/[id]/actions/resolve.ts-193-        markup_value_applied: markupCtx.markup_value_applied,
+src/alamo/app/invoices/[id]/actions/resolve.ts-194-        markup_source: markupCtx.markup_source,
+src/alamo/app/invoices/[id]/actions/resolve.ts-195-        pre_ceiling_amount: preCeilingAmount.toFixed(4),
+src/alamo/app/invoices/[id]/actions/resolve.ts-196-        final_billed_rate: finalBilledRate.toFixed(4),
+src/alamo/app/invoices/[id]/actions/resolve.ts-197-        reconciled: true,
+src/alamo/app/invoices/[id]/actions/resolve.ts-198-        reconciled_at: new Date().toISOString(),
+--
+src/alamo/app/dashboard/page.tsx:21:      .from('shipment_ledger')
+src/alamo/app/dashboard/page.tsx-22-      .select('*', { count: 'exact', head: true })
+src/alamo/app/dashboard/page.tsx-23-
+src/alamo/app/dashboard/page.tsx-24-  return (
+src/alamo/app/dashboard/page.tsx-25-    <div style={{
+src/alamo/app/dashboard/page.tsx-26-      marginLeft: 200,
+src/alamo/app/dashboard/page.tsx-27-      minHeight: '100vh',
+src/alamo/app/dashboard/page.tsx-28-      background: 'var(--cactus-sand)',
+src/alamo/app/dashboard/page.tsx-29-    }}>
+src/alamo/app/dashboard/page.tsx-30-
+src/alamo/app/dashboard/page.tsx-31-      <Sidebar />
+src/alamo/app/dashboard/page.tsx-32-
+src/alamo/app/dashboard/page.tsx-33-      <div style={{ display: 'flex', flexDirection: 'column' }}>
+src/alamo/app/dashboard/page.tsx-34-
+src/alamo/app/dashboard/page.tsx-35-        <div style={{
+src/alamo/app/dashboard/page.tsx-36-          background: 'var(--cactus-canvas)',
+
+
+==========================================
+TABLE: carrier_invoices
+==========================================
+src/alamo/app/invoices/[id]/parse/page.tsx:230:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-231-    .select('id, carrier_code, file_path, invoice_format, status')
+src/alamo/app/invoices/[id]/parse/page.tsx-232-    .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/parse/page.tsx-233-    .single()
+src/alamo/app/invoices/[id]/parse/page.tsx-234-
+src/alamo/app/invoices/[id]/parse/page.tsx-235-  if (!invoice || !invoice.file_path) return
+src/alamo/app/invoices/[id]/parse/page.tsx-236-
+src/alamo/app/invoices/[id]/parse/page.tsx-237-  // Update status to PROCESSING
+src/alamo/app/invoices/[id]/parse/page.tsx-238-  await admin
+src/alamo/app/invoices/[id]/parse/page.tsx:239:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-240-    .update({ status: 'PROCESSING' })
+src/alamo/app/invoices/[id]/parse/page.tsx-241-    .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/parse/page.tsx-242-
+src/alamo/app/invoices/[id]/parse/page.tsx-243-  try {
+src/alamo/app/invoices/[id]/parse/page.tsx-244-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-245-    // STEP 1: Fetch column template from carrier_invoice_formats
+src/alamo/app/invoices/[id]/parse/page.tsx-246-    // WHY: UPS detail files have no headers. We use the stored
+src/alamo/app/invoices/[id]/parse/page.tsx-247-    // template to know what each column position means.
+src/alamo/app/invoices/[id]/parse/page.tsx-248-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-249-    const { data: formatRows, error: formatError } = await admin
+src/alamo/app/invoices/[id]/parse/page.tsx-250-      .from('carrier_invoice_formats')
+src/alamo/app/invoices/[id]/parse/page.tsx-251-      .select('column_position, header_name')
+src/alamo/app/invoices/[id]/parse/page.tsx-252-      .eq('carrier_code', invoice.carrier_code)
+src/alamo/app/invoices/[id]/parse/page.tsx-253-      .eq('format_type', invoice.invoice_format)
+src/alamo/app/invoices/[id]/parse/page.tsx-254-      .eq('is_active', true)
+--
+src/alamo/app/invoices/[id]/parse/page.tsx:638:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-639-      .update({
+src/alamo/app/invoices/[id]/parse/page.tsx-640-        status: 'COMPLETE',
+src/alamo/app/invoices/[id]/parse/page.tsx-641-        total_line_items: lineItems.length,
+src/alamo/app/invoices/[id]/parse/page.tsx-642-        matched_line_items: 0,
+src/alamo/app/invoices/[id]/parse/page.tsx-643-        flagged_line_items: 0,
+src/alamo/app/invoices/[id]/parse/page.tsx-644-        total_carrier_amount: totalCarrierAmount.toFixed(4),
+src/alamo/app/invoices/[id]/parse/page.tsx-645-        has_unmapped_charges: hasUnmapped,
+src/alamo/app/invoices/[id]/parse/page.tsx-646-        unmapped_charge_types: hasUnmapped
+src/alamo/app/invoices/[id]/parse/page.tsx-647-          ? Array.from(unmappedChargeTypes)
+src/alamo/app/invoices/[id]/parse/page.tsx-648-          : null,
+src/alamo/app/invoices/[id]/parse/page.tsx-649-        ai_processing_notes: [
+src/alamo/app/invoices/[id]/parse/page.tsx-650-          `Parsed ${lineItems.length} shipments from ${namedRows.length} invoice rows.`,
+src/alamo/app/invoices/[id]/parse/page.tsx-651-          hasUnmapped
+src/alamo/app/invoices/[id]/parse/page.tsx-652-            ? `⚠ ${unmappedChargeTypes.size} unrecognized charge type(s) routed to other_surcharges.`
+src/alamo/app/invoices/[id]/parse/page.tsx-653-            : 'All charge types recognized and routed.',
+--
+src/alamo/app/invoices/[id]/parse/page.tsx:662:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-663-      .update({
+src/alamo/app/invoices/[id]/parse/page.tsx-664-        status: 'FAILED',
+src/alamo/app/invoices/[id]/parse/page.tsx-665-        ai_processing_notes: `Parse failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+src/alamo/app/invoices/[id]/parse/page.tsx-666-      })
+src/alamo/app/invoices/[id]/parse/page.tsx-667-      .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/parse/page.tsx-668-  }
+src/alamo/app/invoices/[id]/parse/page.tsx-669-
+src/alamo/app/invoices/[id]/parse/page.tsx-670-  redirect(`/invoices/${invoiceId}`)
+src/alamo/app/invoices/[id]/parse/page.tsx-671-}
+src/alamo/app/invoices/[id]/parse/page.tsx-672-
+src/alamo/app/invoices/[id]/parse/page.tsx-673-// ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-674-// PAGE
+src/alamo/app/invoices/[id]/parse/page.tsx-675-// ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-676-
+src/alamo/app/invoices/[id]/parse/page.tsx-677-export default async function InvoiceParsePage({
+--
+src/alamo/app/invoices/[id]/parse/page.tsx:690:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-691-    .select('id, invoice_file_name, carrier_code, invoice_format, status, ai_processing_notes, has_unmapped_charges, unmapped_charge_types')
+src/alamo/app/invoices/[id]/parse/page.tsx-692-    .eq('id', id)
+src/alamo/app/invoices/[id]/parse/page.tsx-693-    .single()
+src/alamo/app/invoices/[id]/parse/page.tsx-694-
+src/alamo/app/invoices/[id]/parse/page.tsx-695-  if (!invoice) redirect('/invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-696-
+src/alamo/app/invoices/[id]/parse/page.tsx-697-  const isComplete = invoice.status === 'COMPLETE'
+src/alamo/app/invoices/[id]/parse/page.tsx-698-  const isFailed = invoice.status === 'FAILED'
+src/alamo/app/invoices/[id]/parse/page.tsx-699-  const isProcessing = invoice.status === 'PROCESSING'
+src/alamo/app/invoices/[id]/parse/page.tsx-700-  const isUploaded = invoice.status === 'UPLOADED'
+src/alamo/app/invoices/[id]/parse/page.tsx-701-
+src/alamo/app/invoices/[id]/parse/page.tsx-702-  return (
+src/alamo/app/invoices/[id]/parse/page.tsx-703-    <div style={{
+src/alamo/app/invoices/[id]/parse/page.tsx-704-      marginLeft: 200,
+src/alamo/app/invoices/[id]/parse/page.tsx-705-      minHeight: '100vh',
+--
+src/alamo/app/invoices/[id]/disputes/page.tsx:45:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/disputes/page.tsx-46-      .select('id, invoice_file_name, carrier_code, flagged_line_items, status')
+src/alamo/app/invoices/[id]/disputes/page.tsx-47-      .eq('id', id)
+src/alamo/app/invoices/[id]/disputes/page.tsx-48-      .single(),
+src/alamo/app/invoices/[id]/disputes/page.tsx-49-
+src/alamo/app/invoices/[id]/disputes/page.tsx-50-    admin
+src/alamo/app/invoices/[id]/disputes/page.tsx-51-      .from('invoice_line_items')
+src/alamo/app/invoices/[id]/disputes/page.tsx-52-      .select(
+src/alamo/app/invoices/[id]/disputes/page.tsx-53-        'id, tracking_number, address_sender_normalized, ' +
+src/alamo/app/invoices/[id]/disputes/page.tsx-54-        'carrier_charge, dispute_notes, match_status'
+src/alamo/app/invoices/[id]/disputes/page.tsx-55-      )
+src/alamo/app/invoices/[id]/disputes/page.tsx-56-      .eq('carrier_invoice_id', id)
+src/alamo/app/invoices/[id]/disputes/page.tsx-57-      .eq('billing_status', 'HELD')
+src/alamo/app/invoices/[id]/disputes/page.tsx-58-      .order('created_at', { ascending: true }),
+src/alamo/app/invoices/[id]/disputes/page.tsx-59-
+src/alamo/app/invoices/[id]/disputes/page.tsx-60-    // Load all active orgs for the org selector dropdown
+--
+src/alamo/app/invoices/[id]/review/page.tsx:99:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-100-    .select('id, carrier_code, raw_headers, status')
+src/alamo/app/invoices/[id]/review/page.tsx-101-    .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/review/page.tsx-102-    .single()
+src/alamo/app/invoices/[id]/review/page.tsx-103-
+src/alamo/app/invoices/[id]/review/page.tsx-104-  if (!invoice || !invoice.raw_headers) return
+src/alamo/app/invoices/[id]/review/page.tsx-105-
+src/alamo/app/invoices/[id]/review/page.tsx-106-  // WHY: Update status to NORMALIZING so the UI shows
+src/alamo/app/invoices/[id]/review/page.tsx-107-  // the admin that AI processing is in progress.
+src/alamo/app/invoices/[id]/review/page.tsx-108-  await admin
+src/alamo/app/invoices/[id]/review/page.tsx:109:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-110-    .update({ status: 'NORMALIZING' })
+src/alamo/app/invoices/[id]/review/page.tsx-111-    .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/review/page.tsx-112-
+src/alamo/app/invoices/[id]/review/page.tsx-113-  // WHY: Build the prompt for Claude. We send the raw headers
+src/alamo/app/invoices/[id]/review/page.tsx-114-  // and the list of Cactus standard fields. Claude returns
+src/alamo/app/invoices/[id]/review/page.tsx-115-  // a JSON array of mappings — one per header.
+src/alamo/app/invoices/[id]/review/page.tsx-116-  const standardFieldsList = CACTUS_STANDARD_FIELDS
+src/alamo/app/invoices/[id]/review/page.tsx-117-    .filter(f => f.value !== 'SKIP')
+src/alamo/app/invoices/[id]/review/page.tsx-118-    .map(f => `${f.value} (${f.label})`)
+src/alamo/app/invoices/[id]/review/page.tsx-119-    .join('\n')
+src/alamo/app/invoices/[id]/review/page.tsx-120-
+src/alamo/app/invoices/[id]/review/page.tsx-121-  const prompt = `You are normalizing carrier invoice headers for Cactus Logistics OS.
+src/alamo/app/invoices/[id]/review/page.tsx-122-
+src/alamo/app/invoices/[id]/review/page.tsx-123-Carrier: ${invoice.carrier_code}
+src/alamo/app/invoices/[id]/review/page.tsx-124-
+--
+src/alamo/app/invoices/[id]/review/page.tsx:207:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-208-      .update({
+src/alamo/app/invoices/[id]/review/page.tsx-209-        status: 'REVIEW',
+src/alamo/app/invoices/[id]/review/page.tsx-210-        ai_processing_notes: `Claude mapped ${mappings.filter(m => m.cactus_field !== 'SKIP').length} of ${mappings.length} headers. ${mappings.filter(m => m.cactus_field === 'SKIP').length} skipped.`,
+src/alamo/app/invoices/[id]/review/page.tsx-211-      })
+src/alamo/app/invoices/[id]/review/page.tsx-212-      .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/review/page.tsx-213-
+src/alamo/app/invoices/[id]/review/page.tsx-214-  } catch (err) {
+src/alamo/app/invoices/[id]/review/page.tsx-215-    console.error('AI normalization error:', err)
+src/alamo/app/invoices/[id]/review/page.tsx-216-    await admin
+src/alamo/app/invoices/[id]/review/page.tsx:217:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-218-      .update({
+src/alamo/app/invoices/[id]/review/page.tsx-219-        status: 'FAILED',
+src/alamo/app/invoices/[id]/review/page.tsx-220-        ai_processing_notes: 'AI normalization failed. Please try again.',
+src/alamo/app/invoices/[id]/review/page.tsx-221-      })
+src/alamo/app/invoices/[id]/review/page.tsx-222-      .eq('id', invoiceId)
+src/alamo/app/invoices/[id]/review/page.tsx-223-  }
+src/alamo/app/invoices/[id]/review/page.tsx-224-
+src/alamo/app/invoices/[id]/review/page.tsx-225-  redirect(`/invoices/${invoiceId}/review`)
+src/alamo/app/invoices/[id]/review/page.tsx-226-}
+src/alamo/app/invoices/[id]/review/page.tsx-227-
+src/alamo/app/invoices/[id]/review/page.tsx-228-export default async function InvoiceReviewPage({
+src/alamo/app/invoices/[id]/review/page.tsx-229-  params,
+src/alamo/app/invoices/[id]/review/page.tsx-230-}: {
+src/alamo/app/invoices/[id]/review/page.tsx-231-  params: Promise<{ id: string }>
+src/alamo/app/invoices/[id]/review/page.tsx-232-}) {
+--
+src/alamo/app/invoices/[id]/review/page.tsx:244:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-245-      .select('id, invoice_file_name, carrier_code, status, raw_headers, ai_processing_notes')
+src/alamo/app/invoices/[id]/review/page.tsx-246-      .eq('id', id)
+src/alamo/app/invoices/[id]/review/page.tsx-247-      .single(),
+src/alamo/app/invoices/[id]/review/page.tsx-248-    admin
+src/alamo/app/invoices/[id]/review/page.tsx-249-      .from('carrier_invoice_mappings')
+src/alamo/app/invoices/[id]/review/page.tsx-250-      .select('raw_header_name, cactus_standard_field, ai_suggested, ai_confidence_score')
+src/alamo/app/invoices/[id]/review/page.tsx-251-      .eq('carrier_code', 'UPS') // WHY: scoped to carrier — will use invoice.carrier_code dynamically
+src/alamo/app/invoices/[id]/review/page.tsx-252-      .order('created_at', { ascending: false }),
+src/alamo/app/invoices/[id]/review/page.tsx-253-  ])
+src/alamo/app/invoices/[id]/review/page.tsx-254-
+src/alamo/app/invoices/[id]/review/page.tsx-255-  if (!invoice) redirect('/invoices')
+src/alamo/app/invoices/[id]/review/page.tsx-256-
+src/alamo/app/invoices/[id]/review/page.tsx-257-  const rawHeaders = (invoice.raw_headers as string[]) ?? []
+src/alamo/app/invoices/[id]/review/page.tsx-258-
+src/alamo/app/invoices/[id]/review/page.tsx-259-  // WHY: Build a lookup map of existing mappings so we can
+--
+src/alamo/app/invoices/[id]/actions/match.ts:227:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/actions/match.ts-228-    .select('id, carrier_code')
+src/alamo/app/invoices/[id]/actions/match.ts-229-    .eq('id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/match.ts-230-    .single()
+src/alamo/app/invoices/[id]/actions/match.ts-231-
+src/alamo/app/invoices/[id]/actions/match.ts-232-  if (invoiceError || !carrierInvoice) {
+src/alamo/app/invoices/[id]/actions/match.ts-233-    result.errors.push(
+src/alamo/app/invoices/[id]/actions/match.ts-234-      `Could not load carrier invoice: ${invoiceError?.message ?? 'not found'}`
+src/alamo/app/invoices/[id]/actions/match.ts-235-    )
+src/alamo/app/invoices/[id]/actions/match.ts-236-    return result
+src/alamo/app/invoices/[id]/actions/match.ts-237-  }
+src/alamo/app/invoices/[id]/actions/match.ts-238-
+src/alamo/app/invoices/[id]/actions/match.ts-239-  // Load all PENDING line items for this invoice
+src/alamo/app/invoices/[id]/actions/match.ts-240-  const { data: lineItems, error: lineItemsError } = await supabase
+src/alamo/app/invoices/[id]/actions/match.ts-241-    .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-242-    .select('id, tracking_number, address_sender_normalized, carrier_charge')
+--
+src/alamo/app/invoices/[id]/actions/match.ts:570:    .from('carrier_invoices')
+src/alamo/app/invoices/[id]/actions/match.ts-571-    .update({
+src/alamo/app/invoices/[id]/actions/match.ts-572-      matched_line_items: totalMatched,
+src/alamo/app/invoices/[id]/actions/match.ts-573-      flagged_line_items: totalFlagged,
+src/alamo/app/invoices/[id]/actions/match.ts-574-      status: newInvoiceStatus,
+src/alamo/app/invoices/[id]/actions/match.ts-575-      processed_at: new Date().toISOString(),
+src/alamo/app/invoices/[id]/actions/match.ts-576-    })
+src/alamo/app/invoices/[id]/actions/match.ts-577-    .eq('id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/match.ts-578-
+src/alamo/app/invoices/[id]/actions/match.ts-579-  // Audit log for the match run (billing-calc writes its own audit row).
+src/alamo/app/invoices/[id]/actions/match.ts-580-  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/match.ts-581-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/match.ts-582-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/match.ts-583-    action_type: 'MATCHING_ENGINE_RUN',
+src/alamo/app/invoices/[id]/actions/match.ts-584-    metadata: {
+src/alamo/app/invoices/[id]/actions/match.ts-585-      totalProcessed: result.totalProcessed,
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:306:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/actions/resolve.ts-307-      .update({
+src/alamo/app/invoices/[id]/actions/resolve.ts-308-        matched_line_items: matched,
+src/alamo/app/invoices/[id]/actions/resolve.ts-309-        flagged_line_items: flagged,
+src/alamo/app/invoices/[id]/actions/resolve.ts-310-        status: newStatus,
+src/alamo/app/invoices/[id]/actions/resolve.ts-311-      })
+src/alamo/app/invoices/[id]/actions/resolve.ts-312-      .eq('id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/resolve.ts-313-  }
+src/alamo/app/invoices/[id]/actions/resolve.ts-314-
+src/alamo/app/invoices/[id]/actions/resolve.ts-315-  // =============================================================
+src/alamo/app/invoices/[id]/actions/resolve.ts-316-  // STEP 6: AUDIT LOG — append only
+src/alamo/app/invoices/[id]/actions/resolve.ts-317-  // =============================================================
+src/alamo/app/invoices/[id]/actions/resolve.ts-318-
+src/alamo/app/invoices/[id]/actions/resolve.ts-319-  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-320-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/resolve.ts-321-    entity_id: carrierInvoiceId,
+--
+src/alamo/app/invoices/[id]/page.tsx:53:      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/page.tsx-54-      .select(`
+src/alamo/app/invoices/[id]/page.tsx-55-        id,
+src/alamo/app/invoices/[id]/page.tsx-56-        invoice_file_name,
+src/alamo/app/invoices/[id]/page.tsx-57-        carrier_code,
+src/alamo/app/invoices/[id]/page.tsx-58-        status,
+src/alamo/app/invoices/[id]/page.tsx-59-        total_carrier_amount,
+src/alamo/app/invoices/[id]/page.tsx-60-        total_line_items,
+src/alamo/app/invoices/[id]/page.tsx-61-        matched_line_items,
+src/alamo/app/invoices/[id]/page.tsx-62-        flagged_line_items,
+src/alamo/app/invoices/[id]/page.tsx-63-        invoice_period_start,
+src/alamo/app/invoices/[id]/page.tsx-64-        invoice_period_end,
+src/alamo/app/invoices/[id]/page.tsx-65-        ai_processing_notes,
+src/alamo/app/invoices/[id]/page.tsx-66-        created_at,
+src/alamo/app/invoices/[id]/page.tsx-67-        organizations ( name )
+src/alamo/app/invoices/[id]/page.tsx-68-      `)
+--
+src/alamo/app/invoices/page.tsx:32:      .from('carrier_invoices')
+src/alamo/app/invoices/page.tsx-33-      .select(`
+src/alamo/app/invoices/page.tsx-34-        id,
+src/alamo/app/invoices/page.tsx-35-        invoice_file_name,
+src/alamo/app/invoices/page.tsx-36-        carrier_code,
+src/alamo/app/invoices/page.tsx-37-        status,
+src/alamo/app/invoices/page.tsx-38-        total_carrier_amount,
+src/alamo/app/invoices/page.tsx-39-        total_line_items,
+src/alamo/app/invoices/page.tsx-40-        matched_line_items,
+src/alamo/app/invoices/page.tsx-41-        flagged_line_items,
+src/alamo/app/invoices/page.tsx-42-        invoice_period_start,
+src/alamo/app/invoices/page.tsx-43-        invoice_period_end,
+src/alamo/app/invoices/page.tsx-44-        created_at,
+src/alamo/app/invoices/page.tsx-45-        organizations ( name )
+src/alamo/app/invoices/page.tsx-46-      `)
+src/alamo/app/invoices/page.tsx-47-      .order('created_at', { ascending: false }),
+--
+src/alamo/app/invoices/upload/page.tsx:72:    .from('carrier_invoices')
+src/alamo/app/invoices/upload/page.tsx-73-    .insert({
+src/alamo/app/invoices/upload/page.tsx-74-      carrier_code: carrierCode,
+src/alamo/app/invoices/upload/page.tsx-75-      invoice_file_name: file.name,
+src/alamo/app/invoices/upload/page.tsx-76-      file_path: filePath,
+src/alamo/app/invoices/upload/page.tsx-77-      invoice_format: invoiceFormat,
+src/alamo/app/invoices/upload/page.tsx-78-      raw_headers: invoiceFormat === 'SUMMARY' ? rawHeaders : null,
+src/alamo/app/invoices/upload/page.tsx-79-      status: 'UPLOADED',
+src/alamo/app/invoices/upload/page.tsx-80-    })
+src/alamo/app/invoices/upload/page.tsx-81-    .select('id')
+src/alamo/app/invoices/upload/page.tsx-82-    .single()
+src/alamo/app/invoices/upload/page.tsx-83-
+src/alamo/app/invoices/upload/page.tsx-84-  if (dbError || !invoice) {
+src/alamo/app/invoices/upload/page.tsx-85-    console.error('Invoice insert error:', dbError)
+src/alamo/app/invoices/upload/page.tsx-86-    await admin.storage.from('carrier-invoices').remove([filePath])
+src/alamo/app/invoices/upload/page.tsx-87-    return
+
+
+==========================================
+TABLE: invoice_line_items
+==========================================
+src/alamo/app/invoices/actions/generate.ts:81:    .from('invoice_line_items')
+src/alamo/app/invoices/actions/generate.ts-82-    .select(`
+src/alamo/app/invoices/actions/generate.ts-83-      id,
+src/alamo/app/invoices/actions/generate.ts-84-      org_id,
+src/alamo/app/invoices/actions/generate.ts-85-      final_billed_rate,
+src/alamo/app/invoices/actions/generate.ts-86-      date_shipped,
+src/alamo/app/invoices/actions/generate.ts-87-      organizations ( name, terms_days )
+src/alamo/app/invoices/actions/generate.ts-88-    `)
+src/alamo/app/invoices/actions/generate.ts-89-    .eq('billing_status', 'APPROVED')
+src/alamo/app/invoices/actions/generate.ts-90-
+src/alamo/app/invoices/actions/generate.ts-91-  if (loadError) {
+src/alamo/app/invoices/actions/generate.ts-92-    result.errors.push(`Failed to load approved line items: ${loadError.message}`)
+src/alamo/app/invoices/actions/generate.ts-93-    result.reason = 'COMPLETE_FAILURE'
+src/alamo/app/invoices/actions/generate.ts-94-    return result
+src/alamo/app/invoices/actions/generate.ts-95-  }
+src/alamo/app/invoices/actions/generate.ts-96-
+--
+src/alamo/app/invoices/actions/generate.ts:255:          .from('invoice_line_items')
+src/alamo/app/invoices/actions/generate.ts-256-          .update({
+src/alamo/app/invoices/actions/generate.ts-257-            billing_status: 'INVOICED' as any,
+src/alamo/app/invoices/actions/generate.ts-258-            cactus_invoice_id: newInvoice.id,
+src/alamo/app/invoices/actions/generate.ts-259-          })
+src/alamo/app/invoices/actions/generate.ts-260-          .in('id', batchIds)
+src/alamo/app/invoices/actions/generate.ts-261-
+src/alamo/app/invoices/actions/generate.ts-262-        if (statusError) {
+src/alamo/app/invoices/actions/generate.ts-263-          result.errors.push(
+src/alamo/app/invoices/actions/generate.ts-264-            `Failed to update billing_status for org "${group.orgName}" ` +
+src/alamo/app/invoices/actions/generate.ts-265-            `(batch ${Math.floor(i / BATCH_SIZE) + 1}): ` +
+src/alamo/app/invoices/actions/generate.ts-266-            `${statusError.message}. Invoice ${newInvoice.id} created but ` +
+src/alamo/app/invoices/actions/generate.ts-267-            `some line items still showing APPROVED.`
+src/alamo/app/invoices/actions/generate.ts-268-          )
+src/alamo/app/invoices/actions/generate.ts-269-          statusFailed = true
+src/alamo/app/invoices/actions/generate.ts-270-          break
+--
+src/alamo/app/invoices/[id]/parse/page.tsx:620:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/parse/page.tsx-621-        .insert(insertRows)
+src/alamo/app/invoices/[id]/parse/page.tsx-622-
+src/alamo/app/invoices/[id]/parse/page.tsx-623-      if (insertError) {
+src/alamo/app/invoices/[id]/parse/page.tsx-624-        throw new Error(`Batch insert failed: ${insertError.message}`)
+src/alamo/app/invoices/[id]/parse/page.tsx-625-      }
+src/alamo/app/invoices/[id]/parse/page.tsx-626-      insertedCount += batch.length
+src/alamo/app/invoices/[id]/parse/page.tsx-627-    }
+src/alamo/app/invoices/[id]/parse/page.tsx-628-
+src/alamo/app/invoices/[id]/parse/page.tsx-629-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-630-    // STEP 9: Update carrier_invoices with results
+src/alamo/app/invoices/[id]/parse/page.tsx-631-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-632-    const totalCarrierAmount = lineItems
+src/alamo/app/invoices/[id]/parse/page.tsx-633-      .reduce((sum, item) => sum.plus(item.carrier_charge), new Decimal(0))
+src/alamo/app/invoices/[id]/parse/page.tsx-634-
+src/alamo/app/invoices/[id]/parse/page.tsx-635-    const hasUnmapped = unmappedChargeTypes.size > 0
+--
+src/alamo/app/invoices/[id]/disputes/page.tsx:51:      .from('invoice_line_items')
+src/alamo/app/invoices/[id]/disputes/page.tsx-52-      .select(
+src/alamo/app/invoices/[id]/disputes/page.tsx-53-        'id, tracking_number, address_sender_normalized, ' +
+src/alamo/app/invoices/[id]/disputes/page.tsx-54-        'carrier_charge, dispute_notes, match_status'
+src/alamo/app/invoices/[id]/disputes/page.tsx-55-      )
+src/alamo/app/invoices/[id]/disputes/page.tsx-56-      .eq('carrier_invoice_id', id)
+src/alamo/app/invoices/[id]/disputes/page.tsx-57-      .eq('billing_status', 'HELD')
+src/alamo/app/invoices/[id]/disputes/page.tsx-58-      .order('created_at', { ascending: true }),
+src/alamo/app/invoices/[id]/disputes/page.tsx-59-
+src/alamo/app/invoices/[id]/disputes/page.tsx-60-    // Load all active orgs for the org selector dropdown
+src/alamo/app/invoices/[id]/disputes/page.tsx-61-    admin
+src/alamo/app/invoices/[id]/disputes/page.tsx-62-      .from('organizations')
+src/alamo/app/invoices/[id]/disputes/page.tsx-63-      .select('id, name')
+src/alamo/app/invoices/[id]/disputes/page.tsx-64-      .eq('is_active', true)
+src/alamo/app/invoices/[id]/disputes/page.tsx-65-      .order('name', { ascending: true }),
+src/alamo/app/invoices/[id]/disputes/page.tsx-66-  ])
+--
+src/alamo/app/invoices/[id]/actions/match.ts:241:    .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-242-    .select('id, tracking_number, address_sender_normalized, carrier_charge')
+src/alamo/app/invoices/[id]/actions/match.ts-243-    .eq('carrier_invoice_id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/match.ts-244-    .eq('billing_status', 'PENDING')
+src/alamo/app/invoices/[id]/actions/match.ts-245-
+src/alamo/app/invoices/[id]/actions/match.ts-246-  if (lineItemsError) {
+src/alamo/app/invoices/[id]/actions/match.ts-247-    result.errors.push(`Could not load line items: ${lineItemsError.message}`)
+src/alamo/app/invoices/[id]/actions/match.ts-248-    return result
+src/alamo/app/invoices/[id]/actions/match.ts-249-  }
+src/alamo/app/invoices/[id]/actions/match.ts-250-
+src/alamo/app/invoices/[id]/actions/match.ts-251-  if (!lineItems || lineItems.length === 0) {
+src/alamo/app/invoices/[id]/actions/match.ts-252-    result.success = true
+src/alamo/app/invoices/[id]/actions/match.ts-253-    return result
+src/alamo/app/invoices/[id]/actions/match.ts-254-  }
+src/alamo/app/invoices/[id]/actions/match.ts-255-
+src/alamo/app/invoices/[id]/actions/match.ts-256-  result.totalProcessed = lineItems.length
+--
+src/alamo/app/invoices/[id]/actions/match.ts:307:            .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-308-            .update({
+src/alamo/app/invoices/[id]/actions/match.ts-309-              org_id: ledgerRow.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-310-              shipment_ledger_id: ledgerRow.id,
+src/alamo/app/invoices/[id]/actions/match.ts-311-              match_method: 'TRACKING_NUMBER',
+src/alamo/app/invoices/[id]/actions/match.ts-312-              match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-313-              billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-314-              dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-315-              dispute_notes: reason,
+src/alamo/app/invoices/[id]/actions/match.ts-316-            })
+src/alamo/app/invoices/[id]/actions/match.ts-317-            .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-318-          result.lassoed.held++
+src/alamo/app/invoices/[id]/actions/match.ts-319-          continue
+src/alamo/app/invoices/[id]/actions/match.ts-320-        }
+src/alamo/app/invoices/[id]/actions/match.ts-321-
+src/alamo/app/invoices/[id]/actions/match.ts-322-        // variance = carrier_charge - raw_carrier_cost (both pre-markup).
+--
+src/alamo/app/invoices/[id]/actions/match.ts:332:            .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-333-            .update({
+src/alamo/app/invoices/[id]/actions/match.ts-334-              org_id: ledgerRow.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-335-              org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/match.ts-336-              shipment_ledger_id: ledgerRow.id,
+src/alamo/app/invoices/[id]/actions/match.ts-337-              match_method: 'TRACKING_NUMBER',
+src/alamo/app/invoices/[id]/actions/match.ts-338-              match_status: 'AUTO_MATCHED',
+src/alamo/app/invoices/[id]/actions/match.ts-339-              variance_amount: varianceAmount.toFixed(4),
+src/alamo/app/invoices/[id]/actions/match.ts-340-              billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-341-              dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-342-              dispute_notes:
+src/alamo/app/invoices/[id]/actions/match.ts-343-                `Variance $${varianceAmount.abs().toFixed(2)} exceeds ` +
+src/alamo/app/invoices/[id]/actions/match.ts-344-                `threshold $${disputeThreshold.toFixed(2)}. ` +
+src/alamo/app/invoices/[id]/actions/match.ts-345-                `Carrier billed $${carrierCharge.toFixed(2)}, ` +
+src/alamo/app/invoices/[id]/actions/match.ts-346-                `Cactus quoted $${rawCarrierCost.toFixed(2)}.`,
+src/alamo/app/invoices/[id]/actions/match.ts-347-            })
+--
+src/alamo/app/invoices/[id]/actions/match.ts:362:            .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-363-            .update({
+src/alamo/app/invoices/[id]/actions/match.ts-364-              org_id: ledgerRow.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-365-              org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/match.ts-366-              shipment_ledger_id: ledgerRow.id,
+src/alamo/app/invoices/[id]/actions/match.ts-367-              match_method: 'TRACKING_NUMBER',
+src/alamo/app/invoices/[id]/actions/match.ts-368-              match_status: 'AUTO_MATCHED',
+src/alamo/app/invoices/[id]/actions/match.ts-369-              variance_amount: varianceAmount.toFixed(4),
+src/alamo/app/invoices/[id]/actions/match.ts-370-              billing_status: 'PENDING',
+src/alamo/app/invoices/[id]/actions/match.ts-371-              dispute_flag: false,
+src/alamo/app/invoices/[id]/actions/match.ts-372-              ...dateOverrides,
+src/alamo/app/invoices/[id]/actions/match.ts-373-            })
+src/alamo/app/invoices/[id]/actions/match.ts-374-            .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-375-          result.lassoed.matched++
+src/alamo/app/invoices/[id]/actions/match.ts-376-        }
+src/alamo/app/invoices/[id]/actions/match.ts-377-        continue
+--
+src/alamo/app/invoices/[id]/actions/match.ts:392:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-393-        .update({
+src/alamo/app/invoices/[id]/actions/match.ts-394-          match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-395-          billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-396-          dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-397-          dispute_notes:
+src/alamo/app/invoices/[id]/actions/match.ts-398-            'No tracking number found in shipment ledger and no sender address. ' +
+src/alamo/app/invoices/[id]/actions/match.ts-399-            'Cannot identify org. Manual assignment required.',
+src/alamo/app/invoices/[id]/actions/match.ts-400-        })
+src/alamo/app/invoices/[id]/actions/match.ts-401-        .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-402-      result.dark.flagged++
+src/alamo/app/invoices/[id]/actions/match.ts-403-      continue
+src/alamo/app/invoices/[id]/actions/match.ts-404-    }
+src/alamo/app/invoices/[id]/actions/match.ts-405-
+src/alamo/app/invoices/[id]/actions/match.ts-406-    const matches = locations.filter(
+src/alamo/app/invoices/[id]/actions/match.ts-407-      (loc) => loc.normalized_address === lineItem.address_sender_normalized
+--
+src/alamo/app/invoices/[id]/actions/match.ts:412:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-413-        .update({
+src/alamo/app/invoices/[id]/actions/match.ts-414-          match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-415-          billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-416-          dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-417-          dispute_notes:
+src/alamo/app/invoices/[id]/actions/match.ts-418-            `Sender address "${lineItem.address_sender_normalized}" did not match ` +
+src/alamo/app/invoices/[id]/actions/match.ts-419-            `any active billing location. Admin must manually assign the org.`,
+src/alamo/app/invoices/[id]/actions/match.ts-420-        })
+src/alamo/app/invoices/[id]/actions/match.ts-421-        .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-422-      result.dark.flagged++
+src/alamo/app/invoices/[id]/actions/match.ts-423-      continue
+src/alamo/app/invoices/[id]/actions/match.ts-424-    }
+src/alamo/app/invoices/[id]/actions/match.ts-425-
+src/alamo/app/invoices/[id]/actions/match.ts-426-    if (matches.length > 1) {
+src/alamo/app/invoices/[id]/actions/match.ts-427-      const locationNames = matches.map((m) => m.name).join(', ')
+--
+src/alamo/app/invoices/[id]/actions/match.ts:429:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-430-        .update({
+src/alamo/app/invoices/[id]/actions/match.ts-431-          match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-432-          billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-433-          dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-434-          dispute_notes:
+src/alamo/app/invoices/[id]/actions/match.ts-435-            `Sender address matched ${matches.length} locations: ${locationNames}. ` +
+src/alamo/app/invoices/[id]/actions/match.ts-436-            `Admin must manually assign the correct org.`,
+src/alamo/app/invoices/[id]/actions/match.ts-437-        })
+src/alamo/app/invoices/[id]/actions/match.ts-438-        .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-439-      result.dark.flagged++
+src/alamo/app/invoices/[id]/actions/match.ts-440-      continue
+src/alamo/app/invoices/[id]/actions/match.ts-441-    }
+src/alamo/app/invoices/[id]/actions/match.ts-442-
+src/alamo/app/invoices/[id]/actions/match.ts-443-    // Exactly one match — org identified
+src/alamo/app/invoices/[id]/actions/match.ts-444-    const matchedLocation = matches[0]
+--
+src/alamo/app/invoices/[id]/actions/match.ts:454:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-455-        .update({
+src/alamo/app/invoices/[id]/actions/match.ts-456-          org_id: matchedLocation.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-457-          match_method: 'SHIP_FROM_ADDRESS',
+src/alamo/app/invoices/[id]/actions/match.ts-458-          match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-459-          match_location_id: matchedLocation.id,
+src/alamo/app/invoices/[id]/actions/match.ts-460-          billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-461-          dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-462-          dispute_notes: reason,
+src/alamo/app/invoices/[id]/actions/match.ts-463-        })
+src/alamo/app/invoices/[id]/actions/match.ts-464-        .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-465-      result.dark.flagged++
+src/alamo/app/invoices/[id]/actions/match.ts-466-      continue
+src/alamo/app/invoices/[id]/actions/match.ts-467-    }
+src/alamo/app/invoices/[id]/actions/match.ts-468-
+src/alamo/app/invoices/[id]/actions/match.ts-469-    // Create shipment_ledger row — first time Cactus sees this dark shipment.
+--
+src/alamo/app/invoices/[id]/actions/match.ts:521:        .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-522-        .update({
+src/alamo/app/invoices/[id]/actions/match.ts-523-          org_id: matchedLocation.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-524-          match_status: 'FLAGGED',
+src/alamo/app/invoices/[id]/actions/match.ts-525-          billing_status: 'HELD',
+src/alamo/app/invoices/[id]/actions/match.ts-526-          dispute_flag: true,
+src/alamo/app/invoices/[id]/actions/match.ts-527-          dispute_notes:
+src/alamo/app/invoices/[id]/actions/match.ts-528-            `Address matched "${matchedLocation.name}" but shipment ledger ` +
+src/alamo/app/invoices/[id]/actions/match.ts-529-            `insert failed. Admin review required.`,
+src/alamo/app/invoices/[id]/actions/match.ts-530-        })
+src/alamo/app/invoices/[id]/actions/match.ts-531-        .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-532-      result.dark.flagged++
+src/alamo/app/invoices/[id]/actions/match.ts-533-      continue
+src/alamo/app/invoices/[id]/actions/match.ts-534-    }
+src/alamo/app/invoices/[id]/actions/match.ts-535-
+src/alamo/app/invoices/[id]/actions/match.ts-536-    // Hand off to Stage 5 via billing_status = PENDING. No markup write
+--
+src/alamo/app/invoices/[id]/actions/match.ts:539:      .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/match.ts-540-      .update({
+src/alamo/app/invoices/[id]/actions/match.ts-541-        org_id: matchedLocation.org_id,
+src/alamo/app/invoices/[id]/actions/match.ts-542-        org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/match.ts-543-        shipment_ledger_id: newLedgerRow.id,
+src/alamo/app/invoices/[id]/actions/match.ts-544-        match_method: 'SHIP_FROM_ADDRESS',
+src/alamo/app/invoices/[id]/actions/match.ts-545-        match_status: 'AUTO_MATCHED',
+src/alamo/app/invoices/[id]/actions/match.ts-546-        match_location_id: matchedLocation.id,
+src/alamo/app/invoices/[id]/actions/match.ts-547-        billing_status: 'PENDING',
+src/alamo/app/invoices/[id]/actions/match.ts-548-        dispute_flag: false,
+src/alamo/app/invoices/[id]/actions/match.ts-549-      })
+src/alamo/app/invoices/[id]/actions/match.ts-550-      .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/match.ts-551-
+src/alamo/app/invoices/[id]/actions/match.ts-552-    result.dark.matched++
+src/alamo/app/invoices/[id]/actions/match.ts-553-  }
+src/alamo/app/invoices/[id]/actions/match.ts-554-
+--
+src/alamo/app/invoices/[id]/actions/billing-calc.ts:118:    .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-119-    .select(
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-120-      'id, tracking_number, org_carrier_account_id, ' +
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-121-      'carrier_charge, is_adjustment_only'
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-122-    )
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-123-    .eq('carrier_invoice_id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-124-    .eq('billing_status', 'PENDING')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-125-    .in('match_status', ['AUTO_MATCHED', 'MANUAL_ASSIGNED'])
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-126-    .not('org_carrier_account_id', 'is', null)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-127-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-128-  if (linesErr) {
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-129-    throw new Error(`billing-calc: failed to load lines: ${linesErr.message}`)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-130-  }
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-131-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-132-  const eligible = (lines ?? []) as EligibleLine[]
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-133-  result.total_eligible = eligible.length
+--
+src/alamo/app/invoices/[id]/actions/billing-calc.ts:246:          .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-247-          .update({
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-248-            final_billed_rate: u.final_billed_rate,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-249-            pre_ceiling_amount: u.pre_ceiling_amount,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-250-            markup_type_applied: u.markup_type_applied,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-251-            markup_value_applied: u.markup_value_applied,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-252-            markup_source: u.markup_source,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-253-            billing_status: 'APPROVED',
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-254-          })
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-255-          .eq('id', u.id)
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-256-          // IDEMPOTENCY GUARD — do not remove. Keeps re-runs and
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-257-          // retries from re-applying markup to already-billed lines.
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-258-          .eq('billing_status', 'PENDING')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-259-          .select('id')
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-260-      )
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-261-    )
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:133:    .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/resolve.ts-134-    .select('id, tracking_number, carrier_charge, billing_status, match_location_id')
+src/alamo/app/invoices/[id]/actions/resolve.ts-135-    .in('id', lineItemIds)
+src/alamo/app/invoices/[id]/actions/resolve.ts-136-    .eq('billing_status', 'HELD')
+src/alamo/app/invoices/[id]/actions/resolve.ts-137-
+src/alamo/app/invoices/[id]/actions/resolve.ts-138-  if (lineItemsError || !lineItems) {
+src/alamo/app/invoices/[id]/actions/resolve.ts-139-    result.errors.push(`Failed to load line items: ${lineItemsError?.message}`)
+src/alamo/app/invoices/[id]/actions/resolve.ts-140-    return result
+src/alamo/app/invoices/[id]/actions/resolve.ts-141-  }
+src/alamo/app/invoices/[id]/actions/resolve.ts-142-
+src/alamo/app/invoices/[id]/actions/resolve.ts-143-  if (lineItems.length === 0) {
+src/alamo/app/invoices/[id]/actions/resolve.ts-144-    result.errors.push('No HELD line items found for the provided IDs.')
+src/alamo/app/invoices/[id]/actions/resolve.ts-145-    return result
+src/alamo/app/invoices/[id]/actions/resolve.ts-146-  }
+src/alamo/app/invoices/[id]/actions/resolve.ts-147-
+src/alamo/app/invoices/[id]/actions/resolve.ts-148-  // =============================================================
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:215:      .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/resolve.ts-216-      .update({
+src/alamo/app/invoices/[id]/actions/resolve.ts-217-        org_id: orgId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-218-        org_carrier_account_id: account.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-219-        shipment_ledger_id: newLedgerRow.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-220-        match_status: 'MANUAL_ASSIGNED',
+src/alamo/app/invoices/[id]/actions/resolve.ts-221-        billing_status: 'PENDING',
+src/alamo/app/invoices/[id]/actions/resolve.ts-222-        dispute_flag: false,
+src/alamo/app/invoices/[id]/actions/resolve.ts-223-        dispute_notes: notes
+src/alamo/app/invoices/[id]/actions/resolve.ts-224-          ? `Manually resolved by admin: ${notes}`
+src/alamo/app/invoices/[id]/actions/resolve.ts-225-          : 'Manually resolved by admin.',
+src/alamo/app/invoices/[id]/actions/resolve.ts-226-      })
+src/alamo/app/invoices/[id]/actions/resolve.ts-227-      .eq('id', lineItem.id)
+src/alamo/app/invoices/[id]/actions/resolve.ts-228-      .eq('billing_status', 'HELD')
+src/alamo/app/invoices/[id]/actions/resolve.ts-229-      .select('id')
+src/alamo/app/invoices/[id]/actions/resolve.ts-230-
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:294:    .from('invoice_line_items')
+src/alamo/app/invoices/[id]/actions/resolve.ts-295-    .select('billing_status')
+src/alamo/app/invoices/[id]/actions/resolve.ts-296-    .eq('carrier_invoice_id', carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/resolve.ts-297-
+src/alamo/app/invoices/[id]/actions/resolve.ts-298-  if (counts) {
+src/alamo/app/invoices/[id]/actions/resolve.ts-299-    const matched = counts.filter(
+src/alamo/app/invoices/[id]/actions/resolve.ts-300-      (r) => r.billing_status === 'APPROVED' || r.billing_status === 'INVOICED'
+src/alamo/app/invoices/[id]/actions/resolve.ts-301-    ).length
+src/alamo/app/invoices/[id]/actions/resolve.ts-302-    const flagged = counts.filter((r) => r.billing_status === 'HELD').length
+src/alamo/app/invoices/[id]/actions/resolve.ts-303-    const newStatus = flagged > 0 ? 'REVIEW' : 'APPROVED'
+src/alamo/app/invoices/[id]/actions/resolve.ts-304-
+src/alamo/app/invoices/[id]/actions/resolve.ts-305-    await supabase
+src/alamo/app/invoices/[id]/actions/resolve.ts-306-      .from('carrier_invoices')
+src/alamo/app/invoices/[id]/actions/resolve.ts-307-      .update({
+src/alamo/app/invoices/[id]/actions/resolve.ts-308-        matched_line_items: matched,
+src/alamo/app/invoices/[id]/actions/resolve.ts-309-        flagged_line_items: flagged,
+--
+src/alamo/app/invoices/[id]/page.tsx:72:      .from('invoice_line_items')
+src/alamo/app/invoices/[id]/page.tsx-73-      .select(`
+src/alamo/app/invoices/[id]/page.tsx-74-        id,
+src/alamo/app/invoices/[id]/page.tsx-75-        tracking_number,
+src/alamo/app/invoices/[id]/page.tsx-76-        carrier_charge,
+src/alamo/app/invoices/[id]/page.tsx-77-        billing_status,
+src/alamo/app/invoices/[id]/page.tsx-78-        match_status,
+src/alamo/app/invoices/[id]/page.tsx-79-        dispute_flag,
+src/alamo/app/invoices/[id]/page.tsx-80-        address_sender_normalized,
+src/alamo/app/invoices/[id]/page.tsx-81-        variance_amount,
+src/alamo/app/invoices/[id]/page.tsx-82-        final_billed_rate,
+src/alamo/app/invoices/[id]/page.tsx-83-        service_level,
+src/alamo/app/invoices/[id]/page.tsx-84-        date_shipped,
+src/alamo/app/invoices/[id]/page.tsx-85-        organizations ( name )
+src/alamo/app/invoices/[id]/page.tsx-86-      `)
+src/alamo/app/invoices/[id]/page.tsx-87-      .eq('carrier_invoice_id', id)
+--
+src/alamo/app/invoices/page.tsx:49:      .from('invoice_line_items')
+src/alamo/app/invoices/page.tsx-50-      .select('id')
+src/alamo/app/invoices/page.tsx-51-      .eq('billing_status', 'APPROVED')
+src/alamo/app/invoices/page.tsx-52-      .limit(1),
+src/alamo/app/invoices/page.tsx-53-  ])
+src/alamo/app/invoices/page.tsx-54-
+src/alamo/app/invoices/page.tsx-55-  const hasApproved = (approvedCheck?.length ?? 0) > 0
+src/alamo/app/invoices/page.tsx-56-
+src/alamo/app/invoices/page.tsx-57-  return (
+src/alamo/app/invoices/page.tsx-58-    <div style={{
+src/alamo/app/invoices/page.tsx-59-      marginLeft: 200,
+src/alamo/app/invoices/page.tsx-60-      minHeight: '100vh',
+src/alamo/app/invoices/page.tsx-61-      background: 'var(--cactus-sand)',
+src/alamo/app/invoices/page.tsx-62-    }}>
+src/alamo/app/invoices/page.tsx-63-      <Sidebar />
+src/alamo/app/invoices/page.tsx-64-
+
+
+==========================================
+TABLE: cactus_invoices
+==========================================
+src/alamo/app/invoices/actions/generate.ts:193:        .from('cactus_invoices')
+src/alamo/app/invoices/actions/generate.ts-194-        .insert({
+src/alamo/app/invoices/actions/generate.ts-195-          org_id: orgId,
+src/alamo/app/invoices/actions/generate.ts-196-          billing_period_start: billingStart,
+src/alamo/app/invoices/actions/generate.ts-197-          billing_period_end: billingEnd,
+src/alamo/app/invoices/actions/generate.ts-198-          total_amount: totalAmount.toFixed(4),
+src/alamo/app/invoices/actions/generate.ts-199-          due_date: dueDateStr,
+src/alamo/app/invoices/actions/generate.ts-200-          status: 'UNPAID',
+src/alamo/app/invoices/actions/generate.ts-201-        })
+src/alamo/app/invoices/actions/generate.ts-202-        .select('id')
+src/alamo/app/invoices/actions/generate.ts-203-        .single()
+src/alamo/app/invoices/actions/generate.ts-204-
+src/alamo/app/invoices/actions/generate.ts-205-      if (invoiceInsertError || !newInvoice) {
+src/alamo/app/invoices/actions/generate.ts-206-        result.errors.push(
+src/alamo/app/invoices/actions/generate.ts-207-          `Failed to create invoice for org "${group.orgName}": ` +
+src/alamo/app/invoices/actions/generate.ts-208-          `${invoiceInsertError?.message ?? 'no data returned'}`
+--
+src/alamo/app/billing/[id]/actions/csv.ts:535:    .from('cactus_invoices')
+src/alamo/app/billing/[id]/actions/csv.ts-536-    .select(
+src/alamo/app/billing/[id]/actions/csv.ts-537-      'id, org_id, billing_period_start, billing_period_end, ' +
+src/alamo/app/billing/[id]/actions/csv.ts-538-      'due_date, created_at, organizations ( name, terms_days )'
+src/alamo/app/billing/[id]/actions/csv.ts-539-    )
+src/alamo/app/billing/[id]/actions/csv.ts-540-    .eq('id', cactusInvoiceId)
+src/alamo/app/billing/[id]/actions/csv.ts-541-    .single()
+src/alamo/app/billing/[id]/actions/csv.ts-542-
+src/alamo/app/billing/[id]/actions/csv.ts-543-  if (invoiceError || !invoice) {
+src/alamo/app/billing/[id]/actions/csv.ts-544-    throw new Error(
+src/alamo/app/billing/[id]/actions/csv.ts-545-      `Failed to load cactus_invoice ${cactusInvoiceId}: ` +
+src/alamo/app/billing/[id]/actions/csv.ts-546-      (invoiceError?.message ?? 'not found')
+src/alamo/app/billing/[id]/actions/csv.ts-547-    )
+src/alamo/app/billing/[id]/actions/csv.ts-548-  }
+src/alamo/app/billing/[id]/actions/csv.ts-549-
+src/alamo/app/billing/[id]/actions/csv.ts-550-  const invoiceRow = invoice as unknown as {
+--
+src/alamo/app/billing/[id]/actions/pdf.ts:102:    .from('cactus_invoices')
+src/alamo/app/billing/[id]/actions/pdf.ts-103-    .select(`
+src/alamo/app/billing/[id]/actions/pdf.ts-104-      *,
+src/alamo/app/billing/[id]/actions/pdf.ts-105-      organizations (
+src/alamo/app/billing/[id]/actions/pdf.ts-106-        name,
+src/alamo/app/billing/[id]/actions/pdf.ts-107-        terms_days,
+src/alamo/app/billing/[id]/actions/pdf.ts-108-        locations (
+src/alamo/app/billing/[id]/actions/pdf.ts-109-          address_line1,
+src/alamo/app/billing/[id]/actions/pdf.ts-110-          address_line2,
+src/alamo/app/billing/[id]/actions/pdf.ts-111-          city,
+src/alamo/app/billing/[id]/actions/pdf.ts-112-          state,
+src/alamo/app/billing/[id]/actions/pdf.ts-113-          postal_code,
+src/alamo/app/billing/[id]/actions/pdf.ts-114-          is_billing_address
+src/alamo/app/billing/[id]/actions/pdf.ts-115-        )
+src/alamo/app/billing/[id]/actions/pdf.ts-116-      )
+src/alamo/app/billing/[id]/actions/pdf.ts-117-    `)
+--
+src/alamo/app/billing/[id]/page.tsx:49:      .from('cactus_invoices')
+src/alamo/app/billing/[id]/page.tsx-50-      .select(`
+src/alamo/app/billing/[id]/page.tsx-51-        id,
+src/alamo/app/billing/[id]/page.tsx-52-        billing_period_start,
+src/alamo/app/billing/[id]/page.tsx-53-        billing_period_end,
+src/alamo/app/billing/[id]/page.tsx-54-        total_amount,
+src/alamo/app/billing/[id]/page.tsx-55-        due_date,
+src/alamo/app/billing/[id]/page.tsx-56-        status,
+src/alamo/app/billing/[id]/page.tsx-57-        created_at,
+src/alamo/app/billing/[id]/page.tsx-58-        organizations ( id, name )
+src/alamo/app/billing/[id]/page.tsx-59-      `)
+src/alamo/app/billing/[id]/page.tsx-60-      .eq('id', id)
+src/alamo/app/billing/[id]/page.tsx-61-      .single(),
+src/alamo/app/billing/[id]/page.tsx-62-    admin
+src/alamo/app/billing/[id]/page.tsx-63-      .from('cactus_invoice_line_items')
+src/alamo/app/billing/[id]/page.tsx-64-      .select(`
+--
+src/alamo/app/billing/page.tsx:23:    .from('cactus_invoices')
+src/alamo/app/billing/page.tsx-24-    .select(`
+src/alamo/app/billing/page.tsx-25-      id,
+src/alamo/app/billing/page.tsx-26-      billing_period_start,
+src/alamo/app/billing/page.tsx-27-      billing_period_end,
+src/alamo/app/billing/page.tsx-28-      total_amount,
+src/alamo/app/billing/page.tsx-29-      due_date,
+src/alamo/app/billing/page.tsx-30-      status,
+src/alamo/app/billing/page.tsx-31-      created_at,
+src/alamo/app/billing/page.tsx-32-      organizations ( id, name ),
+src/alamo/app/billing/page.tsx-33-      cactus_invoice_line_items ( count )
+src/alamo/app/billing/page.tsx-34-    `)
+src/alamo/app/billing/page.tsx-35-    .order('created_at', { ascending: false })
+src/alamo/app/billing/page.tsx-36-
+src/alamo/app/billing/page.tsx-37-  return (
+src/alamo/app/billing/page.tsx-38-    <div style={{
+
+
+==========================================
+TABLE: cactus_invoice_line_items
+==========================================
+src/alamo/app/invoices/actions/generate.ts:228:          .from('cactus_invoice_line_items')
+src/alamo/app/invoices/actions/generate.ts-229-          .insert(batch)
+src/alamo/app/invoices/actions/generate.ts-230-
+src/alamo/app/invoices/actions/generate.ts-231-        if (junctionError) {
+src/alamo/app/invoices/actions/generate.ts-232-          result.errors.push(
+src/alamo/app/invoices/actions/generate.ts-233-            `Failed to create junction rows for org "${group.orgName}" ` +
+src/alamo/app/invoices/actions/generate.ts-234-            `(batch ${Math.floor(i / BATCH_SIZE) + 1}): ` +
+src/alamo/app/invoices/actions/generate.ts-235-            `${junctionError.message}. Invoice ${newInvoice.id} created but line items not linked.`
+src/alamo/app/invoices/actions/generate.ts-236-          )
+src/alamo/app/invoices/actions/generate.ts-237-          junctionFailed = true
+src/alamo/app/invoices/actions/generate.ts-238-          break
+src/alamo/app/invoices/actions/generate.ts-239-        }
+src/alamo/app/invoices/actions/generate.ts-240-      }
+src/alamo/app/invoices/actions/generate.ts-241-
+src/alamo/app/invoices/actions/generate.ts-242-      if (junctionFailed) continue
+src/alamo/app/invoices/actions/generate.ts-243-
+--
+src/alamo/app/invoices/[id]/page.tsx:107:      .from('cactus_invoice_line_items')
+src/alamo/app/invoices/[id]/page.tsx-108-      .select(`
+src/alamo/app/invoices/[id]/page.tsx-109-        cactus_invoice_id,
+src/alamo/app/invoices/[id]/page.tsx-110-        cactus_invoices (
+src/alamo/app/invoices/[id]/page.tsx-111-          billing_period_end,
+src/alamo/app/invoices/[id]/page.tsx-112-          organizations ( name )
+src/alamo/app/invoices/[id]/page.tsx-113-        )
+src/alamo/app/invoices/[id]/page.tsx-114-      `)
+src/alamo/app/invoices/[id]/page.tsx-115-      .in('invoice_line_item_id', lineItemIds)
+src/alamo/app/invoices/[id]/page.tsx-116-
+src/alamo/app/invoices/[id]/page.tsx-117-    // Dedupe by cactus_invoice_id — one line per cactus_invoice even
+src/alamo/app/invoices/[id]/page.tsx-118-    // if multiple line items on this carrier invoice rolled into it.
+src/alamo/app/invoices/[id]/page.tsx-119-    const seen = new Set<string>()
+src/alamo/app/invoices/[id]/page.tsx-120-    for (const row of (junctionRows ?? []) as any[]) {
+src/alamo/app/invoices/[id]/page.tsx-121-      const cid = row?.cactus_invoice_id as string | null
+src/alamo/app/invoices/[id]/page.tsx-122-      if (!cid || seen.has(cid)) continue
+--
+src/alamo/app/billing/[id]/actions/csv.ts:563:    .from('cactus_invoice_line_items')
+src/alamo/app/billing/[id]/actions/csv.ts-564-    .select(
+src/alamo/app/billing/[id]/actions/csv.ts-565-      `
+src/alamo/app/billing/[id]/actions/csv.ts-566-      invoice_line_items (
+src/alamo/app/billing/[id]/actions/csv.ts-567-        id, tracking_number, service_level, zone,
+src/alamo/app/billing/[id]/actions/csv.ts-568-        date_shipped, date_delivered, date_invoiced,
+src/alamo/app/billing/[id]/actions/csv.ts-569-        weight_billed, weight_unit_billed,
+src/alamo/app/billing/[id]/actions/csv.ts-570-        weight_entered, weight_unit_entered,
+src/alamo/app/billing/[id]/actions/csv.ts-571-        length_entered, width_entered, height_entered,
+src/alamo/app/billing/[id]/actions/csv.ts-572-        length_carrier, width_carrier, height_carrier,
+src/alamo/app/billing/[id]/actions/csv.ts-573-        address_sender_line1, address_sender_line2,
+src/alamo/app/billing/[id]/actions/csv.ts-574-        address_sender_city, address_sender_state,
+src/alamo/app/billing/[id]/actions/csv.ts-575-        address_sender_zip, address_sender_country,
+src/alamo/app/billing/[id]/actions/csv.ts-576-        address_receiver_line1, address_receiver_line2,
+src/alamo/app/billing/[id]/actions/csv.ts-577-        address_receiver_city, address_receiver_state,
+src/alamo/app/billing/[id]/actions/csv.ts-578-        address_receiver_zip, address_receiver_country,
+--
+src/alamo/app/billing/[id]/actions/pdf.ts:129:    .from('cactus_invoice_line_items')
+src/alamo/app/billing/[id]/actions/pdf.ts-130-    .select(`
+src/alamo/app/billing/[id]/actions/pdf.ts-131-      invoice_line_items (
+src/alamo/app/billing/[id]/actions/pdf.ts-132-        carrier_charge,
+src/alamo/app/billing/[id]/actions/pdf.ts-133-        final_billed_rate,
+src/alamo/app/billing/[id]/actions/pdf.ts-134-        match_location_id,
+src/alamo/app/billing/[id]/actions/pdf.ts-135-        org_carrier_accounts (
+src/alamo/app/billing/[id]/actions/pdf.ts-136-          carrier_account_mode,
+src/alamo/app/billing/[id]/actions/pdf.ts-137-          carrier_code
+src/alamo/app/billing/[id]/actions/pdf.ts-138-        ),
+src/alamo/app/billing/[id]/actions/pdf.ts-139-        locations (
+src/alamo/app/billing/[id]/actions/pdf.ts-140-          name
+src/alamo/app/billing/[id]/actions/pdf.ts-141-        )
+src/alamo/app/billing/[id]/actions/pdf.ts-142-      )
+src/alamo/app/billing/[id]/actions/pdf.ts-143-    `)
+src/alamo/app/billing/[id]/actions/pdf.ts-144-    .eq('cactus_invoice_id', cactusInvoiceId)
+--
+src/alamo/app/billing/[id]/page.tsx:63:      .from('cactus_invoice_line_items')
+src/alamo/app/billing/[id]/page.tsx-64-      .select(`
+src/alamo/app/billing/[id]/page.tsx-65-        invoice_line_items (
+src/alamo/app/billing/[id]/page.tsx-66-          id,
+src/alamo/app/billing/[id]/page.tsx-67-          tracking_number,
+src/alamo/app/billing/[id]/page.tsx-68-          service_level,
+src/alamo/app/billing/[id]/page.tsx-69-          date_shipped,
+src/alamo/app/billing/[id]/page.tsx-70-          weight_billed,
+src/alamo/app/billing/[id]/page.tsx-71-          zone,
+src/alamo/app/billing/[id]/page.tsx-72-          carrier_charge,
+src/alamo/app/billing/[id]/page.tsx-73-          final_billed_rate,
+src/alamo/app/billing/[id]/page.tsx-74-          org_carrier_accounts (
+src/alamo/app/billing/[id]/page.tsx-75-            carrier_account_mode,
+src/alamo/app/billing/[id]/page.tsx-76-            carrier_code
+src/alamo/app/billing/[id]/page.tsx-77-          ),
+src/alamo/app/billing/[id]/page.tsx-78-          locations (
+
+
+==========================================
+TABLE: rate_shop_log
+==========================================
+
+
+==========================================
+TABLE: shipment_events
+==========================================
+src/alamo/app/invoices/[id]/actions/match.ts:176:    .from('shipment_events')
+src/alamo/app/invoices/[id]/actions/match.ts-177-    .select('carrier_timestamp')
+src/alamo/app/invoices/[id]/actions/match.ts-178-    .eq('shipment_ledger_id', ledgerId)
+src/alamo/app/invoices/[id]/actions/match.ts-179-    .eq('event_type', 'LABEL_CREATED')
+src/alamo/app/invoices/[id]/actions/match.ts-180-    .order('carrier_timestamp', { ascending: true })
+src/alamo/app/invoices/[id]/actions/match.ts-181-    .limit(1)
+src/alamo/app/invoices/[id]/actions/match.ts-182-    .maybeSingle()
+src/alamo/app/invoices/[id]/actions/match.ts-183-
+src/alamo/app/invoices/[id]/actions/match.ts-184-  if (labelEvent?.carrier_timestamp) {
+src/alamo/app/invoices/[id]/actions/match.ts-185-    // carrier_timestamp is TIMESTAMPTZ; slice to the date component.
+src/alamo/app/invoices/[id]/actions/match.ts-186-    overrides.date_shipped = labelEvent.carrier_timestamp.slice(0, 10)
+src/alamo/app/invoices/[id]/actions/match.ts-187-  }
+src/alamo/app/invoices/[id]/actions/match.ts-188-
+src/alamo/app/invoices/[id]/actions/match.ts-189-  const { data: deliveredEvent } = await supabase
+src/alamo/app/invoices/[id]/actions/match.ts:190:    .from('shipment_events')
+src/alamo/app/invoices/[id]/actions/match.ts-191-    .select('carrier_timestamp')
+src/alamo/app/invoices/[id]/actions/match.ts-192-    .eq('shipment_ledger_id', ledgerId)
+src/alamo/app/invoices/[id]/actions/match.ts-193-    .eq('event_type', 'DELIVERED')
+src/alamo/app/invoices/[id]/actions/match.ts-194-    .order('carrier_timestamp', { ascending: false })
+src/alamo/app/invoices/[id]/actions/match.ts-195-    .limit(1)
+src/alamo/app/invoices/[id]/actions/match.ts-196-    .maybeSingle()
+src/alamo/app/invoices/[id]/actions/match.ts-197-
+src/alamo/app/invoices/[id]/actions/match.ts-198-  if (deliveredEvent?.carrier_timestamp) {
+src/alamo/app/invoices/[id]/actions/match.ts-199-    overrides.date_delivered = deliveredEvent.carrier_timestamp.slice(0, 10)
+src/alamo/app/invoices/[id]/actions/match.ts-200-  }
+src/alamo/app/invoices/[id]/actions/match.ts-201-
+src/alamo/app/invoices/[id]/actions/match.ts-202-  return overrides
+src/alamo/app/invoices/[id]/actions/match.ts-203-}
+src/alamo/app/invoices/[id]/actions/match.ts-204-
+src/alamo/app/invoices/[id]/actions/match.ts-205-// =============================================================
+
+
+==========================================
+TABLE: audit_logs
+==========================================
+src/alamo/app/invoices/actions/generate.ts:318:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/actions/generate.ts-319-    entity_type: 'billing_run',
+src/alamo/app/invoices/actions/generate.ts-320-    action_type: 'WEEKLY_BILLING_RUN',
+src/alamo/app/invoices/actions/generate.ts-321-    metadata: {
+src/alamo/app/invoices/actions/generate.ts-322-      totalOrgs: result.totalOrgs,
+src/alamo/app/invoices/actions/generate.ts-323-      totalLineItems: result.totalLineItems,
+src/alamo/app/invoices/actions/generate.ts-324-      totalAmount: result.totalAmount,
+src/alamo/app/invoices/actions/generate.ts-325-      invoicesGenerated: result.invoicesGenerated.map((inv) => ({
+src/alamo/app/invoices/actions/generate.ts-326-        orgId: inv.orgId,
+src/alamo/app/invoices/actions/generate.ts-327-        orgName: inv.orgName,
+src/alamo/app/invoices/actions/generate.ts-328-        lineItems: inv.lineItems,
+src/alamo/app/invoices/actions/generate.ts-329-        amount: inv.amount,
+src/alamo/app/invoices/actions/generate.ts-330-        invoiceId: inv.invoiceId,
+src/alamo/app/invoices/actions/generate.ts-331-      })),
+src/alamo/app/invoices/actions/generate.ts-332-      errors: result.errors,
+src/alamo/app/invoices/actions/generate.ts-333-    },
+--
+src/alamo/app/invoices/[id]/actions/match.ts:580:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/match.ts-581-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/match.ts-582-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/match.ts-583-    action_type: 'MATCHING_ENGINE_RUN',
+src/alamo/app/invoices/[id]/actions/match.ts-584-    metadata: {
+src/alamo/app/invoices/[id]/actions/match.ts-585-      totalProcessed: result.totalProcessed,
+src/alamo/app/invoices/[id]/actions/match.ts-586-      totalMatched,
+src/alamo/app/invoices/[id]/actions/match.ts-587-      totalFlagged,
+src/alamo/app/invoices/[id]/actions/match.ts-588-      lassoed: result.lassoed,
+src/alamo/app/invoices/[id]/actions/match.ts-589-      dark: result.dark,
+src/alamo/app/invoices/[id]/actions/match.ts-590-      newInvoiceStatus,
+src/alamo/app/invoices/[id]/actions/match.ts-591-      errors: result.errors,
+src/alamo/app/invoices/[id]/actions/match.ts-592-    },
+src/alamo/app/invoices/[id]/actions/match.ts-593-  })
+src/alamo/app/invoices/[id]/actions/match.ts-594-
+src/alamo/app/invoices/[id]/actions/match.ts-595-  // =============================================================
+--
+src/alamo/app/invoices/[id]/actions/billing-calc.ts:285:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-286-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-287-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-288-    action_type: 'BILLING_CALC_RUN',
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-289-    metadata: {
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-290-      total_eligible: result.total_eligible,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-291-      approved: result.approved,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-292-      skipped: result.skipped,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-293-      errors_count: result.errors.length,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-294-      errors: result.errors.slice(0, 20),
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-295-      started_at: result.started_at,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-296-      completed_at: result.completed_at,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-297-    },
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-298-  })
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-299-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-300-  return result
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:234:      await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-235-        entity_type: 'invoice_line_items',
+src/alamo/app/invoices/[id]/actions/resolve.ts-236-        entity_id: lineItem.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-237-        action_type: 'RESOLVE_PARTIAL_FAILURE',
+src/alamo/app/invoices/[id]/actions/resolve.ts-238-        metadata: {
+src/alamo/app/invoices/[id]/actions/resolve.ts-239-          message: 'shipment_ledger written but invoice_line_items update failed',
+src/alamo/app/invoices/[id]/actions/resolve.ts-240-          ledger_id: newLedgerRow.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-241-          error: updateError.message,
+src/alamo/app/invoices/[id]/actions/resolve.ts-242-        },
+src/alamo/app/invoices/[id]/actions/resolve.ts-243-      })
+src/alamo/app/invoices/[id]/actions/resolve.ts-244-      result.errors.push(
+src/alamo/app/invoices/[id]/actions/resolve.ts-245-        `Partial failure on line ${lineItem.id}: ledger written ` +
+src/alamo/app/invoices/[id]/actions/resolve.ts-246-        `(${newLedgerRow.id}) but line update failed — ${updateError.message}`
+src/alamo/app/invoices/[id]/actions/resolve.ts-247-      )
+src/alamo/app/invoices/[id]/actions/resolve.ts-248-      continue
+src/alamo/app/invoices/[id]/actions/resolve.ts-249-    }
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:319:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-320-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/resolve.ts-321-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-322-    action_type: 'DISPUTE_RESOLVED',
+src/alamo/app/invoices/[id]/actions/resolve.ts-323-    metadata: {
+src/alamo/app/invoices/[id]/actions/resolve.ts-324-      resolvedBy,
+src/alamo/app/invoices/[id]/actions/resolve.ts-325-      orgId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-326-      carrierCode,
+src/alamo/app/invoices/[id]/actions/resolve.ts-327-      lineItemIds,
+src/alamo/app/invoices/[id]/actions/resolve.ts-328-      resolved: result.resolved,
+src/alamo/app/invoices/[id]/actions/resolve.ts-329-      errors: result.errors,
+src/alamo/app/invoices/[id]/actions/resolve.ts-330-      notes: notes ?? null,
+src/alamo/app/invoices/[id]/actions/resolve.ts-331-      billing_calc_approved: result.billingCalc?.approved ?? 0,
+src/alamo/app/invoices/[id]/actions/resolve.ts-332-    },
+src/alamo/app/invoices/[id]/actions/resolve.ts-333-  })
+src/alamo/app/invoices/[id]/actions/resolve.ts-334-
+--
+src/alamo/app/billing/[id]/actions/csv.ts:622:      .from('audit_logs')
+src/alamo/app/billing/[id]/actions/csv.ts-623-      .select('entity_id, created_at, action_type')
+src/alamo/app/billing/[id]/actions/csv.ts-624-      .in('entity_id', carrierInvoiceIds)
+src/alamo/app/billing/[id]/actions/csv.ts-625-      .in('action_type', ['MATCH_RUN', 'MATCHING_ENGINE_RUN'])
+src/alamo/app/billing/[id]/actions/csv.ts-626-      .order('created_at', { ascending: false })
+src/alamo/app/billing/[id]/actions/csv.ts-627-
+src/alamo/app/billing/[id]/actions/csv.ts-628-    for (const log of (matchLogs ?? []) as Array<{
+src/alamo/app/billing/[id]/actions/csv.ts-629-      entity_id: string
+src/alamo/app/billing/[id]/actions/csv.ts-630-      created_at: string
+src/alamo/app/billing/[id]/actions/csv.ts-631-    }>) {
+src/alamo/app/billing/[id]/actions/csv.ts-632-      // First iteration per entity wins (most recent, because of ORDER BY DESC)
+src/alamo/app/billing/[id]/actions/csv.ts-633-      if (!matchedAtByCarrierInvoice.has(log.entity_id)) {
+src/alamo/app/billing/[id]/actions/csv.ts-634-        matchedAtByCarrierInvoice.set(log.entity_id, log.created_at)
+src/alamo/app/billing/[id]/actions/csv.ts-635-      }
+src/alamo/app/billing/[id]/actions/csv.ts-636-    }
+src/alamo/app/billing/[id]/actions/csv.ts-637-  }
+
+
+==========================================
+TABLE: carrier_invoice_formats
+==========================================
+src/alamo/app/invoices/[id]/parse/page.tsx:250:      .from('carrier_invoice_formats')
+src/alamo/app/invoices/[id]/parse/page.tsx-251-      .select('column_position, header_name')
+src/alamo/app/invoices/[id]/parse/page.tsx-252-      .eq('carrier_code', invoice.carrier_code)
+src/alamo/app/invoices/[id]/parse/page.tsx-253-      .eq('format_type', invoice.invoice_format)
+src/alamo/app/invoices/[id]/parse/page.tsx-254-      .eq('is_active', true)
+src/alamo/app/invoices/[id]/parse/page.tsx-255-      .order('column_position', { ascending: true })
+src/alamo/app/invoices/[id]/parse/page.tsx-256-
+src/alamo/app/invoices/[id]/parse/page.tsx-257-      if (!formatRows || formatRows.length === 0) {
+src/alamo/app/invoices/[id]/parse/page.tsx-258-        throw new Error(`No column template found for ${invoice.carrier_code} ${invoice.invoice_format}`)
+src/alamo/app/invoices/[id]/parse/page.tsx-259-      }
+src/alamo/app/invoices/[id]/parse/page.tsx-260-
+src/alamo/app/invoices/[id]/parse/page.tsx-261-    // Build position → header name map (1-based)
+src/alamo/app/invoices/[id]/parse/page.tsx-262-    const columnTemplate: Record<number, string> = {}
+src/alamo/app/invoices/[id]/parse/page.tsx-263-    for (const row of formatRows) {
+src/alamo/app/invoices/[id]/parse/page.tsx-264-      columnTemplate[row.column_position] = row.header_name
+src/alamo/app/invoices/[id]/parse/page.tsx-265-    }
+
+
+==========================================
+TABLE: carrier_charge_routing
+==========================================
+src/alamo/app/invoices/[id]/parse/page.tsx:271:      .from('carrier_charge_routing')
+src/alamo/app/invoices/[id]/parse/page.tsx-272-      .select('*')
+src/alamo/app/invoices/[id]/parse/page.tsx-273-      .eq('carrier_code', invoice.carrier_code)
+src/alamo/app/invoices/[id]/parse/page.tsx-274-      .eq('is_active', true)
+src/alamo/app/invoices/[id]/parse/page.tsx-275-
+src/alamo/app/invoices/[id]/parse/page.tsx-276-    const rules: ChargeRoutingRule[] = routingRules ?? []
+src/alamo/app/invoices/[id]/parse/page.tsx-277-
+src/alamo/app/invoices/[id]/parse/page.tsx-278-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-279-    // STEP 3: Download file from Supabase Storage
+src/alamo/app/invoices/[id]/parse/page.tsx-280-    // ----------------------------------------------------------
+src/alamo/app/invoices/[id]/parse/page.tsx-281-    const { data: fileData, error: downloadError } = await admin
+src/alamo/app/invoices/[id]/parse/page.tsx-282-      .storage
+src/alamo/app/invoices/[id]/parse/page.tsx-283-      .from('carrier-invoices')
+src/alamo/app/invoices/[id]/parse/page.tsx-284-      .download(invoice.file_path)
+src/alamo/app/invoices/[id]/parse/page.tsx-285-
+src/alamo/app/invoices/[id]/parse/page.tsx-286-    if (downloadError || !fileData) {
+
+
+==========================================
+TABLE: notification_preferences
+==========================================
+
+

@@ -1,0 +1,315 @@
+table_name,column_name,data_type,is_nullable,column_default
+audit_logs,id,uuid,NO,gen_random_uuid()
+audit_logs,org_id,uuid,YES,null
+audit_logs,user_id,uuid,YES,null
+audit_logs,action_type,text,NO,null
+audit_logs,entity_type,text,YES,null
+audit_logs,entity_id,uuid,YES,null
+audit_logs,description,text,YES,null
+audit_logs,metadata,jsonb,YES,null
+audit_logs,ip_address,inet,YES,null
+audit_logs,created_at,timestamp with time zone,NO,now()
+cactus_invoice_line_items,id,uuid,NO,gen_random_uuid()
+cactus_invoice_line_items,cactus_invoice_id,uuid,NO,null
+cactus_invoice_line_items,invoice_line_item_id,uuid,NO,null
+cactus_invoice_line_items,org_id,uuid,NO,null
+cactus_invoice_line_items,final_billed_rate,numeric,NO,null
+cactus_invoice_line_items,created_at,timestamp with time zone,NO,now()
+cactus_invoices,id,uuid,NO,gen_random_uuid()
+cactus_invoices,org_id,uuid,NO,null
+cactus_invoices,billing_period_start,date,NO,null
+cactus_invoices,billing_period_end,date,NO,null
+cactus_invoices,total_amount,numeric,NO,null
+cactus_invoices,due_date,date,NO,null
+cactus_invoices,status,USER-DEFINED,NO,'UNPAID'::invoice_status_enum
+cactus_invoices,paid_at,timestamp with time zone,YES,null
+cactus_invoices,qbo_invoice_id,text,YES,null
+cactus_invoices,payment_attempt_count,integer,NO,0
+cactus_invoices,last_payment_error,text,YES,null
+cactus_invoices,created_at,timestamp with time zone,NO,now()
+cactus_invoices,updated_at,timestamp with time zone,NO,now()
+carrier_charge_routing,id,uuid,NO,gen_random_uuid()
+carrier_charge_routing,carrier_code,USER-DEFINED,NO,null
+carrier_charge_routing,charge_classification_code,text,YES,null
+carrier_charge_routing,charge_category_code,text,YES,null
+carrier_charge_routing,charge_category_detail_code,text,YES,null
+carrier_charge_routing,charge_description,text,YES,null
+carrier_charge_routing,cactus_field,text,YES,null
+carrier_charge_routing,is_skip,boolean,NO,false
+carrier_charge_routing,is_dimension_row,boolean,NO,false
+carrier_charge_routing,is_adjustment,boolean,NO,false
+carrier_charge_routing,notes,text,YES,null
+carrier_charge_routing,is_active,boolean,NO,true
+carrier_charge_routing,created_at,timestamp with time zone,NO,now()
+carrier_charge_routing,updated_at,timestamp with time zone,NO,now()
+carrier_invoice_formats,id,uuid,NO,gen_random_uuid()
+carrier_invoice_formats,carrier_code,USER-DEFINED,NO,null
+carrier_invoice_formats,format_type,text,NO,null
+carrier_invoice_formats,column_position,integer,NO,null
+carrier_invoice_formats,column_letter,text,NO,null
+carrier_invoice_formats,header_name,text,NO,null
+carrier_invoice_formats,is_active,boolean,NO,true
+carrier_invoice_formats,effective_date,date,NO,CURRENT_DATE
+carrier_invoice_formats,deprecated_date,date,YES,null
+carrier_invoice_formats,notes,text,YES,null
+carrier_invoice_formats,created_at,timestamp with time zone,NO,now()
+carrier_invoice_mappings,id,uuid,NO,gen_random_uuid()
+carrier_invoice_mappings,carrier_code,USER-DEFINED,NO,null
+carrier_invoice_mappings,raw_header_name,text,NO,null
+carrier_invoice_mappings,cactus_standard_field,text,NO,null
+carrier_invoice_mappings,effective_date,date,NO,CURRENT_DATE
+carrier_invoice_mappings,deprecated_date,date,YES,null
+carrier_invoice_mappings,notes,text,YES,null
+carrier_invoice_mappings,ai_suggested,boolean,NO,false
+carrier_invoice_mappings,ai_confidence_score,numeric,YES,null
+carrier_invoice_mappings,created_at,timestamp with time zone,NO,now()
+carrier_invoices,id,uuid,NO,gen_random_uuid()
+carrier_invoices,org_id,uuid,YES,null
+carrier_invoices,carrier_code,USER-DEFINED,NO,null
+carrier_invoices,org_carrier_account_id,uuid,YES,null
+carrier_invoices,invoice_file_name,text,NO,null
+carrier_invoices,invoice_period_start,date,YES,null
+carrier_invoices,invoice_period_end,date,YES,null
+carrier_invoices,status,USER-DEFINED,NO,'UPLOADED'::carrier_invoice_status_enum
+carrier_invoices,total_carrier_amount,numeric,YES,null
+carrier_invoices,total_line_items,integer,YES,null
+carrier_invoices,matched_line_items,integer,YES,0
+carrier_invoices,flagged_line_items,integer,YES,0
+carrier_invoices,uploaded_by,uuid,YES,null
+carrier_invoices,ai_processing_notes,text,YES,null
+carrier_invoices,processed_at,timestamp with time zone,YES,null
+carrier_invoices,created_at,timestamp with time zone,NO,now()
+carrier_invoices,updated_at,timestamp with time zone,NO,now()
+carrier_invoices,file_path,text,YES,null
+carrier_invoices,raw_headers,jsonb,YES,null
+carrier_invoices,invoice_format,text,YES,'SUMMARY'::text
+carrier_invoices,has_unmapped_charges,boolean,NO,false
+carrier_invoices,unmapped_charge_types,jsonb,YES,null
+invoice_line_items,id,uuid,NO,gen_random_uuid()
+invoice_line_items,carrier_invoice_id,uuid,NO,null
+invoice_line_items,org_id,uuid,YES,null
+invoice_line_items,org_carrier_account_id,uuid,YES,null
+invoice_line_items,shipment_ledger_id,uuid,YES,null
+invoice_line_items,tracking_number,text,YES,null
+invoice_line_items,account_number_carrier,text,YES,null
+invoice_line_items,address_sender_raw,text,YES,null
+invoice_line_items,address_sender_normalized,text,YES,null
+invoice_line_items,carrier_charge,numeric,NO,null
+invoice_line_items,base_charge,numeric,YES,null
+invoice_line_items,fuel_surcharge,numeric,YES,null
+invoice_line_items,residential_surcharge,numeric,YES,null
+invoice_line_items,address_correction,numeric,YES,null
+invoice_line_items,delivery_area_surcharge,numeric,YES,null
+invoice_line_items,additional_handling,numeric,YES,null
+invoice_line_items,apv_adjustment,numeric,YES,null
+invoice_line_items,other_surcharges,numeric,YES,null
+invoice_line_items,other_surcharges_detail,jsonb,YES,null
+invoice_line_items,match_method,USER-DEFINED,YES,null
+invoice_line_items,match_status,USER-DEFINED,YES,null
+invoice_line_items,pre_ceiling_amount,numeric,YES,null
+invoice_line_items,final_billed_rate,numeric,YES,null
+invoice_line_items,quoted_rate,numeric,YES,null
+invoice_line_items,variance_amount,numeric,YES,null
+invoice_line_items,dispute_flag,boolean,NO,false
+invoice_line_items,dispute_notes,text,YES,null
+invoice_line_items,billing_status,USER-DEFINED,NO,'PENDING'::billing_status_enum
+invoice_line_items,cactus_invoice_id,uuid,YES,null
+invoice_line_items,raw_line_data,jsonb,YES,null
+invoice_line_items,created_at,timestamp with time zone,NO,now()
+invoice_line_items,updated_at,timestamp with time zone,NO,now()
+invoice_line_items,weight_billed,numeric,YES,null
+invoice_line_items,weight_unit_billed,text,YES,'LB'::text
+invoice_line_items,address_sender_line1,text,YES,null
+invoice_line_items,address_sender_line2,text,YES,null
+invoice_line_items,address_sender_city,text,YES,null
+invoice_line_items,address_sender_state,text,YES,null
+invoice_line_items,address_sender_zip,text,YES,null
+invoice_line_items,address_sender_country,text,YES,null
+invoice_line_items,address_receiver_line1,text,YES,null
+invoice_line_items,address_receiver_line2,text,YES,null
+invoice_line_items,address_receiver_city,text,YES,null
+invoice_line_items,address_receiver_state,text,YES,null
+invoice_line_items,address_receiver_zip,text,YES,null
+invoice_line_items,address_receiver_country,text,YES,null
+invoice_line_items,weight_entered,numeric,YES,null
+invoice_line_items,weight_unit_entered,text,YES,'LB'::text
+invoice_line_items,length_entered,numeric,YES,null
+invoice_line_items,width_entered,numeric,YES,null
+invoice_line_items,height_entered,numeric,YES,null
+invoice_line_items,dim_weight_entered,numeric,YES,null
+invoice_line_items,length_carrier,numeric,YES,null
+invoice_line_items,width_carrier,numeric,YES,null
+invoice_line_items,height_carrier,numeric,YES,null
+invoice_line_items,dim_weight_carrier,numeric,YES,null
+invoice_line_items,dim_divisor,numeric,YES,null
+invoice_line_items,dim_increase,numeric,YES,null
+invoice_line_items,is_dim_billed,boolean,YES,false
+invoice_line_items,service_level,text,YES,null
+invoice_line_items,zone,text,YES,null
+invoice_line_items,date_shipped,date,YES,null
+invoice_line_items,date_delivered,date,YES,null
+invoice_line_items,date_invoiced,date,YES,null
+invoice_line_items,tracking_number_lead,text,YES,null
+invoice_line_items,is_residential,boolean,YES,null
+invoice_line_items,pieces_count,integer,YES,null
+invoice_line_items,bundle_number,text,YES,null
+invoice_line_items,payor,text,YES,null
+invoice_line_items,packaging_type,text,YES,null
+invoice_line_items,reference_1,text,YES,null
+invoice_line_items,reference_2,text,YES,null
+invoice_line_items,reference_3,text,YES,null
+invoice_line_items,reference_4,text,YES,null
+invoice_line_items,reference_5,text,YES,null
+invoice_line_items,reference_6,text,YES,null
+invoice_line_items,reference_7,text,YES,null
+invoice_line_items,reference_8,text,YES,null
+invoice_line_items,customs_value,numeric,YES,null
+invoice_line_items,customs_currency_code,text,YES,null
+invoice_line_items,status_international,text,YES,null
+invoice_line_items,confirmation_delivery,text,YES,null
+invoice_line_items,apv_adjustment_detail,jsonb,YES,null
+invoice_line_items,match_location_id,uuid,YES,null
+invoice_line_items,markup_type_applied,text,YES,null
+invoice_line_items,markup_value_applied,numeric,YES,null
+invoice_line_items,markup_source,text,YES,null
+invoice_line_items,is_adjustment_only,boolean,NO,false
+locations,id,uuid,NO,gen_random_uuid()
+locations,org_id,uuid,NO,null
+locations,name,text,NO,null
+locations,location_type,USER-DEFINED,NO,'SHIP_FROM'::location_type_enum
+locations,address_line1,text,NO,null
+locations,address_line2,text,YES,null
+locations,city,text,NO,null
+locations,state,character,NO,null
+locations,postal_code,text,NO,null
+locations,country,character,NO,'US'::bpchar
+locations,normalized_address,text,YES,null
+locations,is_billing_address,boolean,NO,true
+locations,is_active,boolean,NO,true
+locations,warehouse_zone,text,YES,null
+locations,aisle,text,YES,null
+locations,bin,text,YES,null
+locations,created_at,timestamp with time zone,NO,now()
+locations,updated_at,timestamp with time zone,NO,now()
+meter_transactions,id,uuid,NO,gen_random_uuid()
+meter_transactions,meter_id,uuid,NO,null
+meter_transactions,org_id,uuid,NO,null
+meter_transactions,transaction_type,USER-DEFINED,NO,null
+meter_transactions,gross_amount,numeric,NO,null
+meter_transactions,fee_amount,numeric,NO,0.0000
+meter_transactions,net_amount,numeric,NO,null
+meter_transactions,balance_after,numeric,NO,null
+meter_transactions,tracking_number,text,YES,null
+meter_transactions,carrier_code,USER-DEFINED,YES,null
+meter_transactions,description,text,YES,null
+meter_transactions,idempotency_key,text,YES,null
+meter_transactions,created_at,timestamp with time zone,NO,now()
+meters,id,uuid,NO,gen_random_uuid()
+meters,org_id,uuid,NO,null
+meters,current_balance,numeric,NO,0.0000
+meters,min_threshold,numeric,NO,100.0000
+meters,reload_amount,numeric,NO,500.0000
+meters,apply_cc_fee,boolean,NO,false
+meters,cc_fee_percentage,numeric,NO,0.0300
+meters,primary_pm_id,text,YES,null
+meters,backup_pm_id,text,YES,null
+meters,is_active,boolean,NO,true
+meters,created_at,timestamp with time zone,NO,now()
+meters,updated_at,timestamp with time zone,NO,now()
+notification_preferences,id,uuid,NO,gen_random_uuid()
+notification_preferences,org_id,uuid,NO,null
+notification_preferences,user_id,uuid,NO,null
+notification_preferences,notification_type,USER-DEFINED,NO,null
+notification_preferences,is_enabled,boolean,NO,false
+notification_preferences,created_at,timestamp with time zone,NO,now()
+notification_preferences,updated_at,timestamp with time zone,NO,now()
+org_carrier_accounts,id,uuid,NO,gen_random_uuid()
+org_carrier_accounts,org_id,uuid,NO,null
+org_carrier_accounts,carrier_code,USER-DEFINED,NO,null
+org_carrier_accounts,account_number,text,NO,null
+org_carrier_accounts,account_nickname,text,NO,null
+org_carrier_accounts,carrier_account_mode,USER-DEFINED,NO,'lassoed_carrier_account'::carrier_account_mode_enum
+org_carrier_accounts,is_cactus_account,boolean,NO,true
+org_carrier_accounts,markup_percentage,numeric,NO,0.0000
+org_carrier_accounts,markup_flat_fee,numeric,NO,0.0000
+org_carrier_accounts,dispute_threshold,numeric,NO,2.0000
+org_carrier_accounts,is_active,boolean,NO,true
+org_carrier_accounts,created_at,timestamp with time zone,NO,now()
+org_carrier_accounts,updated_at,timestamp with time zone,NO,now()
+org_carrier_accounts,use_rate_card,boolean,NO,false
+org_users,id,uuid,NO,gen_random_uuid()
+org_users,org_id,uuid,NO,null
+org_users,user_id,uuid,NO,null
+org_users,role,USER-DEFINED,NO,'STANDARD'::portal_role_enum
+org_users,created_at,timestamp with time zone,NO,now()
+organizations,id,uuid,NO,gen_random_uuid()
+organizations,parent_org_id,uuid,YES,null
+organizations,name,text,NO,null
+organizations,org_type,USER-DEFINED,NO,'MERCHANT'::org_type_enum
+organizations,terms_days,integer,NO,7
+organizations,is_active,boolean,NO,true
+organizations,created_at,timestamp with time zone,NO,now()
+organizations,updated_at,timestamp with time zone,NO,now()
+organizations,tracking_alert_threshold_days,integer,NO,3
+rate_cards,id,uuid,NO,gen_random_uuid()
+rate_cards,org_carrier_account_id,uuid,NO,null
+rate_cards,org_id,uuid,NO,null
+rate_cards,service_level,text,NO,null
+rate_cards,nickname,text,NO,null
+rate_cards,effective_date,date,NO,CURRENT_DATE
+rate_cards,deprecated_date,date,YES,null
+rate_cards,created_at,timestamp with time zone,NO,now()
+rate_cards,updated_at,timestamp with time zone,NO,now()
+rate_shop_log,id,uuid,NO,gen_random_uuid()
+rate_shop_log,org_id,uuid,NO,null
+rate_shop_log,org_carrier_account_id,uuid,YES,null
+rate_shop_log,postal_origin,text,NO,null
+rate_shop_log,postal_destination,text,NO,null
+rate_shop_log,country_destination,character,NO,'US'::bpchar
+rate_shop_log,is_residential,boolean,YES,null
+rate_shop_log,weight_oz,numeric,NO,null
+rate_shop_log,length_in,numeric,YES,null
+rate_shop_log,width_in,numeric,YES,null
+rate_shop_log,height_in,numeric,YES,null
+rate_shop_log,carrier_code,USER-DEFINED,NO,null
+rate_shop_log,service_level,text,NO,null
+rate_shop_log,quoted_rate,numeric,NO,null
+rate_shop_log,final_billed_rate,numeric,NO,null
+rate_shop_log,transit_days,integer,YES,null
+rate_shop_log,is_selected,boolean,NO,false
+rate_shop_log,shipment_ledger_id,uuid,YES,null
+rate_shop_log,metadata,jsonb,YES,null
+rate_shop_log,created_at,timestamp with time zone,NO,now()
+shipment_events,id,uuid,NO,gen_random_uuid()
+shipment_events,shipment_ledger_id,uuid,NO,null
+shipment_events,org_id,uuid,NO,null
+shipment_events,event_type,USER-DEFINED,NO,null
+shipment_events,carrier_code,USER-DEFINED,YES,null
+shipment_events,carrier_timestamp,timestamp with time zone,YES,null
+shipment_events,carrier_location,text,YES,null
+shipment_events,carrier_message,text,YES,null
+shipment_events,ai_flagged,boolean,NO,false
+shipment_events,ai_flag_reason,text,YES,null
+shipment_events,metadata,jsonb,YES,null
+shipment_events,created_at,timestamp with time zone,NO,now()
+shipment_ledger,id,uuid,NO,gen_random_uuid()
+shipment_ledger,org_id,uuid,NO,null
+shipment_ledger,org_carrier_account_id,uuid,YES,null
+shipment_ledger,rate_card_id,uuid,YES,null
+shipment_ledger,tracking_number,text,NO,null
+shipment_ledger,carrier_code,USER-DEFINED,YES,null
+shipment_ledger,service_level,text,YES,null
+shipment_ledger,shipment_source,USER-DEFINED,NO,'RATING_ENGINE'::shipment_source_enum
+shipment_ledger,raw_carrier_cost,numeric,NO,null
+shipment_ledger,pre_ceiling_amount,numeric,NO,null
+shipment_ledger,final_billed_rate,numeric,NO,null
+shipment_ledger,carrier_invoiced_amount,numeric,YES,null
+shipment_ledger,reconciled,boolean,NO,false
+shipment_ledger,reconciled_at,timestamp with time zone,YES,null
+shipment_ledger,label_printed_at,timestamp with time zone,YES,null
+shipment_ledger,idempotency_key,text,YES,null
+shipment_ledger,metadata,jsonb,YES,null
+shipment_ledger,created_at,timestamp with time zone,NO,now()
+shipment_ledger,markup_type_applied,text,YES,null
+shipment_ledger,markup_value_applied,numeric,YES,null
+shipment_ledger,markup_source,text,YES,null

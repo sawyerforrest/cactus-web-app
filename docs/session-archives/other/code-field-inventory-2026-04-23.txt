@@ -1,0 +1,165 @@
+=== organizations ===
+
+=== org_users ===
+
+=== locations ===
+
+=== org_carrier_accounts ===
+
+=== rate_cards ===
+
+=== meters ===
+
+=== meter_transactions ===
+
+=== carrier_invoice_mappings ===
+
+=== shipment_ledger ===
+
+=== carrier_invoices ===
+
+=== invoice_line_items ===
+
+=== cactus_invoices ===
+
+=== cactus_invoice_line_items ===
+
+=== rate_shop_log ===
+
+=== shipment_events ===
+
+=== audit_logs ===
+src/alamo/app/invoices/actions/generate.ts:318:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/actions/generate.ts-319-    entity_type: 'billing_run',
+src/alamo/app/invoices/actions/generate.ts-320-    action_type: 'WEEKLY_BILLING_RUN',
+src/alamo/app/invoices/actions/generate.ts-321-    metadata: {
+src/alamo/app/invoices/actions/generate.ts-322-      totalOrgs: result.totalOrgs,
+src/alamo/app/invoices/actions/generate.ts-323-      totalLineItems: result.totalLineItems,
+src/alamo/app/invoices/actions/generate.ts-324-      totalAmount: result.totalAmount,
+src/alamo/app/invoices/actions/generate.ts-325-      invoicesGenerated: result.invoicesGenerated.map((inv) => ({
+src/alamo/app/invoices/actions/generate.ts-326-        orgId: inv.orgId,
+src/alamo/app/invoices/actions/generate.ts-327-        orgName: inv.orgName,
+src/alamo/app/invoices/actions/generate.ts-328-        lineItems: inv.lineItems,
+src/alamo/app/invoices/actions/generate.ts-329-        amount: inv.amount,
+src/alamo/app/invoices/actions/generate.ts-330-        invoiceId: inv.invoiceId,
+src/alamo/app/invoices/actions/generate.ts-331-      })),
+src/alamo/app/invoices/actions/generate.ts-332-      errors: result.errors,
+src/alamo/app/invoices/actions/generate.ts-333-    },
+src/alamo/app/invoices/actions/generate.ts-334-  })
+src/alamo/app/invoices/actions/generate.ts-335-
+src/alamo/app/invoices/actions/generate.ts-336-  revalidatePath('/invoices')
+src/alamo/app/invoices/actions/generate.ts-337-
+src/alamo/app/invoices/actions/generate.ts-338-  return result
+src/alamo/app/invoices/actions/generate.ts-339-}
+--
+src/alamo/app/invoices/[id]/actions/match.ts:580:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/match.ts-581-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/match.ts-582-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/match.ts-583-    action_type: 'MATCHING_ENGINE_RUN',
+src/alamo/app/invoices/[id]/actions/match.ts-584-    metadata: {
+src/alamo/app/invoices/[id]/actions/match.ts-585-      totalProcessed: result.totalProcessed,
+src/alamo/app/invoices/[id]/actions/match.ts-586-      totalMatched,
+src/alamo/app/invoices/[id]/actions/match.ts-587-      totalFlagged,
+src/alamo/app/invoices/[id]/actions/match.ts-588-      lassoed: result.lassoed,
+src/alamo/app/invoices/[id]/actions/match.ts-589-      dark: result.dark,
+src/alamo/app/invoices/[id]/actions/match.ts-590-      newInvoiceStatus,
+src/alamo/app/invoices/[id]/actions/match.ts-591-      errors: result.errors,
+src/alamo/app/invoices/[id]/actions/match.ts-592-    },
+src/alamo/app/invoices/[id]/actions/match.ts-593-  })
+src/alamo/app/invoices/[id]/actions/match.ts-594-
+src/alamo/app/invoices/[id]/actions/match.ts-595-  // =============================================================
+src/alamo/app/invoices/[id]/actions/match.ts-596-  // STAGE 5 HANDOFF — runBillingCalc on any newly-PENDING lines.
+src/alamo/app/invoices/[id]/actions/match.ts-597-  //
+src/alamo/app/invoices/[id]/actions/match.ts-598-  // Called unconditionally: even with zero auto-matches this run,
+src/alamo/app/invoices/[id]/actions/match.ts-599-  // prior runs may have left PENDING lines behind (retry, partial
+src/alamo/app/invoices/[id]/actions/match.ts-600-  // failure). billing-calc.ts is idempotent — it only touches
+src/alamo/app/invoices/[id]/actions/match.ts-601-  // lines that are still PENDING + AUTO_MATCHED/MANUAL_ASSIGNED.
+src/alamo/app/invoices/[id]/actions/match.ts-602-  // =============================================================
+src/alamo/app/invoices/[id]/actions/match.ts-603-
+src/alamo/app/invoices/[id]/actions/match.ts-604-  if (totalMatched > 0) {
+src/alamo/app/invoices/[id]/actions/match.ts-605-    try {
+src/alamo/app/invoices/[id]/actions/match.ts-606-      const billing = await runBillingCalc(carrierInvoiceId)
+src/alamo/app/invoices/[id]/actions/match.ts-607-      result.billingCalc = billing
+src/alamo/app/invoices/[id]/actions/match.ts-608-      result.billingCalculated = billing.approved
+src/alamo/app/invoices/[id]/actions/match.ts-609-
+src/alamo/app/invoices/[id]/actions/match.ts-610-      if (billing.errors.length > 0) {
+--
+src/alamo/app/invoices/[id]/actions/billing-calc.ts:285:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-286-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-287-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-288-    action_type: 'BILLING_CALC_RUN',
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-289-    metadata: {
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-290-      total_eligible: result.total_eligible,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-291-      approved: result.approved,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-292-      skipped: result.skipped,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-293-      errors_count: result.errors.length,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-294-      errors: result.errors.slice(0, 20),
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-295-      started_at: result.started_at,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-296-      completed_at: result.completed_at,
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-297-    },
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-298-  })
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-299-
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-300-  return result
+src/alamo/app/invoices/[id]/actions/billing-calc.ts-301-}
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:234:      await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-235-        entity_type: 'invoice_line_items',
+src/alamo/app/invoices/[id]/actions/resolve.ts-236-        entity_id: lineItem.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-237-        action_type: 'RESOLVE_PARTIAL_FAILURE',
+src/alamo/app/invoices/[id]/actions/resolve.ts-238-        metadata: {
+src/alamo/app/invoices/[id]/actions/resolve.ts-239-          message: 'shipment_ledger written but invoice_line_items update failed',
+src/alamo/app/invoices/[id]/actions/resolve.ts-240-          ledger_id: newLedgerRow.id,
+src/alamo/app/invoices/[id]/actions/resolve.ts-241-          error: updateError.message,
+src/alamo/app/invoices/[id]/actions/resolve.ts-242-        },
+src/alamo/app/invoices/[id]/actions/resolve.ts-243-      })
+src/alamo/app/invoices/[id]/actions/resolve.ts-244-      result.errors.push(
+src/alamo/app/invoices/[id]/actions/resolve.ts-245-        `Partial failure on line ${lineItem.id}: ledger written ` +
+src/alamo/app/invoices/[id]/actions/resolve.ts-246-        `(${newLedgerRow.id}) but line update failed — ${updateError.message}`
+src/alamo/app/invoices/[id]/actions/resolve.ts-247-      )
+src/alamo/app/invoices/[id]/actions/resolve.ts-248-      continue
+src/alamo/app/invoices/[id]/actions/resolve.ts-249-    }
+src/alamo/app/invoices/[id]/actions/resolve.ts-250-
+src/alamo/app/invoices/[id]/actions/resolve.ts-251-    if (!updateData || updateData.length === 0) {
+src/alamo/app/invoices/[id]/actions/resolve.ts-252-      // Line was no longer HELD by the time the update ran. This is
+src/alamo/app/invoices/[id]/actions/resolve.ts-253-      // usually a double-submit — not an error, just a no-op.
+src/alamo/app/invoices/[id]/actions/resolve.ts-254-      continue
+src/alamo/app/invoices/[id]/actions/resolve.ts-255-    }
+src/alamo/app/invoices/[id]/actions/resolve.ts-256-
+src/alamo/app/invoices/[id]/actions/resolve.ts-257-    result.resolved++
+src/alamo/app/invoices/[id]/actions/resolve.ts-258-  }
+src/alamo/app/invoices/[id]/actions/resolve.ts-259-
+src/alamo/app/invoices/[id]/actions/resolve.ts-260-  // =============================================================
+src/alamo/app/invoices/[id]/actions/resolve.ts-261-  // STEP 4: STAGE 5 HANDOFF — runBillingCalc on newly-PENDING lines
+src/alamo/app/invoices/[id]/actions/resolve.ts-262-  //
+src/alamo/app/invoices/[id]/actions/resolve.ts-263-  // Safe even if zero lines were just resolved: billing-calc is
+src/alamo/app/invoices/[id]/actions/resolve.ts-264-  // idempotent and a zero-eligible run is a no-op.
+--
+src/alamo/app/invoices/[id]/actions/resolve.ts:319:  await supabase.from('audit_logs').insert({
+src/alamo/app/invoices/[id]/actions/resolve.ts-320-    entity_type: 'carrier_invoices',
+src/alamo/app/invoices/[id]/actions/resolve.ts-321-    entity_id: carrierInvoiceId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-322-    action_type: 'DISPUTE_RESOLVED',
+src/alamo/app/invoices/[id]/actions/resolve.ts-323-    metadata: {
+src/alamo/app/invoices/[id]/actions/resolve.ts-324-      resolvedBy,
+src/alamo/app/invoices/[id]/actions/resolve.ts-325-      orgId,
+src/alamo/app/invoices/[id]/actions/resolve.ts-326-      carrierCode,
+src/alamo/app/invoices/[id]/actions/resolve.ts-327-      lineItemIds,
+src/alamo/app/invoices/[id]/actions/resolve.ts-328-      resolved: result.resolved,
+src/alamo/app/invoices/[id]/actions/resolve.ts-329-      errors: result.errors,
+src/alamo/app/invoices/[id]/actions/resolve.ts-330-      notes: notes ?? null,
+src/alamo/app/invoices/[id]/actions/resolve.ts-331-      billing_calc_approved: result.billingCalc?.approved ?? 0,
+src/alamo/app/invoices/[id]/actions/resolve.ts-332-    },
+src/alamo/app/invoices/[id]/actions/resolve.ts-333-  })
+src/alamo/app/invoices/[id]/actions/resolve.ts-334-
+src/alamo/app/invoices/[id]/actions/resolve.ts-335-  revalidatePath(`/invoices/${carrierInvoiceId}`)
+src/alamo/app/invoices/[id]/actions/resolve.ts-336-  revalidatePath(`/invoices/${carrierInvoiceId}/disputes`)
+src/alamo/app/invoices/[id]/actions/resolve.ts-337-
+src/alamo/app/invoices/[id]/actions/resolve.ts-338-  result.success = result.resolved > 0
+src/alamo/app/invoices/[id]/actions/resolve.ts-339-  return result
+src/alamo/app/invoices/[id]/actions/resolve.ts-340-}
+
+=== carrier_invoice_formats ===
+
+=== carrier_charge_routing ===
+
+=== notification_preferences ===
+
