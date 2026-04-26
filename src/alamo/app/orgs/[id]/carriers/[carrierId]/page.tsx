@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { formatMarkup } from '@/lib/markup'
 
 export default async function CarrierAccountDetailPage({
   params,
@@ -95,7 +96,7 @@ export default async function CarrierAccountDetailPage({
           {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10, marginBottom: 24 }}>
             {[
-              { label: 'Markup', value: `${(account.markup_percentage * 100).toFixed(1)}%` },
+              { label: 'Markup', value: formatMarkup(account) },
               { label: 'Variance limit', value: `$${account.dispute_threshold.toFixed(2)}` },
               { label: 'Rate cards', value: rateCards?.length ?? 0 },
               { label: 'Rate card pricing', value: account.use_rate_card ? 'on' : 'off' },
