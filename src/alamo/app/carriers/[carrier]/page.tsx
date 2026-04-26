@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { formatMarkup } from '@/lib/markup'
 
 export default async function CarrierDetailPage({
   params,
@@ -21,6 +22,7 @@ export default async function CarrierDetailPage({
       account_nickname,
       carrier_account_mode,
       markup_percentage,
+      markup_flat_fee,
       dispute_threshold,
       use_rate_card,
       is_cactus_account,
@@ -111,7 +113,7 @@ export default async function CarrierDetailPage({
                     </span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
-                    {(account.markup_percentage * 100).toFixed(1)}%
+                    {formatMarkup(account)}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
                     ${account.dispute_threshold.toFixed(2)}

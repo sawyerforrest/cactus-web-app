@@ -1,6 +1,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { formatMarkup } from '@/lib/markup'
 
 export default async function OrgDetailPage({
   params,
@@ -172,7 +173,7 @@ export default async function OrgDetailPage({
                       </span>
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
-                      {(carrier.markup_percentage * 100).toFixed(1)}%
+                      {formatMarkup(carrier)}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--cactus-ink)' }}>
                       ${carrier.dispute_threshold.toFixed(2)}
