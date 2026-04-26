@@ -1145,7 +1145,7 @@ Items 1-2 should complete before any real client onboards (3-week target). Item 
    automatically. Without it, TypeScript noise from the renames will
    linger until the types are updated manually or the CLI is installed.
 
-**After these 4 items: Session B.2 (Client CSV revision, 3-4 hours, spec
+**After these 3 items: Session B.2 (Client CSV revision, 3-4 hours, spec
 already exists at `cactus-session-b2-revision-spec.md` in archives).**
 
 **After B.2: proceed with Stage 6 Rate Engine.**
@@ -1321,7 +1321,7 @@ already exists at `cactus-session-b2-revision-spec.md` in archives).**
 - .select('id').limit(1) for existence checks — never head:true with admin client (silently returns null)
 - ON DELETE CASCADE on cactus_invoice_line_items — deleting cactus_invoices cascades junction cleanup
 - hasApproved billing lock: button disabled when zero APPROVED lines remain
-- Claude Code worktree changes must be cherry-picked to main before dev server picks them up
+- Claude Code worktrees live at `.claude/worktrees/<branch>/` and need their own `node_modules` + `.env.local` to run dev server pre-merge — see `docs/dev-workflow-notes.md`
 - Payment pull always happens before carrier payment — collect Friday, pay carrier Tuesday
 - 3% CC fee is always a visible separate line item, never hidden, waivable per org via Alamo toggle
 - USPS meter balances are client liabilities held by Cactus — not Cactus revenue until consumed
@@ -1583,6 +1583,11 @@ cactus-web-app/
   schema-vs-code field-name drift; run before major sessions and after
   migrations. Created 2026-04-20 after audit_logs silent failure was
   discovered.
+- `docs/dev-workflow-notes.md` — dev workflow rituals, including how to
+  test Claude Code worktree branches pre-merge (worktrees at
+  `.claude/worktrees/<branch>/` need their own `node_modules` and
+  `.env.local`). Created 2026-04-25 after first pre-merge worktree test
+  during Session C.1.
 
 ### GitHub
 - Main OS: https://github.com/sawyerforrest/cactus-web-app
