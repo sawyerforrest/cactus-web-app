@@ -2,7 +2,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import Decimal from 'decimal.js'
 import Sidebar from '@/components/Sidebar'
-import MarkupConfigSection from './MarkupConfigSection'
+import AccountConfigFields from './AccountConfigFields'
 
 export default async function NewCarrierAccountPage({
   params,
@@ -35,6 +35,7 @@ export default async function NewCarrierAccountPage({
     const carrier_code = formData.get('carrier_code') as string
     const carrier_account_mode = formData.get('carrier_account_mode') as string
     const is_cactus_account = formData.get('is_cactus_account') === 'true'
+    const use_rate_card = formData.get('use_rate_card') === 'true'
     const dispute_threshold = new Decimal(formData.get('dispute_threshold') as string).toString()
 
     const markupType = formData.get('markup_type') as 'percentage' | 'flat' | null
@@ -43,18 +44,35 @@ export default async function NewCarrierAccountPage({
     let markup_percentage = '0'
     let markup_flat_fee = '0'
 
-    if (markupType === 'percentage') {
-      const pct = new Decimal(markupValueRaw ?? '0')
-      if (pct.lt(0) || pct.gt(100)) throw new Error('Markup percentage must be between 0 and 100')
-      markup_percentage = pct.div(100).toString()
-    } else if (markupType === 'flat') {
-      const flat = new Decimal(markupValueRaw ?? '0')
-      if (flat.lt(0)) throw new Error('Flat markup fee must be 0 or greater')
-      markup_flat_fee = flat.toString()
+    if (!is_cactus_account) {
+      // DN-9: client-owned accounts must have zero markup. Cactus's value
+      // here is portal access, tracking, claims, and analytics — not billing.
+      if (markupValueRaw && new Decimal(markupValueRaw).gt(0)) {
+        throw new Error(
+          'Client-owned accounts cannot have markup configured. ' +
+          'Cactus value here is portal access, tracking, claims, and analytics.'
+        )
+      }
+    } else if (use_rate_card) {
+      // Rate-card-billed accounts get pricing from the rate card, not from
+      // markup_percentage / markup_flat_fee on the account row.
     } else {
-      throw new Error('Markup type must be "percentage" or "flat"')
+      if (markupType === 'percentage') {
+        const pct = new Decimal(markupValueRaw ?? '0')
+        if (pct.lt(0) || pct.gt(100)) throw new Error('Markup percentage must be between 0 and 100')
+        markup_percentage = pct.div(100).toString()
+      } else if (markupType === 'flat') {
+        const flat = new Decimal(markupValueRaw ?? '0')
+        if (flat.lt(0)) throw new Error('Flat markup fee must be 0 or greater')
+        markup_flat_fee = flat.toString()
+      } else {
+        throw new Error(
+          'Markup type must be "percentage" or "flat" for Cactus-owned accounts not using rate cards.'
+        )
+      }
     }
 
+    // DN-1 defense in depth: UI prevents both > 0; server validates anyway.
     if (new Decimal(markup_percentage).gt(0) && new Decimal(markup_flat_fee).gt(0)) {
       throw new Error('Cannot set both markup_percentage and markup_flat_fee. Choose one markup type.')
     }
@@ -71,7 +89,7 @@ export default async function NewCarrierAccountPage({
         markup_flat_fee: markup_flat_fee as unknown as number,
         dispute_threshold: dispute_threshold as unknown as number,
         is_cactus_account,
-        use_rate_card: false,
+        use_rate_card,
       })
 
     if (error) throw new Error(error.message)
@@ -188,17 +206,8 @@ export default async function NewCarrierAccountPage({
               </select>
             </div>
 
-            {/* Account ownership */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={labelStyle}>Account ownership</label>
-              <select name="is_cactus_account" required style={{ ...inputStyle, appearance: 'none' }}>
-                <option value="true">Cactus account — earn margin</option>
-                <option value="false">Pass-through — no margin</option>
-              </select>
-            </div>
-
-            {/* Markup type + value */}
-            <MarkupConfigSection labelStyle={labelStyle} inputStyle={inputStyle} />
+            {/* Account ownership + rate-card billing + reactive markup section */}
+            <AccountConfigFields labelStyle={labelStyle} inputStyle={inputStyle} />
 
             {/* Dispute threshold */}
             <div style={{ marginBottom: 28 }}>
