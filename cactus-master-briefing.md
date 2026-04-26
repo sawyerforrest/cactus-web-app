@@ -661,6 +661,47 @@ dark-account matching works regardless of write path.
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] Session C.2 (2026-04-26): Flat-markup input on carrier-account
+      creation form + DN-9 client-owned protection + rate-card-hides-markup
+      extension. Resolves DN-8 (form previously lacked flat-markup input —
+      Pineridge had to be created via direct DB seed) and DN-9 (form
+      previously allowed non-zero markup on `is_cactus_account = FALSE`
+      accounts, contradicting Section 5's client-owned-pass-through rule).
+      7 source files (3 new: `MarkupConfigSection.tsx`, `AccountConfigFields.tsx`,
+      `src/alamo/lib/markup.ts`; 4 modified: `carriers/new/page.tsx`,
+      `orgs/[id]/page.tsx`, `[carrierId]/page.tsx`, `carriers/[carrier]/page.tsx`).
+      5 commits sequenced per spec on `claude/crazy-shannon-8c6296`
+      (6cbc8fd → 2a79643 → 17479b3 → cd0cd94 → b525422), merged --no-ff
+      to main as 82e6a53 on 2026-04-26. New `formatMarkup()` helper
+      centralizes display logic across three surfaces with conditional
+      output for percentage / flat / rate-card / client-owned states.
+      Decimal.js used at form-input boundary per Rule 1 (no floats);
+      explicit zero-write to unselected markup column matches schema's
+      NOT NULL DEFAULT 0 reality. UX naming refinements made by Claude
+      Code (not in spec): `is_cactus_account` exposed as "Account
+      Ownership" with options like "Cactus account — earn margin",
+      `use_rate_card` exposed as "Billing Source" with "Live carrier
+      rates + markup" vs rate-card options. Better than database-field
+      language. Live verification on 2026-04-26: created four test
+      accounts on a "C2 Test Org" covering all four states; DB writes
+      confirmed via direct query (Test Pct 20 → 0.2000/0.0000, Test
+      Flat 2.50 → 0.0000/2.5000, Test Rate Card → 0.0000/0.0000 with
+      use_rate_card=true, Test Client Owned → 0.0000/0.0000 with
+      is_cactus_account=false). Display verified across all three
+      surfaces. Dry-run before execution surfaced four discoveries vs
+      spec assumptions: (1) no edit form at `[carrierId]/edit` exists —
+      Halt Point #2 inapplicable, (2) `use_rate_card` was not on the
+      form (server action hardcoded false) — added as a real `<select>`,
+      (3) top-level `/carriers/page.tsx` shows aggregate counts only with
+      no per-account markup display, so no fold-in needed, (4) actual
+      `tsc --noEmit` baseline is 11 errors (all pre-existing Supabase
+      generic-error narrowing in `app/invoices/...`), not 2379 — see
+      TS baseline drift entry below for resolution. Zero new TypeScript
+      errors introduced. Spec saved at
+      `docs/session-archives/specs/cactus-session-c2-flat-markup-form-spec.md`;
+      summary at repo root `SESSION-C.2-SUMMARY.md`. Test data (`C2
+      Test Org` + four `Test ...` carrier accounts) left in DB
+      intentionally, to be cleaned up in a future session.
 - [x] Session C.1 (2026-04-25): Schema naming cleanup + address normalization helper.
       Migration v1.7.0 applied — 8 column renames across invoice_line_items (6) and
       locations (2), standardizing on postal_code/line_1/line_2 conventions. Index
@@ -1116,42 +1157,45 @@ dark-account matching works regardless of write path.
 ### Next task — START HERE next session
 
 **5 Logistics is signed (2026-04-24). First DHL eCommerce invoice arrives
-Monday May 11, 2026 (16 days from today). Manual-processing path agreed for
-cycle 1; production pipeline target is cycle 2 (mid-June or so).**
+Monday May 11, 2026 (15 days from today). Manual-processing path agreed
+for cycle 1; production pipeline target is cycle 2 (mid-June or so).**
 
 Updated build queue, in priority order:
 
-**1. Session C.2 — Flat-markup input + DN-9 + rate-card-hides-markup (60-75 min)**
-   Spec at `cactus-session-c2-flat-markup-form-spec.md` (revised 2026-04-25
-   after architectural review). Resolves DN-8 and DN-9. Adds shared
-   `formatMarkup()` helper applied across 3-4 display surfaces. Form now
-   correctly handles all four account states (Cactus-owned percentage,
-   Cactus-owned flat, Cactus-owned rate-card, client-owned).
-
-**2. Dark-path adjustment-only fix (30 min)**
-   Carried forward from previous queue. Extends `match.ts` and `resolve.ts`
-   dark-account branches to load `is_adjustment_only` and pass to
+**1. Dark-path adjustment-only fix (30 min)**
+   Carried forward. Extends `match.ts` and `resolve.ts` dark-account
+   branches to load `is_adjustment_only` and pass to
    `computeSingleCeiling()`. Resolves DN-2 outstanding TODO.
 
-**3. Supabase CLI + type regen workflow (30 min)**
-   Carried forward.
+**2. Supabase CLI + type regen workflow (30 min)**
+   Carried forward. Note: post-C.2, the regen may also clear some or
+   all of the 11 lingering `app/invoices/...` errors that are pure
+   Supabase generic-error narrowing noise.
 
-**4. 5 Logistics manual-processing prep (1-2 hours)**
+**3. C.2 test-data cleanup (5 min)**
+   Delete the `C2 Test Org` plus its four `Test ...` carrier accounts
+   left in the database from C.2 verification. Easy via Supabase MCP
+   in any chat session.
+
+**4. 5 Logistics manual-processing prep (1-2 hours, chat session)**
    Build a careful spreadsheet template for cycle-1 manual invoicing:
    rate-card lookup logic in formulas, surcharge passthrough, DHL invoice
    ingest checklist, Warehance fee tracking. Source the rate card from
-   Sawyer's structured rate card file; this also becomes the seed file for
-   the rate-card architecture session.
+   Sawyer's structured rate card file; this also becomes the seed file
+   for the rate-card architecture session. Recommend running this as a
+   chat session with Claude before any code is written.
 
 **5. Session B.2 — Client CSV revision (3-4 hours)**
-   Spec exists at `cactus-session-b2-revision-spec.md`. Carried forward.
+   Spec exists at `docs/session-archives/specs/cactus-session-b2-revision-spec.md`.
+   Carried forward.
 
 **6. Rate-card architecture session (~3-4 hours)**
    New `rate_card_rates` child table (weight × zone × service → rate);
-   billing-calc.ts rate-card branch (replace base_charge from rate card,
+   `billing-calc.ts` rate-card branch (replace base_charge from rate card,
    pass surcharges raw, fallback to carrier_charge passthrough on
-   off-rate-card lookups); seed 5 Logistics rate cards. Must ship before
-   cycle 2 of 5 Logistics invoicing.
+   off-rate-card lookups); seed 5 Logistics rate cards; resolve DN-11
+   auto-flip-on-first-upload behavior. Must ship before cycle 2 of 5
+   Logistics invoicing.
 
 **7. DHL eCommerce parser session (~2-3 hours)**
    `carrier_invoice_formats` seed for DHL eCommerce; validate parser
@@ -1185,11 +1229,20 @@ Updated build queue, in priority order:
   (C.1 added +2 errors, all type-inference noise from un-regenerated
   Supabase types)
 
-- **TS baseline drift investigation** (~30 min)
-  Pre-C.1 dry-run measured 2375 errors against a briefing-stated baseline
-  of ~1640. ~735-error drift is unaccounted for — likely Supabase type-regen
-  artifacts or Next.js 16 upgrade noise. Worth a focused investigation
-  before treating any future baseline as authoritative.
+- **TS baseline drift investigation — RESOLVED 2026-04-26**
+  Resolved during Session C.2 dry-run by accidental measurement. Real
+  `tsc --noEmit` baseline is 11 errors, all pre-existing Supabase
+  generic-error narrowing in `app/invoices/...` files (compiler can't
+  prove the discriminated-union narrowing without explicit guards;
+  zero functional impact, zero billing risk). The 1640 / 2375 / 2379
+  numbers cited in earlier sessions were measuring something different —
+  almost certainly IDE-reported errors with broader project scope
+  (Cursor counts errors across uncompiled paths the actual `tsc`
+  excludes), or earlier baselines that included now-deleted files.
+  Going forward, treat `tsc --noEmit` from repo root with deps installed
+  at `src/alamo/node_modules/` as the canonical baseline. If the 11
+  lingering errors persist after the Supabase type-regen workflow
+  (Next-task item #2) ships, file as a focused cleanup session.
 
 ### Key architectural decisions (record)
 - Carrier invoice is ALWAYS billing source of truth — never label print
@@ -1531,40 +1584,32 @@ RESOLVED 2026-04-25 in Session C.1. Parser now uses shared
 invoice_line_items rows re-normalized to include line_2 data.
 
 ### DN-8 — Carrier-account creation form lacks flat-markup input
-**Status:** OPEN. Will be resolved by Session C.2.
+**Status:** RESOLVED 2026-04-26 in Session C.2 (merge commit 82e6a53).
 
-The `/orgs/[id]/carriers/new` form INSERT does not set `markup_flat_fee`.
-Schema has the column; UI has no input. Flat-markup accounts today must
-be created via direct DB seed (how Pineridge was set up). This blocks
-onboarding a real flat-markup client through the UI.
-
-Resolution (C.2 Session):
-- Radio toggle for Percentage vs Flat fee markup type
-- Conditional inputs based on selection
-- DN-1 validation (rejects both markup fields set at save time)
-- Updates /orgs/[id] carrier-accounts list to show "flat $X.XX" instead
-  of "0.0%" when flat-markup is configured
+The `/orgs/[id]/carriers/new` form now supports flat-markup input via a
+radio toggle (Percentage vs Flat fee) inside a reactive `MarkupConfigSection`
+client component. Server action routes payload by markup type, writes
+explicit zeros to the unselected column, and validates the DN-1
+both-fields-set rule defensively. New `formatMarkup()` helper in
+`src/alamo/lib/markup.ts` standardizes display across three surfaces
+(org detail, carrier detail, sidebar list). DB writes verified live
+across all four account states; display verified across all three
+surfaces.
 
 ### DN-9 — Form allows non-zero markup on client-owned accounts
-**Status:** OPEN. Will be resolved by Session C.2.
+**Status:** RESOLVED 2026-04-26 in Session C.2 (merge commit 82e6a53).
 
-The `/orgs/[id]/carriers/new` form permits admins to create a carrier account
-with `is_cactus_account = FALSE` and non-zero markup. Per Section 5,
-client-owned lassoed accounts must have 0% / $0 markup — Cactus's value
-there is portal access, tracking, claims, and analytics, not billing
-reselling. The new flat-fee input from DN-8 expands the surface area for
-this misconfiguration; resolving DN-8 without resolving DN-9 ships a
-wider bug surface than today's. Surfaced during architectural review of
-the C.2 spec on 2026-04-25.
-
-**Resolution (C.2 Session):**
-- Hide the markup section in the form when `is_cactus_account = FALSE`
-- Server-side zero-force both markup columns when client-owned, regardless
-  of submitted form data
-- Reject any payload posting non-zero markup with `is_cactus_account = FALSE`
-  (defense in depth)
-- Bonus: same hide-and-zero-force logic applies when `use_rate_card = TRUE`
-  (covers rate-card-billed accounts cleanly for 5 Logistics onboarding)
+The carrier-account form now hides the markup section when
+`is_cactus_account = FALSE` and replaces it with a one-liner explaining
+that client-owned accounts pass the carrier bill directly. Server-side
+zero-forces both markup columns regardless of submitted form data, and
+rejects any payload posting non-zero markup with `is_cactus_account = FALSE`
+as defense-in-depth. The same hide-and-zero-force logic applies when
+`use_rate_card = TRUE`, which closes the rate-card-billed account state
+cleanly for 5 Logistics onboarding. State logic centralized in the
+`AccountConfigFields` client component. Verified live: Test Client Owned
+account written with markup_percentage=0 and markup_flat_fee=0 despite
+the form being submittable.
 
 ### DN-10 — Partner per-shipment fees (rev-share with WMS platforms)
 **Status:** OPEN — active commitment with Warehance; expected pattern with
@@ -1648,6 +1693,48 @@ Rule 3 (Single-Ceiling, one markup per shipment) and DN-1 make that path
 actively wrong. Partner fees are a separate financial entity from markup
 — different scope, different recipient, different lifecycle, different
 accounting treatment (COGS vs revenue).
+
+### DN-11 — Rate-card lifecycle on org_carrier_accounts
+**Status:** OPEN. Address during the rate-card architecture session
+(Next-task item #6).
+
+Today `use_rate_card` is set manually via the carrier-account form
+(C.2 added this as a real toggle; previously hardcoded false in the
+server action with no UI exposure). Two lifecycle improvements queued
+for the rate-card architecture session:
+
+- **Auto-flip on first rate-card upload:** when a rate card is added
+  to a carrier account where `use_rate_card = FALSE`, automatically
+  flip the parent account's flag to TRUE. Convenience — admin should
+  not have to remember a two-step setup (create account → flip flag →
+  upload rate card).
+- **Manual toggle preserved:** the form keeps the manual toggle for
+  cases like (a) flat-markup migration where the customer changes
+  pricing model from rate-card to flat or percentage, (b) temporary
+  deactivation while rate cards are being revised, (c) historical
+  preservation — turning rate cards "off" without deleting them.
+- **Rate cards preserved on toggle-off:** `use_rate_card = FALSE` does
+  NOT cascade to `rate_cards`. Cards stay in the table, recoverable.
+  Use `rate_cards.deprecated_date` to mark them inactive if needed.
+  Rate-card data is additive — new rows with new effective_date, never
+  overwrites — so historical billing audit trail is preserved through
+  toggle changes.
+
+**Implementation options (decide during architecture session):**
+- Postgres trigger on `rate_cards INSERT` checks parent account's
+  `use_rate_card`; if FALSE and this is the first non-deprecated rate
+  card for the account, flip to TRUE.
+- Application-layer alternative: add the auto-flip logic to whatever
+  Alamo route handles rate-card upload (decide once UI exists).
+
+The trigger approach is more durable (works regardless of which path
+inserts the rate card — UI, seed, future API); the application-layer
+approach is more visible in code review.
+
+**Surfaced during:** Session C.2 review on 2026-04-26, after Claude
+Code added `use_rate_card` as a real form toggle (it had been hardcoded
+false in the server action). Sawyer flagged the workflow ambiguity:
+which comes first, the toggle or the rate cards?
 
 ---
 
