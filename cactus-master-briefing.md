@@ -661,6 +661,18 @@ dark-account matching works regardless of write path.
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] Stripe account creation + Mercury linking (2026-04-27): Created
+      Stripe account under Cactus Logistics LLC; linked Mercury checking
+      and savings; enabled automatic daily payouts to Mercury checking.
+      Account active in test mode (production switchover deferred to
+      Stripe integration session). API keys (publishable + secret, test
+      and live) noted in Stripe dashboard, will land in `.env.local`
+      when integration begins. Decision logged as DN-12 (Stripe + future
+      QuickBooks Online). ACH Direct Debit activation, statement
+      descriptor configuration, and webhook endpoint setup are
+      remaining Stripe-side TODOs that don't block other work. No
+      Cactus codebase changes from this milestone — pure account
+      provisioning.
 - [x] Session C.2 (2026-04-26): Flat-markup input on carrier-account
       creation form + DN-9 client-owned protection + rate-card-hides-markup
       extension. Resolves DN-8 (form previously lacked flat-markup input —
@@ -1149,7 +1161,7 @@ dark-account matching works regardless of write path.
 - [ ] Contact UniUni, GOFO, ShipX — after leaving BukuShip
 - [ ] DHL eCommerce sales outreach — after leaving BukuShip (60-90 day lead time)
 - [ ] Book Utah business attorney consult — needed before first client signs
-- [ ] Create Stripe account under LLC — needed before first real invoice is due
+- [x] Create Stripe account under LLC — completed 2026-04-27, Mercury linked, daily payouts active, see DN-12
 - [ ] QuickBooks Online account — needed for Stage 5+ invoice sync
 - [ ] Warehance API partnership conversation — initiate before leaving BukuShip
 - [x] Configure Formspree form ID in cactus-marketing/index.html — live and working
@@ -1416,7 +1428,6 @@ Updated build queue, in priority order:
 
 ### Open questions / decisions still needed
 - USPS: direct PC Postage vs licensed reseller (Stamps.com etc)
-- Payment processor: Stripe vs Fortis
 - QuickBooks Online API integration approach
 - Dispute threshold default ($2.00 currently in schema)
 - DHL eCommerce Americas: requires sales conversation
@@ -1429,7 +1440,6 @@ Updated build queue, in priority order:
 - carrier_invoice_formats needs GRANT ALL to service_role on new deployments
 - Warehance tracking: does Warehance poll Cactus or does Cactus push via webhook?
 - API key auth: confirm Warehance expects Bearer token or custom header format
-- Stripe vs Fortis: final payment processor decision needed before Phase 2 payment build
 - USPS: direct PC Postage vs licensed reseller path (Stamps.com etc.) — decision needed Phase 2
 
 ---
@@ -1736,6 +1746,137 @@ Code added `use_rate_card` as a real form toggle (it had been hardcoded
 false in the server action). Sawyer flagged the workflow ambiguity:
 which comes first, the toggle or the rate cards?
 
+### DN-12 — Payment processing architecture (Stripe + future QuickBooks)
+**Status:** PARTIALLY RESOLVED 2026-04-27. Stripe account live;
+integration architecture session deferred (target: after rate-card
+architecture session). QuickBooks Online deferred until 2-3 manual
+cycles processed and chart of accounts is clearer.
+
+**Decision:** Stripe for client invoice collection (ACH Direct Debit
+primary, card fallback with surcharging passed to client). QuickBooks
+Online for accounting layer when the time comes. Single processor,
+single accounting platform — no multi-tool sprawl in Phase 1.
+
+This decision supersedes earlier "Stripe vs Fortis" framing in the
+briefing's Open Questions section.
+
+**Why Stripe over Modern Treasury / Dwolla / others:**
+- ACH Direct Debit at 0.8% capped at $5 per transaction is structurally
+  correct for B2B invoice volumes ($10K-$30K+ per cycle for 5 Logistics).
+  At 10 clients × ~$20K weekly average over 6 months, processing fees
+  total ~$1,200 — negligible at this stage.
+- Native card surcharging support in US states that allow it (Utah does;
+  must verify for each client's state of incorporation before first
+  invoice — California, Connecticut, Massachusetts have restrictions).
+- International expansion path exists (135+ currencies) without migration
+  when Canadian or EU 3PLs onboard later.
+- API and webhook model fits Cactus's "generate invoice in our system,
+  use processor as rails only" approach. We are NOT using Stripe
+  Invoicing — Cactus generates the invoice; Stripe is the payment rails.
+- Modern Treasury is structurally better for bank-rail-heavy B2B at scale
+  but is enterprise-priced and assumes multi-bank infrastructure Cactus
+  doesn't have. Revisit at $5M+ ARR / 30+ clients / post-DN-10 partner-fee
+  architecture live.
+- Dwolla is ACH-only; would force a second processor for card fallback.
+  Worse stack complexity, no compensating benefit.
+
+**Why QuickBooks Online over Xero:**
+- US-based accountant ecosystem is overwhelmingly QuickBooks. Future
+  fractional CFO or CPA will assume QBO. Xero's strengths (international,
+  unlimited users, cleaner UI) don't apply to Cactus's current stage.
+- Stripe ↔ QBO native integration is mature; reconciles deposits and
+  fees correctly.
+
+**Stripe account setup (completed 2026-04-27):**
+- Account created at stripe.com under Cactus Logistics LLC
+- Mercury checking + savings linked
+- Automatic daily payouts enabled (Mercury checking is payout destination)
+- Test mode active by default; production switchover happens once,
+  intentionally, when the integration session ships
+- API keys (publishable + secret, separate for test and live) noted in
+  Stripe dashboard → Developers; will land in `.env.local` when integration
+  starts. Never committed to git.
+
+**Stripe setup still TODO (not blocking, do when ready):**
+- Activate ACH Direct Debit (Settings → Payment methods). Stripe may
+  request additional business verification before approval — volume
+  estimates, customer base description. Worth doing soon so it's ready
+  when 5 Logistics needs to authorize.
+- Set statement descriptor (Settings → Business → Public details) to
+  something recognizable like "CACTUS LOGISTICS" so client bank
+  statements don't read as suspicious withdrawals.
+- Configure webhook endpoint (Settings → Developers → Webhooks) when
+  the Cactus webhook handler is built. URL will be
+  `https://[domain]/api/stripe/webhooks`. Use Stripe CLI for local-dev
+  webhook forwarding during integration work.
+
+**Integration architecture (deferred to its own session):**
+The Cactus-Stripe integration is non-trivial and deserves a dedicated
+architecture session. Sketch of what it will need to address:
+
+- **Client onboarding flow:** new client triggers a Stripe Setup Intent;
+  client receives a hosted-by-Stripe authorization link; client enters
+  bank credentials (typically via Plaid integration Stripe wraps); client
+  signs electronic NACHA mandate; Stripe stores tokenized PaymentMethod
+  attached to a Customer object.
+- **`client_payment_methods` table** (new): links Cactus organizations to
+  their Stripe Customer ID, default PaymentMethod ID, mandate status,
+  authorization date, last verified date. Tracks the authorization
+  lifecycle Cactus-side so the app knows which clients can be auto-pulled
+  vs which need re-authorization.
+- **`/api/invoice` endpoint:** at invoice creation time, create a Stripe
+  PaymentIntent referencing the stored PaymentMethod and confirm it
+  immediately ("off-session" payment). Money lands in Stripe balance in
+  3-5 business days, then payouts to Mercury daily.
+- **Webhook handler:** subscribe to `payment_intent.succeeded`,
+  `payment_intent.payment_failed`, `mandate.updated` (revocation),
+  `payout.paid`. On succeeded, mark `client_invoices.payment_status =
+  PAID` + write `payment_received_at` + insert reconciliation row. On
+  failed, flag invoice for manual follow-up + email client a fresh
+  authorization link + offer card fallback. On mandate revoked, flag
+  client account as needing re-authorization.
+- **Card fallback path:** when ACH fails or for one-off card payments,
+  generate per-invoice payment link (Stripe Checkout or Payment Link
+  product). Surcharge added at checkout per state law. Card payments
+  settle faster (next business day) but cost ~3% — pass-through to client.
+- **Reconciliation against Mercury deposits:** Stripe payouts to Mercury
+  show as aggregate deposits (multiple invoice payments combined into
+  one ACH credit). Cactus needs to reconcile each Mercury deposit
+  against the underlying Stripe invoice payments via `payout.paid`
+  webhook. Critical for accounting accuracy and future QBO sync.
+- **`payment_status` lifecycle on `client_invoices`:** new column or
+  enum — UNPAID → PROCESSING → PAID, with FAILED branch and RETRY
+  state. Defines invoice state machine for the app to render correctly
+  and for Mercury reconciliation to match against.
+
+**Mercury cash flow architecture (also deferred):** Mercury supports
+multiple checking accounts under one business relationship (functionally
+sub-accounts). When DN-10 partner-fee architecture lands, recommend
+splitting cash into: Main operating, Carrier payables, Partner payables,
+Tax reserve, Operating reserve / runway. Current state (single checking
++ savings) is fine for Phase 1 with one client; revisit when adding
+client #2 or when partner-fee architecture ships, whichever comes
+first.
+
+**Open before integration session:**
+- Confirm 5 Logistics will accept ACH Direct Debit pulls (some clients
+  are push-only by policy). If push-only, integration architecture
+  changes — Cactus needs a receive-only flow with reconciliation by
+  invoice reference.
+- Verify Utah state law on card surcharging (last known: allowed) and
+  spot-check 5 Logistics' state of incorporation.
+- Decide whether to use Stripe Customer Portal for clients to manage
+  their own payment methods, or build a Cactus-portal-native flow. Tradeoff:
+  Stripe Portal is free and battle-tested; Cactus-native is more cohesive
+  UX but more code to maintain.
+
+**Sequencing in build queue:**
+Stripe integration session sits after rate-card architecture and DHL
+parser sessions. May 11 5 Logistics first invoice will be processed
+manually (cycle 1 manual processing already agreed). Cycle 2 target is
+mid-June; Stripe integration must ship before cycle 2 to avoid manual
+processing creep.
+
 ---
 
 ## 13. BUSINESS FORMATION STATUS
@@ -1748,7 +1889,7 @@ which comes first, the toggle or the rate cards?
 | Utah TAP account | ✅ Opened at tap.tax.utah.gov |
 | Mercury bank account | ⏳ Applied — pending approval |
 | Chase Ink Preferred | ⏳ Applied — pending approval |
-| Stripe account | ⏳ Needed before first real invoice is due |
+| Stripe account | ✅ Created 2026-04-27 — Mercury linked, daily payouts active |
 | QuickBooks Online | ⏳ Needed for Stage 5+ invoice sync |
 | Attorney consult | ⏳ Book immediately — before first client signs |
 | FedEx developer account | ✅ Integrator ID: 70157774 |
