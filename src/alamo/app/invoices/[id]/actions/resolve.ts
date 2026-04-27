@@ -131,7 +131,7 @@ export async function resolveDisputeGroup({
 
   const { data: lineItems, error: lineItemsError } = await supabase
     .from('invoice_line_items')
-    .select('id, tracking_number, carrier_charge, billing_status, match_location_id')
+    .select('id, tracking_number, carrier_charge, billing_status, match_location_id, is_adjustment_only')
     .in('id', lineItemIds)
     .eq('billing_status', 'HELD')
 
@@ -162,14 +162,10 @@ export async function resolveDisputeGroup({
     // Needed here because shipment_ledger.final_billed_rate is
     // NOT NULL on the schema. For non-Cactus accounts we skip
     // markup entirely.
-    // TODO (DN-2 follow-up): the HELD-line SELECT above does not load
-    // is_adjustment_only, so we can't suppress flat markup for
-    // adjustment-only resolved lines in the shipment_ledger write.
-    // billing-calc.ts handles the invoice_line_items side correctly.
-    // If the case materializes, add is_adjustment_only to the SELECT
-    // and pass { isAdjustmentOnly: lineItem.is_adjustment_only } here.
     const { preCeilingAmount, finalBilledRate } = account.is_cactus_account
-      ? computeSingleCeiling(carrierCharge, markupCtx)
+      ? computeSingleCeiling(carrierCharge, markupCtx, {
+          isAdjustmentOnly: lineItem.is_adjustment_only,
+        })
       : { preCeilingAmount: carrierCharge, finalBilledRate: carrierCharge }
 
     // Create a shipment_ledger row for this manually resolved item.
