@@ -239,7 +239,7 @@ export async function runMatchingEngine(
   // Load all PENDING line items for this invoice
   const { data: lineItems, error: lineItemsError } = await supabase
     .from('invoice_line_items')
-    .select('id, tracking_number, address_sender_normalized, carrier_charge')
+    .select('id, tracking_number, address_sender_normalized, carrier_charge, is_adjustment_only')
     .eq('carrier_invoice_id', carrierInvoiceId)
     .eq('billing_status', 'PENDING')
 
@@ -475,16 +475,10 @@ export async function runMatchingEngine(
     // helper so this file doesn't implement markup math itself — the
     // one authoritative implementation lives in markup-context.ts.
     const markupCtx = deriveMarkupContext(account)
-    // TODO (DN-2 follow-up): the dark-path line SELECT above does not
-    // load is_adjustment_only, so we can't suppress flat markup for
-    // adjustment-only dark-account lines here. billing-calc.ts handles
-    // the invoice_line_items side correctly — this affects only the
-    // shipment_ledger's stored final_billed_rate for the rare case of
-    // a dark adjustment-only line under flat markup. If that case
-    // materializes, add is_adjustment_only to the SELECT and pass
-    // { isAdjustmentOnly: lineItem.is_adjustment_only } here.
     const { preCeilingAmount, finalBilledRate } = account.is_cactus_account
-      ? computeSingleCeiling(carrierCharge, markupCtx)
+      ? computeSingleCeiling(carrierCharge, markupCtx, {
+          isAdjustmentOnly: lineItem.is_adjustment_only,
+        })
       : { preCeilingAmount: carrierCharge, finalBilledRate: carrierCharge }
 
     const trackingNum = lineItem.tracking_number ?? `DARK-${lineItem.id}`
