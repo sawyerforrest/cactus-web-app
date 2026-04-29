@@ -1,0 +1,450 @@
+openapi: 3.0.0
+info:
+  title: DHL eCommerce Americas Manifest API
+  version: 4.0.0
+  description: |
+    The DHL eCommerce Americas Manifest API allows clients to create a manifest for specific packages and retrieve a manifest for a previously submitted request.
+    
+    Create Manifest(s)
+    
+    Choose one of two ways to generate a Manifest:
+    
+    - **Manifest specific open packages** (recommended): Only packages specified in the request are added to a request id and only those items will be manifested.
+    
+    - **Manifest all open items**: The last 20,000 labels generated for the given pickup location are added to a request id and will be manifested. You don't have to pass any package identifiers in the request. An array `products` can be used optionally in the request to closeout by products.
+    
+    This request will take longer to process depending on the number of open packages in the system. This request will also include any packages that you do not intend to manifest or packages that you have already manifested offline using a physical eBOL form.
+
+    `M` - Mandatory  
+    `O` - Optional  
+    `C` - Conditional  
+    `N` - Not Applicable (Used in Request and Response Data schema)
+
+servers:
+  - url: https://api-sandbox.dhlecs.com
+    description: Sandbox Environment
+
+paths:
+  /shipping/v4/manifest:
+    post:
+      tags:
+        - Manifest
+      operationId: createManifest
+      summary: Create a new manifest for specific or all packages
+      description: |
+        Use this request to create a new manifest for specific packages.
+        Here's the package identifiers supported in the request:
+        - `packageIds`
+        - `products`
+        - `dhlPackageIds`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/postRequestBody'
+            examples:
+              examplePackageIds:
+                summary: Request to closeout specific packages using packageIds
+                value:
+                  pickup: "5234567"
+                  manifests:
+                    - packageIds:
+                        - "V4API1684957273459"
+                        - "V4API1684957273460"
+              exampleDhlPackageIds:
+                summary: Request to closeout specific packages using dhlPackageIds
+                value:
+                  pickup: "5234567"
+                  manifests:
+                    - dhlPackageIds:
+                        - "6102010400001402"
+                        - "6102010400001403"
+              exampleProducts:
+                summary: Request to closeout all packages using products as an optional array
+                value:
+                  pickup: "5234567"
+                  products:
+                    - "EXP"
+                    - "MAX"
+                  manifests: []
+                  
+      parameters:
+        - name: User-Agent
+          in: header
+          description: "Information about the client application making the request."
+          schema:
+            type: string
+            default: "eCOMv4 DHLeC Developer portal"
+
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/commonResponse'
+              examples:
+                example1:
+                  summary: Sample response for closeout by all packages or specific packages
+                  value:
+                    timestamp: "2025-10-30T17:49:07.856Z"
+                    requestId: "4c35l2c8-es71-94b8-8bfd-82269d9k0448"
+                    link: "https://api-sandbox.dhlecs.com/shipping/v4/manifest/5234567/4c35l2c8-es71-94b8-8bfd-82269d9k0448"
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/400.0404001"
+                  title:
+                    type: string
+                    example: "Static Validation Failed"
+                  invalidParams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: "packageIds"
+                        path:
+                          type: string
+                          example: "/manifests/0/packageIds"
+                        reason:
+                          type: string
+                          example: "expected type: JSONArray, found: String"
+
+        '401':
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/401.0000008"
+                  title:
+                    type: string
+                    example: "No credentials provided"
+        '500':
+          description: "Internal gateway server error"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/500.0000002"
+                  title:
+                    type: string
+                    example: "Internal gateway server error"
+
+  /shipping/v4/manifest/{pickup}/{requestId}:
+    get:
+      tags:
+        - Manifest
+      operationId: getManifest
+      summary: To download a new manifest or retrieve a manifest for a previously submitted request
+      description: |
+        Use this request to download a manifest or retrieve a manifest for a request that was submitted previously.
+        Here's the identifier used to retrieve a manifest:
+        
+        - `requestId`
+        
+        The error object in the manifestSummary can have the following errors:
+        
+        - 001  Package not found
+        - 002  Package already manifested
+        - 003  Internal package manifest error
+        - 004 Internal System error >> this means the background process failed while trying to add and manifest a package with downstream systems. The package may or may not have been manifested in the downstream system.
+      parameters:
+        - name: pickup
+          in: path
+          required: true
+          description: Pickup account number (M)
+          schema:
+            type: string
+            example: "5234567"
+        - name: requestId
+          in: path
+          required: true
+          description: Request ID for the manifest job. Can be used with the Get Manifest API to download the manifest(s). (M)
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 50
+            example: "b56fe9d0-9bce-4d62-a11f-f8f8635f985a"
+        - name: User-Agent
+          in: header
+          description: "Information about the client application making the request."
+          schema:
+            type: string
+            default: "eCOMv4 DHLeC Developer portal"
+      responses:
+        '200':
+          description: Successful response with manifest details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/commonResponse'
+              examples:
+                example1:
+                  summary: Sample response when manifest is returned
+                  value:
+                    timestamp: "2025-10-31T15:21:55.568Z"
+                    pickup: "5234567"
+                    requestId: "4a35b2c8-kb71-44b8-8bfd-82462d9b0598"
+                    status: "COMPLETED"
+                    link: "https://api-sandbox.dhlecs.com/shipping/v4/manifest/5234567/4a35b2c8-kb71-44b8-8bfd-82462d9b0598"
+                    manifests:
+                      - createdOn: "2025-10-31T13:41:22.700Z"
+                        manifestId: "52345675103113412390"
+                        distributionCenter: "USEWR1"
+                        isInternational: false
+                        total: 1
+                        manifestData: "data"
+                        encodeType: "BASE64"
+                        format: "PDF"
+                    
+                    manifestSummary:
+                      total: 1
+                      invalid:
+                        total: 0
+                example2:
+                  summary: Sample response when user provided incorrect dhlpackageIds
+                  value:
+                    timestamp: "2025-10-31T15:21:55.568Z"
+                    pickup: "5234567"
+                    requestId: "4a35a2c8-eb71-44s8-8bfd-82342e9b0548"
+                    status: "COMPLETED"
+                    link: "https://api-sandbox.dhlecs.com/shipping/v4/manifest/5234567/4a35a2c8-eb71-44s8-8bfd-82342e9b0548"
+                    manifestSummary:
+                      total: 0
+                      invalid:
+                        total: 0
+                        dhlPackageIds:
+                          - dhlPackageId: "2403473948923764"
+                            errorCode: "002"
+                            errorDescription: "Package not found"
+                example3:
+                  summary: Sample response when user provided incorrect packageIds
+                  value:
+                    timestamp: "2025-10-31T15:21:55.568Z"
+                    pickup: "5234567"
+                    requestId: "4a35a2c8-eb71-45b8-8bfd-92262d9b0548"
+                    status: "COMPLETED"
+                    link: "https://api-sandbox.dhlecs.com/shipping/v4/manifest/5234567/4a35a2c8-eb71-45b8-8bfd-92262d9b0548"
+                    manifestSummary:
+                      total: 0
+                      invalid:
+                        total: 0
+                        packageIds:
+                          - packageId: "2403473948923764"
+                            errorCode: "002"
+                            errorDescription: "Package not found"
+
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/400.0404001"
+                  title:
+                    type: string
+                    example: "Static Validation Failed"
+                  invalidParams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: "packageIds"
+                        path:
+                          type: string
+                          example: "/manifests/0/packageIds"
+                        reason:
+                          type: string
+                          example: "expected type: JSONArray, found: String"
+        '401':
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/401.0000008"
+                  title:
+                    type: string
+                    example: "No credentials provided"
+        '415':
+          description: "Content-Type header requested is not supported or header is not present"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/415.0000001"
+                  title:
+                    type: string
+                    example: "Content-Type header requested is not supported or header is not present"
+        '500':
+          description: "Internal gateway server error"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/500.0000002"
+                  title:
+                    type: string
+                    example: "Internal gateway server error"
+
+components:
+  schemas:
+    postRequestBody:
+      type: object
+      properties:
+        pickup:
+          type: string
+          minLength: 4
+          maxLength: 10
+          description: DHL eCommerce pickup account number (M)
+          example: 5316279
+        products:
+          type: array
+          items:
+            type: string
+          description: orderedproductId to be manifested used for close out by all packages (O)
+        manifests:
+          type: array
+          description: Array of packages to be manifested (M)
+          items:
+            type: object
+            properties:
+              packageIds:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 30
+                description: List of package IDs (O)
+                example: {"pPackageIds": ["4042608072665594","4042608072665595"]}
+              dhlPackageIds:
+                type: array
+                items:
+                  type: string
+                  minLength: 1
+                  maxLength: 16
+                description: List of DHL package IDs (O)
+                example: {"dhlPackageIds": ["6102010400001402","6102010400001403"]}
+
+    commonResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          minLength: 1
+          maxLength: 30
+          example: "2025-10-31T15:21:55.568Z"
+          description: Timestamp of the response; ISO-8601 date/time format. (M)
+        pickup:
+          type: string
+          example: "5234567"
+          maxLength: 10
+          description: DHL eCommerce pickup account number (M)
+        requestId:
+          type: string
+          example: "4a36l2c8-ek71-44b0-8bdd-82262d9b0548"
+          minLength: 1
+          maxLength: 100
+          description: DHL eCommerce manifest request ID (M)
+        status:
+          type: string
+          example: "COMPLETED"
+          minLength: 1
+          maxLength: 20
+          description: Status of the manifest request (M)
+        link:
+          type: string
+          example: "https://api-sandbox.dhlecs.com/shipping/v4/manifest/5234567/4a36l2c8-ek71-44b0-8bdd-82262d9b0548"
+          minLength: 1
+          maxLength: 200
+          description: API link to access the driver summary manifest documents once created (M)
+        manifests:
+          type: array
+          description: Manifest details (O)
+          items:
+            type: object
+            properties:
+              createdOn:
+                type: string
+                description: The date and time the manifest document was created in UTC format. (M)
+                example: "2019-11-26T16:52:07+0000"
+              manifestId:
+                type: string
+                example: "40931443"
+                minLength: 1
+                maxLength: 20
+                description: Manifest ID (M)
+              distributionCenter:
+                type: string
+                example: "USRDU1"
+                maxLength: 6
+                description: Distribution center (M)
+              isInternational:
+                type: boolean
+                enum:
+                  - true
+                  - false
+                example: false
+                description: International destination flag (M)
+              total:
+                type: integer
+                example: 10
+                description: Number of packages in the manifest (M)
+              manifestData:
+                type: string
+                example: "base64EncodedPDFString"
+                minLength: 1
+                maxLength: 100000
+                description: Encoded manifest document in PDF format (M)
+              encodeType:
+                type: string
+                example: "base64"
+                minLength: 1
+                maxLength: 10
+                description: Encoding type (M)
+              format:
+                type: string
+                example: "PDF"
+                minLength: 1
+                maxLength: 10
+                description: Format of the manifest document (M)
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: This API uses OAuth 2 with the client-credentials grant flow.
+      flows:
+        clientCredentials:
+          tokenUrl: https://api-sandbox.dhlecs.com/auth/v4/accesstoken
+          scopes: {}
+security:
+  - OAuth2: []

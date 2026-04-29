@@ -1,0 +1,2473 @@
+openapi: 3.0.0
+info:
+  title: DHL Label API
+  version: 4.0.0
+  description: |
+    DHL Label API enables clients to create shipping labels for domestic and international shipments, allowing for easy integration into shipping workflows.
+
+    Please note, account specific information such as Pickup Account Number and Distribution Center will be provided to you via a DHL eCommerce Onboarding Form.
+
+    Minimum information needed to generate a label:
+      - Your pickup account number
+      - Distribution Center
+      - Ordered Product ID
+      - Consignee Address
+      - Return Address
+      - Unique Package Id
+      - Weight and Weight UOM of the package
+
+    Note: Rates are available from API when explicitly requested in `orderedProductId` for BPM products.
+
+    `APO/FPO/DPO shipments`
+
+    APO, FPO, DPO and non‑continental U.S. locations are serviceable by DHL eCommerce.
+    Although these shipments are classified as Domestic, they require the `customsDetails` array—similar to International shipments (max 5 elements).
+
+    For APO/FPO/DPO shipments:
+      - country must be "US"
+      - state must be "AA", "AE", or "AP"
+      - city must be "APO", "FPO", or "DPO"
+
+    Additional rules:
+      - Dangerous Goods not supported
+      - Shipment value ≤ $400 USD
+
+    The orderedProductId field supports:
+      - Ground Advantage: GND
+      - Bounded Printed Matter: BGN, BEX
+      - Parcel Select: MAX, EXP
+
+    Resulting label includes a shipping label with an integrated customs form.
+
+     `M- Mandatory  O- Optional  C- Conditional  N- Not Applicable`
+servers:
+- url: https://api-bat.dhlecs.com
+  description: Sandbox Environment
+paths:
+  /shipping/v4/label:
+    post:
+      tags:
+      - Label
+      operationId: createLabel
+      summary: Create a shipping label (Domestic or International)
+      description: "Use this request to create a single label for any US Domestic\
+        \ or International Product.\nHere's the minimum information you need to generate\
+        \ a label:\n- Your pickup Account number\n- Distribution Center\n- Ordered\
+        \ Product ID\n- Consignee Address\n- Return Address\n- Unique Package Id\n\
+        - Weight and Weight UOM of Package\n- Request Description\n\n  Remove shipperAddress,pickupAddress\
+        \ and customsDetails from the Request body while generating a Domestic Label.\n\
+        \  \n  AUTHORIZATION Bearer Token\n- This request is using Bearer Token from\
+        \ collection DHL eCommerce Americas API\n\n- HEADERS\n  - Content-Type: application/json\n\
+        - PARAMS\n  - format: ZPL or PNG or PDF\n"
+      parameters:
+      - name: format
+        in: query
+        required: true
+        description: The format of the label. Acceptable values are ZPL, PNG, and
+          PDF.
+        schema:
+          type: string
+          enum:
+          - ZPL
+          - PNG
+          - PDF
+      - name: User-Agent
+        in: header
+        description: Information about the client application making the request.
+        schema:
+          type: string
+          default: eCOMv4 DHLeC Developer portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: '#/components/schemas/DomesticLabel'
+              - $ref: '#/components/schemas/InternationalLabel'
+            
+              discriminator:
+                    propertyName: labelType
+                    mapping:
+                      domestic: '#/components/schemas/DomesticLabel'
+                      international: '#/components/schemas/InternationalLabel'
+            examples:
+              domesticExample:
+                summary: Sample Domestic Label Request
+                value:
+                  pickup: "5234567"
+                  distributionCenter: "USRDU1"
+                  orderedProductId: "GND"
+                  consigneeAddress:
+                    name: "John Doe"
+                    companyName: "Doe Inc."
+                    address1: "5923 Peachtree Industrial Blvd"
+                    address2: "Suite 100"
+                    city: "Norcross"
+                    state: "GA"
+                    country: "US"
+                    postalCode: "30024"
+                    email: "2@y.com"
+                    phone: "44423440348"
+                    deliveryInstructions: "Enter your instructions"
+                    isBusiness: false
+                    idNumber: "S85795ED4"
+                    idType: 1
+                    taxId: "90000230082958130"
+                    taxIdType: 1
+                  returnAddress:
+                    name: "Dave Bloggs"
+                    companyName: "Joe Inc."
+                    address1: "4552 OLD DIXIE HWY"
+                    address2: "Near Pixar road"
+                    address3: "Pixar"
+                    city: "Baltimore"
+                    state: "MD"
+                    country: "US"
+                    postalCode: "30024"
+                    email: "2@y.com"
+                    phone: "44423440348"
+                  packageDetail:
+                    packageId: "V4-TET-100397983738"
+                    packageDescription: "test package desc"
+                    packageReference: "test"
+                    orderSource: "www.shopify.com"
+                    contentCategory: "01"
+                    weight:
+                      value: 10
+                      unitOfMeasure: "OZ"
+                    service: "DELCON"
+                    serviceEndorsement: "1"
+                    billingReference1: "test bill ref 1"
+                    billingReference2: "test bill ref 2"
+                    customLabelText1: "sampletext1"
+                    customLabelText2: "sampletext2"
+                    shippingCost:
+                      currency: "USD"
+                      freight: 4
+                      declaredValue: 50
+                      insuredValue: 50
+                      tax: 10
+              apoexample:
+                summary: Sample APO/FPO/DPO Label Request
+                value:
+                  pickup: "5234567"
+                  distributionCenter: "USCVG1"
+                  orderedProductId: "GND"
+                  consigneeAddress:
+                    name: "John Doe"
+                    address1: "Unit 2050"
+                    address2: "Box 4190"
+                    city: "APO"
+                    state: "AA"
+                    country: "US"
+                    postalCode: "09123"
+                    email: "customer@gmail.com"
+                    phone: "942-652-6469"
+                  returnAddress:
+                    name: "Harry Paul"
+                    companyName: "Paul Retailers"
+                    address1: "5923 Peachtree Blvd"
+                    city: "Norcross"
+                    state: "GA"
+                    country: "US"
+                    postalCode: "14240"
+                    email: "return@gmail.com"
+                    phone: "443-415-8694"
+                  shipperAddress:
+                    name: "Harry Paul"
+                    companyName: "Paul Retailers"
+                    address1: "5923 Peachtree Blvd"
+                    city: "Norcross"
+                    state: "GA"
+                    country: "US"
+                    postalCode: "14240"
+                    email: "return@gmail.com"
+                    phone: "443-415-8694"
+                  packageDetail:
+                    packageId: "TEST1234"
+                    packageDescription: "Hoodies and Gaming"
+                    weight:
+                      value: 1.21
+                      unitOfMeasure: "LB"
+                    dimension:
+                      length: 13.0
+                      width: 10.0
+                      height: 6.0
+                      unitOfMeasure: "IN"
+                      packageType: "1"
+                    shippingCost:
+                      currency: "USD"
+                      dutiesPaid: true
+                      insuredValue: 340.50
+                      declaredValue: 340.50
+                    service: "DELCON"
+                    serviceEndorsement: "2"
+                    billingReference1: "test bill ref1"
+                    billingReference2: "test bill ref2"
+                    customLabelText1: "sampletext1"
+                    customLabelText2: "sampletext2"
+                  customsDetails:
+                    - itemDescription: "Uniqlo– Sweat Oversized Hoodie"
+                      countryOfOrigin: "US"
+                      hsCode: "6110.9000"
+                      packagedQuantity: 2
+                      itemValue: 110.50
+                      currency: "USD"
+                      skuNumber: "BLK-001"
+
+                    - itemDescription: "Nintendo Switch Lite–Turquoise"
+                      countryOfOrigin: "US"
+                      hsCode: "9504.50.00"
+                      packagedQuantity: 1
+                      itemValue: 230.0
+                      currency: "USD"
+                      skuNumber: "123669"
+              internationalexample:
+                summary: Sample International Label Request
+                value:
+                  pickup: "5234567"
+                  distributionCenter: "USRDU1"
+                  orderedProductId: "PLT"
+                  consigneeAddress:
+                    name: "John Doe"
+                    companyName: "Doe Inc."
+                    address1: "5923 Peachtree Industrial Blvd"
+                    address2: "Suite 100" 
+                    address3: St 
+                    city: "Norcross"
+                    state: "ON"
+                    country: "CA"
+                    postalCode: "96162"
+                    email: "2@y.com"
+                    phone: "44423440348"
+                    deliveryInstructions: "Enter your instructions"
+                    isBusiness: false
+                    idNumber: "S85795ED4"
+                    idType: 1
+                    taxId: "90000230082958130"
+                    taxIdType: 1
+                  returnAddress:
+                    name: "Dave Bloggs"
+                    companyName: "Joe Inc."
+                    address1: "4552 OLD DIXIE HWY"
+                    address2: "Near Pixar road"
+                    address3: "Pixar"
+                    city: "Baltimore"
+                    state: "MD"
+                    country: "US"
+                    postalCode: "30024"
+                    email: "2@y.com"
+                    phone: "44423440348"
+                  shipperAddress:
+                    name: "John K"
+                    companyName: "Blogg Country"
+                    address1: "123 Findings Drive"
+                    address2: "Long Beach"
+                    address3: "Crossing"
+                    city: "Norcross"
+                    state: "GA"
+                    country: "US"
+                    postalCode: "30092"
+                    email: "test@gmail.com"
+                    phone: "4462498629678"
+                  pickupAddress:
+                    name: "John K"
+                    companyName: "Blogg Country"
+                    address1: "123 Findings Drive"
+                    address2: "Long Beach"
+                    address3: "Crossing"
+                    city: "Norcross"
+                    state: "GA"
+                    country: "US"
+                    postalCode: "30092"
+                    email: "test@gmail.com"
+                    phone: "4462498629678"
+                  packageDetail:
+                    packageId: "V4-TEST-10097983738"
+                    packageDescription: "test package desc"
+                    packageReference: "3434343"
+                    orderSource: www.shopify.com
+                    contentCategory: "01"
+                    weight:
+                      value: 30
+                      unitOfMeasure: "OZ"
+                    billingReference1: "test bill ref 1"
+                    billingReference2: "test bill ref 2"
+                    customLabelText1: "sampletext1"
+                    customLabelText2: "sampletext2"
+                    shippingCost:
+                      currency: "USD"
+                      freight: 4
+                      declaredValue: 200
+                      insuredValue: 200
+                      dutiesPaid: true
+                      duty: 50
+                  customsDetails:
+                    - itemDescription: "Cotton Dresses"
+                      countryOfOrigin: CA
+                      hsCode: "47757657"
+                      packagedQuantity: 2
+                      skuNumber: "AD644556"
+                      itemValue: 100
+                      currency: "USD"
+                      productUrl: https://widgets.io/cat/1234
+                    - itemDescription: "Wool Sweaters"
+                      countryOfOrigin: GB
+                      hsCode: "611011"
+                      packagedQuantity: 3
+                      skuNumber: "WS-00123"
+                      itemValue: 100
+                      currency: "USD"
+                      productUrl: "https://widgets.io/sweaters/00123"
+
+
+      responses:
+        '200':
+          description: Successful response with label details
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/DomesticResponse'
+                - $ref: '#/components/schemas/InternationalResponse'
+                discriminator:
+                      propertyName: labelType
+                      mapping:
+                        domestic: '#/components/schemas/DomesticResponse'
+                        international: '#/components/schemas/InternationalResponse'
+              examples:
+                domesticResponseExample:
+                  summary: Sample Domestic Response
+                  value:
+                    timestamp: "2026-01-10T21:53:16.735Z"
+                    pickup: "5234567"
+                    distributionCenter: "USRDU1"
+                    labels:
+                      - createdOn: "2026-01-10T21:51:34.000Z"
+                        packageId: "V4-TEST-1581371343739"
+                        dhlPackageId: "3387191106122423"
+                        trackingId: "420300249374869903500011991305"
+                        labelData: "iVBORw0KGgoAAAANSUhEUgAAAywAAATCAQAAAAB3HF9MAAAV..."
+                        encodeType: "BASE64"
+                        format: "PNG"
+                        link: "https://api-sandbox.dhlecs.com/shipping/v4/label/pickup-identifier-example?packageId=V4-TEST-1586965592482"
+                        labelDetail:
+                          serviceLevel: "GRD"
+                          outboundSortCode: "62"
+                          sortingSetupVersion: "1"
+                          inboundSortCode: "n59"
+                          serviceEndorsement: "1"
+                          intendedReceivingFacility: "USRDU1"
+                          mailBanner: "USPS PARCEL SELECT"
+                          customsDetailsProvided: false
+                    orderedProductId: "GND"
+                APOResponseExample:
+                  summary: Sample APO/FPO/DPO/Non-continental Response
+                  value:
+                    timestamp: "2026-03-17T21:53:16.735Z"
+                    pickup: "5234567"
+                    distributionCenter: "USCVG1"
+                    labels:
+                      - createdOn: "2026-03-17T21:51:34.000Z"
+                        packageId: "TEST123478567"
+                        dhlPackageId: "6101020300003876"
+                        trackingId: "420091239234699999497702025535"
+                        labelData: "^XA^IDimage1.GRF^FS^XZ\n~DGimage1.GRF,124236,102,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF..."
+                        encodeType: "PLAIN"
+                        format: "ZPL"
+                        link: "https://api-sandbox.dhlecs.com/shipping/v4/label/pickup-identifier-example?packageId=TEST123478567"
+                        labelDetail:
+                          serviceLevel: "GRD"
+                          outboundSortCode: "62"
+                          sortingSetupVersion: "1"
+                          inboundSortCode: "n59"
+                          serviceEndorsement: "1"
+                          intendedReceivingFacility: "ORD"
+                          mailBanner: "USPS GROUND ADVANTAGE"
+                          customsDetailsProvided: true
+                    orderedProductId: "GND"
+                internationalResponseExample:
+                  summary: Sample International Response
+                  value:
+                    timestamp: "2026-01-10T21:53:16.735Z"
+                    pickup: "5234567"
+                    distributionCenter: "USRDU1"
+                    labels:
+                      - createdOn: "2026-02-10T21:51:34.000Z"
+                        packageId: "V4-TEST-1581371343739"
+                        dhlPackageId: "3387191106122423"
+                        labelData: "iVBORw0KGgoAAAANSUhEUgAAAywAAATCAQAAAAB3HF9MAAAV..."
+                        encodeType: "BASE64"
+                        format: "PNG"
+                        link: "https://api-sandbox.dhlecs.com/shipping/v4/label/pickup-identifier-example?packageId=V4-TEST-1586965592482"
+                        labelDetail:
+                          serviceEndorsement: "1"
+                          intendedReceivingFacility: "USRDU1"
+                          customsDetailsProvided: true
+                    orderedProductId: "PLT"
+
+
+                  
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/400.0000001
+                  title:
+                    type: string
+                    example: Missing Query Param
+                  invalidParams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: packageId
+                        reason:
+                          type: string
+                          example: packageId, dhlPackageId, or dhlTrackingNumber is
+                            required as query param
+        '401':
+          description: No credentials provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/401.0000008
+                  title:
+                    type: string
+                    example: No credentials provided
+        '405':
+          description: HTTP method not allowed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/405.0000001
+                  title:
+                    type: string
+                    example: HTTP method not allowed
+        '500':
+          description: Internal gateway server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/500.0000002
+                  title:
+                    type: string
+                    example: Internal gateway server error
+  /shipping/v4/label/{pickup}:
+    get:
+      tags:
+      - Label
+      operationId: getExistingLabel
+      summary: Get an existing label
+      description: "Use this request to retrieve an existing label that was generated\
+        \ in the last 7 days. \nYou can retrieve a label using either packageId or\
+        \ dhlPackageId.\nYou cannot GET a label if it has been voided.\nThe response\
+        \ is exactly the same as the Create Label response.\n\nRequest Description\n\
+        \nAUTHORIZATION Bearer Token\n\nThis request is using Bearer Token from collection\
+        \ DHL eCommerce Americas API.\n"
+      parameters:
+      - name: pickup
+        in: path
+        required: true
+        description: The pickup account number.
+        schema:
+          type: string
+          example: '5234567'
+          maxLength: 10
+          minLength: 1
+      - name: packageId
+        in: query
+        description: Customer-provided package ID, also known as the CCN (customer
+          confirmation number) or the GM number.
+        schema:
+          maxLength: 30
+          minLength: 1
+          type: string
+        example: V4-TEST-1586965592482
+      - name: dhlPackageId
+        in: query
+        description: DHL-generated package ID.
+        schema:
+          maxLength: 30
+          minLength: 1
+      - name: User-Agent
+        in: header
+        description: Information about the client application making the request.
+        schema:
+          type: string
+          default: eCOMv4 DHLeC Developer portal
+      responses:
+        '200':
+          description: Successful response with label details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  
+                  timestamp:
+                    type: string
+                    description: Date and time of the label request in UTC format.
+                      (M)
+                    format: date-time
+                    example: '2025-12-15T15:38:07.592Z'
+                    minLength: 1
+                    maxLength: 50
+                  pickup:
+                    type: string
+                    maxLength: 10
+                    minLength: 1
+                    description: DHLeCS pickup account number. You will receive this
+                      number from DHL sales after onboarding. (M)
+                    example: '5326755'
+                  distributionCenter:
+                    type: string
+                    maxLength: 6
+                    minLength: 1
+                    description: Primary DHLeCS Distribution center assigned to your
+                      products/services. (M)
+                    example: USLAX1
+                  labels:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        createdOn:
+                          type: string
+                          format: date-time
+                          minLength: 1
+                          maxLength: 50
+                          example: '2025-12-15T15:38:07.000Z'
+                          description: Date and time the label was created in UTC
+                            format. (M)
+                        packageId:
+                          type: string
+                          maxLength: 30
+                          minLength: 1
+                          description: Customer-provided package ID, also known as
+                            the CCN (customer confirmation number) or the GM number.
+                            (M)
+                          example: 511TESTPACK1
+                        dhlPackageId:
+                          type: string
+                          example: '6101211207915799'
+                          maxLength: 16
+                          minLength: 1
+                          description: DHL-generated package ID. (M)
+                        trackingId:
+                          type: string
+                          example: '420300249261210000000954273699'
+                          maxLength: 30
+                          minLength: 1
+                          description: Last-mile carrier package ID. For international
+                            shipments, this ID is only available after the package
+                            has been shipped. For domestic shipments, this ID contains
+                            the full USPS IMpb number and is always available. If
+                            the package is overlabeled for any reason, this field
+                            contains the latest carrier package ID. (C)
+                        labelData:
+                          type: string
+                          description: This will be an encoded string containing the
+                            shipping label image or a plain text zpl string depending
+                            on the format requested. (M)
+                          minLength: 0
+                          maxLength: 100000
+                          example: '^XA
+
+                            ^CI28
+
+                            ^PW812
+
+                            ^FO1,1^GB200,200,4,B^FS
+
+                            ...'
+                        encodeType:
+                          type: string
+                          example: PLAIN
+                          description: Either base64 or plain text depending on the
+                            label format requested.(M)
+                          enum:
+                          - BASE64
+                          - PLAIN
+                        format:
+                          type: string
+                          description: Either ZPL, PNG, or PDF depending on the label
+                            format requested. (M)
+                          enum:
+                          - ZPL
+                          - PNG
+                          - PDF
+                          example: ZPL
+                        link:
+                          type: string
+                          minLength: 1
+                          maxLength: 150
+                          description: Link to the label. (M)
+                          example: https://api.dhlecs.com/shipping/v4/label/5326755?packageId=511TESTPACK1
+                        labelDetail:
+                          type: object
+                          description: Object that contains supplementary label details.(C)
+                          properties:
+                            serviceLevel:
+                              type: string
+                              description: Response returned for Domestic. (O)
+                              example: GRD
+                              minLength: 1
+                              maxLength: 30
+                            outboundSortCode:
+                              type: string
+                              example: '61'
+                              description: Response returned for Domestic. (O)
+                              minLength: 1
+                              maxLength: 30
+                            sortingSetupVersion:
+                              type: string
+                              example: '7'
+                              minLength: 1
+                              maxLength: 30
+                              description: Response returned for Domestic. (O)
+                            inboundSortCode:
+                              type: string
+                              example: Y54
+                              minLength: 1
+                              maxLength: 30
+                              description: Response returned for Domestic. (O)
+                            serviceEndorsement:
+                              type: string
+                              example: '1'
+                              minLength: 1
+                              maxLength: 30
+                              description: Response returned for Domestic and International.
+                                (O)
+                            intendedReceivingFacility:
+                              type: string
+                              example: ATL
+                              minLength: 1
+                              maxLength: 30
+                              description: Response returned for Domestic. (O)
+                            mailBanner:
+                              type: string
+                              example: USPS PARCEL SELECT
+                              description: Response returned for Domestic. (O)
+                              minLength: 1
+                              maxLength: 30
+                            customsDetailsProvided:
+                              type: boolean
+                              description: Response returned for Domestic and International.
+                                (M)
+                              enum:
+                              - true
+                              - false
+                              example: 'false'
+                  orderedProductId:
+                    type: string
+                    maxLength: 10
+                    minLength: 1
+                    pattern: ^[A-Z]{3}$
+                    description: DHLeCS three-character product code. Please refer
+                      to our documentation site for a full list of product codes.
+                      (M)
+                    example: GND
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/400.0000002
+                  title:
+                    type: string
+                    example: Query parameter value could not be found or is invalid
+                  invalidParams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: packageId
+                        reason:
+                          type: string
+                          example: packageId V4-TEST-1742404129495 not found
+        '401':
+          description: No credentials provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/401.0000008
+                  title:
+                    type: string
+                    example: No credentials provided
+        '500':
+          description: Internal gateway server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/500.0000002
+                  title:
+                    type: string
+                    example: Internal gateway server error
+    delete:
+      tags:
+      - Label
+      operationId: voidLabel
+      summary: Void an existing label
+      description: "Use this request to void an existing label that was generated\
+        \ in the last 45 days. \nYou can void a Domestic existing label using one\
+        \ of the following package identifiers:\n- `packageId`\n- `dhlPackageId`\n\
+        \nThe response will return a 200 once the label has been voided correctly.\n\
+        \nThere are a few reasons why customers might want to void a label:\n- `Upgrade\
+        \ the label to a new shipping product`\n- `Weight scale calibration issue`\n\
+        - `Modify recipient address if incorrect`\n\nA label cannot be voided if it:\n\
+        - `Was created after 45 days`\n- `Has already been manifested`\n- `Is an International\
+        \ label`    \n\nIf voided labels are used/identified on packages, they will\
+        \ be put on hold at our DHL eCommerce facilities.\n\n\nRequest Description\n\
+        \nAUTHORIZATION Bearer Token\n\nThis request is using Bearer Token from collection\
+        \ DHL eCommerce Americas API.\n"
+      parameters:
+      - name: pickup
+        in: path
+        required: true
+        description: The pickup account number associated with the label.
+        schema:
+          type: string
+          example: '5234567'
+      - name: packageId
+        in: query
+        required: true
+        description: The package identifier (either packageId or dhlPackageId).
+        schema:
+          type: string
+          example: V4-TEST-1586965592482
+      - name: dhlPackageId
+        in: query
+        description: DHL-generated package ID.
+        schema:
+          maxLength: 30
+          minLength: 1
+          type: string
+      - name: User-Agent
+        in: header
+        description: Information about the client application making the request.
+        schema:
+          type: string
+          default: eCOMv4 DHLeC Developer portal
+      responses:
+        '200':
+          description: Successful void operation. This request doesn't return any
+            response body.
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/400.0000001
+                  title:
+                    type: string
+                    example: Missing Query Param
+                  invalidParams:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: packageId
+                        reason:
+                          type: string
+                          example: packageId, dhlPackageId, or dhlTrackingNumber is
+                            required as query param
+        '401':
+          description: No credentials provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: https://api-sandbox.dhlecs.com/docs/errors/401.0000008
+                  title:
+                    type: string
+                    example: No credentials provided
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: This API uses OAuth 2 with the client-credentials grant flow
+      flows:
+        clientCredentials:
+          tokenUrl: https://api-bat.dhlecs.com/auth/v4/accesstoken
+          scopes: {}
+  schemas:
+    DomesticLabel:
+      type: object
+      required:
+      - pickup
+      - orderedProductId
+      - distributionCenter
+      - consigneeAddress
+      - returnAddress
+      - packageDetail
+      properties:
+        pickup:
+          type: string
+          maxLength: 10
+          minLength: 4
+          pattern: ^[\S]+$
+          description: DHL eCommerce pickup account number. You will receive this
+            after onboarding with our DHL eCommerce sales and customer implementation
+            team. This is not the same as the Sold To Account number. (M for Domestic
+            and International)
+          example: '5234567'
+        orderedProductId:
+          type: string
+          maxLength: 3
+          minLength: 3
+          pattern: ^[A-Z]{3}$
+          description: DHL eCommerce three-character product code. See Reference for
+            list of valid Product IDs. [Products] https://developer.dhl.com/api-reference/references-dhl-ecommerce-americas#get-started-section/domestic-products
+            (M for Domestic and International)
+          example: PLT
+        merchantId:
+          type: string
+          minLength: 1
+          maxLength: 30
+          example: '123'
+          description: Optional for International and Domestic (O for Domestic and
+            International)
+        distributionCenter:
+          type: string
+          maxLength: 6
+          minLength: 6
+          pattern: ^[A-Z0-9]{6}$
+          description: Primary DHL eCommerce Distribution center assigned to your
+            products/services.This is the distribution center where your packages
+            are going to be lodged after pickup. Requires a valid US distribution
+            center code. See the [Distribution Centers] https://developer.dhl.com/api-reference/references-dhl-ecommerce-americas#get-started-section/distribution-centers
+            section for more information. (M for Domestic and International)
+          example: USEWR1
+        consigneeAddress:
+          type: object
+          description: Address of the consignee.(M for Domestic and International)
+          properties:
+            name:
+              type: string
+              maxLength: 50
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: Name of consignee. Mandatory for international destinations.
+                (C for Domestic and M for International)
+              example: John Chen
+            companyName:
+              type: string
+              maxLength: 30
+              minLength: 0
+              pattern: ^$|.*[^\s].*
+              description: Company name of consignee. Either name or company name
+                is required for US domestic packages. (C for Domestic and International)
+              example: Chen Inc
+            address1:
+              type: string
+              maxLength: 50
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: Address line 1 of consignee. (M for Domestic and International)
+              example: 4-355 Admiral Blvd
+            address2:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Address line 2 of consignee. (O for Domestic and International)
+              example: Test2
+            address3:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Address line 3 of consignee. Not supported for US domestic
+                consignee addresses. For International packages, address line 3 is
+                accepted if address line 2 is also provided. (N for Domestic and C
+                for International)
+              example: Test3
+            city:
+              type: string
+              maxLength: 40
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: City of consignee. (M for Domestic and International)
+              example: Mississauga
+            state:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: State of consignee. Must be a valid 2-character state code
+                for US domestic consignee address. Mandatory for some international
+                destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (C for Domestic and O for International)
+              example: true
+            country:
+              type: string
+              maxLength: 2
+              minLength: 2
+              pattern: ^[A-Z]{2}$
+              description: Country of consignee. Must be a valid 2-character ISO country
+                code. (M for Domestic and International)
+              example: CA
+            postalCode:
+              type: string
+              maxLength: 10
+              minLength: 3
+              description: Postal Code of consignee. For US domestic consignee address,
+                only 5-digit (NNNNN) and extended 9-digit (NNNNN-NNNN) formats are
+                allowed. For other destinations, requirement varies by Country. (M
+                for Domestic and C for International)
+              example: L5T 2N1
+            email:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Email of consignee. Mandatory for some international destinations.
+                See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (O for Domestic and C for International)
+              example: johnchen@johnchen.com
+            phone:
+              type: string
+              maxLength: 26
+              minLength: 0
+              description: Phone of consignee. Mandatory for some international destinations.
+                See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (O for Domestic and C for International)
+              example: 444-234-4034
+            deliveryInstructions:
+              type: string
+              minLength: 0
+              maxLength: 500
+              description: This is where delivery instructions can be provided. (O
+                for Domestic and International)
+              example: Leave at front door.
+            isBusiness:
+              type: boolean
+              example: 'true'
+              description: Indicates whether the consignee address is a business address
+                (as opposed to a private residence). (O for Domestic and International)
+              enum:
+              - true
+              - false
+            idNumber:
+              type: string
+              minLength: 0
+              maxLength: 30
+              example: S85795ED4
+              description: Consignee government ID number. Mandatory for some international
+                destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information.  (N for Domestic and C for International)'
+            idType:
+              type: number
+              minimum: 0
+              maximum: 1
+              example: 1
+              enum:
+              - 1
+              - 2
+              - 3
+              - 4
+              description: Consignee government ID number type. See [Consignee ID](
+                https://developer.dhl.com/api-reference/references#get-started-section/consignee-id-types
+                ) Types for valid values. Mandatory for some international destinations.
+                See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (N for Domestic and C for International)
+            taxId:
+              type: string
+              minLength: 0
+              maxLength: 50
+              example: 90000230082958122
+              description: Consignee government ID number. Mandatory for some international
+                destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (N for Domestic and C for International)
+            taxIdType:
+              type: number
+              enum:
+              - 0
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+              example: 1
+              description: Consignee tax ID type. See [Tax ID Types]( https://developer.dhl.com/api-reference/references#get-started-section/tax-id-types
+                ) for valid values. Mandatory for some international destinations.
+                See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (N for Domestic and C for International)
+        returnAddress:
+          type: object
+          description: Address where package should be returned if it cannot be delivered.(M for Domestic and International)
+          properties:
+            name:
+              type: string
+              maxLength: 50
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: Name of return address. (C for Domestic and M for International)
+              example: Joe Bloggs
+            companyName:
+              type: string
+              maxLength: 30
+              minLength: 0
+              pattern: ^$|.*[^\s].*
+              description: Company name of return address. Either name or company
+                name is required for US domestic packages. (C for Domestic and International)
+              example: Joe Inc.
+            address1:
+              type: string
+              maxLength: 50
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: Address line 1 of return address. (M for Domestic and International)
+              example: 4552 Old Dixie Hwy
+            address2:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Address line 2 of return address. (O for Domestic and International)
+              example: Near Pixar Road
+            address3:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Address line 3 of return address. (N for Domestic and C
+                for International)
+              example: Near Pixar Road
+            city:
+              type: string
+              maxLength: 40
+              minLength: 1
+              pattern: ^$|.*[^\s].*
+              description: City of return address. (M for Domestic and International)
+              example: Baltimore
+            state:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: State of return address. (C for Domestic and O for International)
+              example: MD
+            country:
+              type: string
+              maxLength: 2
+              minLength: 2
+              pattern: ^[A-Z]{2}$
+              description: Two-character ISO return address country code. (M for Domestic and International)
+              example: US
+            postalCode:
+              type: string
+              maxLength: 10
+              minLength: 3
+              description: Postal code of return address. (M for Domestic and C for
+                International)
+              example: 30024
+            email:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Email of return address. Mandatory for some international
+                destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (O for Domestic and International)
+              example: joebloggs@joebloggs.com
+            phone:
+              type: string
+              maxLength: 26
+              minLength: 0
+              description: Phone of return address. Mandatory for some international
+                destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                ) section for more information. (O for Domestic and  International)
+              example: 123-123-6789
+        packageDetail:
+          type: object
+          description: Object that contains the package detail.(M for Domestic and
+            International)
+          required:
+          - packageId
+          - packageDescription
+          - weight
+          properties:
+            packageId:
+              type: string
+              maxLength: 30
+              minLength: 1
+              pattern: ^[a-zA-Z0-9]([a-zA-Z0-9_.\-]*[a-zA-Z0-9])?$
+              description: Customer-provided package ID, also known as the CCN (customer
+                confirmation number) or the GM number. Not case sensitive. Can contain
+                the following special characters except in the beginning or the end
+                of the string "-", ".","_". We recommend a minimum length of 8 characters.(M
+                for Domestic and International)
+              example: GM60511234500000001
+            packageDescription:
+              type: string
+              maxLength: 50
+              minLength: 1
+              description: Description of the contents of the package. (M for Domestic
+                and International)
+              example: Toys for kids
+            packageReference:
+              type: string
+              maxLength: 20
+              minLength: 0
+              description: A prefix that will be prepended to the human-readable Package
+                ID and display at the bottom of the label along with a barcode of
+                the package ID. (O for Domestic and International)
+              example: test
+            orderSource:
+              type: string
+              description: Web shop, web platform, or merchant site from which the
+                order originated. (O for Domestic and International)
+              minLength: 0
+              maxLength: 80
+              example: www.shopify.com
+            customsCertificate:
+              type: string
+              description: Customs Certificate. (N for Domestic and O for International)
+              minLength: 0
+              maxLength: 50
+              example: ID0032675NA4
+            customsLicense:
+              type: string
+              description: Customs License. (N for Domestic and O for International)
+              minLength: 0
+              maxLength: 50
+              example: 985X00001357
+            contentCategory:
+              type: string
+              description: "Identified the DHL eCommerce dangerous goods category\
+                \ code. DHL eCommerce accepts two types of Dangerous Goods, Lithium\
+                \ batteries and Limited Quantity material (other regulated materials\
+                \ for domestic transport only). While some sub-categories of Lithium\
+                \ batteries can be transported via DHL eCommerce\u2019s expedited\
+                \ air network, Limited Quantity materials are only allowed for ground\
+                \ transportation.   Refer to valid values under References.(O for\
+                \ Domestic and International)"
+              example: '03'
+              minLength: 2
+              maxLength: 2
+            service:
+              type: string
+              minLength: 6
+              description: Shipments originating and destined to the United States
+                will default to DELCON. Signature confirmation* (SIGCON) is also available
+                for certain products at an additional cost (please contact your Sales
+                representative for more details). International shipments will default
+                to the tracking capabilities available to the product/service selected.
+                Shipment tracking is available for all parcel products. Tracking is
+                available through the DHL eCommerce web portal, or through the USPS
+                tracking site. For Domestic shipments DELCON, or SIGCON. For International
+                shipments, SIGCON is not supported.(O for Domestic and N for International)
+              example: DELCON
+              enum:
+              - DELCON
+              - SIGCON
+            serviceEndorsement:
+              type: string
+              minLength: 0
+              maxLength: 1
+              example: 2
+              enum:
+              - '1'
+              - '2'
+              - '3'
+              - '4'
+              description: "Ancillary service endorsements are used to request an\
+                \ addressee\u2019s new address and to provide the USPS with instructions\
+                \ on how to handle undeliverable-as-addressed pieces. The endorsements\
+                \ are the same for all classes of US Domestic packages, but the treatment\
+                \ and cost differ by class of mail. Use of an ancillary service endorsement\
+                \ on a mailpiece obligates the mailer to pay any applicable charges\
+                \ for forwarding, return, and separate address notification charges.\
+                \ Refer valid values under Reference.(O for Domestic and N for International)"
+            billingReference1:
+              type: string
+              example: DSJDHFIK863
+              maxLength: 30
+              minLength: 0
+              description: String of characters that can be used to aggregate billing
+                data (can be unique per parcel). billingReference1 is also referred
+                to as Reference. (O for Domestic and International)
+            billingReference2:
+              type: string
+              example: DSJDHFIK863
+              maxLength: 30
+              minLength: 0
+              description: Secondary string of characters that can be used to aggregate
+                billing data (can be unique per parcel). billingReference2 is also
+                referred to as Batch(O for Domestic and N for International)
+            customLabelText1:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: String of characters that can be used to show additional
+                text on the label to assist with pick/pack processes. Values entered
+                will NOT be captured on the invoices. Some examples include order
+                numbers, miscellaneous notes, and department information.(O for Domestic
+                and International)
+              example: Order number 123456789
+            customLabelText2:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Secondary string of characters that can be used to show
+                additional text on the label to assist with pick/pack processes. Values
+                entered will NOT be captured on the invoices. Some examples include
+                order numbers, miscellaneous notes, and department information.  (O
+                for Domestic and International)
+              example: Project ABC
+            weight:
+              type: object
+              required:
+              - value
+              - unitOfMeasure
+              description: Object that contains the package weight details. Mainly
+                used for validating and identifying the right shipping product. See
+                Weights for defined values. Please conform to product limitations.
+                (M for Domestic and International)
+              properties:
+                value:
+                  type: number
+                  maximum: 999999.99
+                  minimum: 0
+                  description: Total package weight. (M for Domestic and International)
+                  format: float
+                  example: 28.8
+                unitOfMeasure:
+                  type: string
+                  description: Unit of measure for the weight. (M for Domestic and
+                    International)
+                  example: OZ
+                  enum:
+                  - LB
+                  - OZ
+                  - KG
+                  - G
+            dimension:
+              type: object
+              description: Object that contains the package dimension details. This
+                will be used to calculate the dimensional weight. See [Weights]( https://developer.dhl.com/api-reference/references#get-started-section/weight-units
+                ) for defined values.  Please conform to product limitations. (O for
+                Domestic and International)
+              required:
+              - length
+              - width
+              - height
+              - unitofMeasure
+              properties:
+                length:
+                  type: number
+                  format: float
+                  description: Length of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                width:
+                  type: number
+                  format: float
+                  description: Width of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                height:
+                  type: number
+                  format: float
+                  description: Height of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                unitOfMeasure:
+                  type: string
+                  description: Unit of measure for dimensions. (M for Domestic and
+                    International)
+                  enum:
+                  - IN
+                  - CM
+                  example: IN
+                packageType:
+                  type: string
+                  description: Type of package (used for determining dimensional weight).
+                    If packageType is anything other than '1' then a discount factor
+                    will be applied. See [Package Types]( https://developer.dhl.com/api-reference/references#get-started-section/package-types
+                    ) for valid values. (O for Domestic and International )
+                  enum:
+                  - '1'
+                  - '2'
+                  - '3'
+                  example: '1'
+        shippingCost:
+          type: object
+          description: Object that contains the package shipping cost details.(O for
+            Domestic and M for International)
+          required:
+          - currency
+          properties:
+            currency:
+              type: string
+              maxLength: 3
+              minLength: 3
+              description: Three-character ISO Currency code. (M for Domestic and
+                International)
+              example: USD
+            freight:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Freight charges for the package in the currency specified.
+                (O for Domestic and International)
+              example: 9.0
+            declaredValue:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Total declared value for the package in the currency specified.
+                While not mandatory, best practice is to provide if available. Many
+                International destinations have a limit of 2500 USD. (O for Domestic
+                and International)
+              example: 76.0
+            insuredValue:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Total insured value of the package in the currency specified.
+                (O for Domestic and International)
+              example: 89.0
+            duty:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 99999999.99
+              example: 6.0
+              description: Duty charges for the package in the currency specified.
+                (O for Domestic and International)
+            dutiesPaid:
+              type: boolean
+              enum:
+              - true
+              - false
+              description: "Whether or not duties were pre-paid by the consignee;\
+                \ false for DDU shipments, true for DDP shipments. If the user doesn\u2019\
+                t specify then its marked DDU by default. Some international products\
+                \ and destinations do not offer both DDP and DDU. See the [International\
+                \ Regulations](https://developer.dhl.com/api-reference/references#get-started-section/international-regulations)\
+                \ section for more information.(N for Domestic and O for International)"
+              example: 'false'
+            taxesPaid:
+              type: boolean
+              enum:
+              - true
+              - false
+              description: Whether or not duties were pre-paid by the shipper. (N
+                for Domestic and O for International)
+              example: 'false'
+            tax:
+              type: number
+              format: float
+              description: Tax charges for the package in the currency specified.
+                (O for Domestic and  International)
+              example: 10.0
+              minimum: 0
+              maximum: 99999999.99
+    InternationalLabel:
+      type: object
+      required:
+        - pickup
+        - orderedProductId
+        - distributionCenter
+        - consigneeAddress
+        - returnAddress
+        - packageDetail
+      properties:
+        pickup:
+          type: string
+          maxLength: 10
+          minLength: 4
+          pattern: ^[\S]+$
+          description: DHL eCommerce pickup account number. You will receive this
+            after onboarding with our DHL eCommerce sales and customer implementation
+            team. This is not the same as the Sold To Account number. (M for Domestic
+            and International)
+          example: '5234567'
+        orderedProductId:
+          type: string
+          maxLength: 3
+          minLength: 3
+          pattern: ^[A-Z]{3}$
+          description: DHL eCommerce three-character product code. See Reference for
+            list of valid Product IDs. [Products] https://developer.dhl.com/api-reference/references-dhl-ecommerce-americas#get-started-section/domestic-products
+            (M for Domestic and International)
+          example: PLT
+        merchantId:
+          type: string
+          minLength: 1
+          maxLength: 30
+          example: '123'
+          description: Optional for International and Domestic (O for Domestic and
+            International)
+        distributionCenter:
+          type: string
+          maxLength: 6
+          minLength: 6
+          pattern: ^[A-Z0-9]{6}$
+          description: Primary DHL eCommerce Distribution center assigned to your
+            products/services.This is the distribution center where your packages
+            are going to be lodged after pickup. Requires a valid US distribution
+            center code. See the [Distribution Centers] https://developer.dhl.com/api-reference/references-dhl-ecommerce-americas#get-started-section/distribution-centers
+            section for more information. (M for Domestic and International)
+          example: USEWR1
+        consigneeAddress:
+            type: object
+            description: Address of the consignee.(M for Domestic and International)
+            properties:
+              name:
+                type: string
+                maxLength: 50
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: Name of consignee. Mandatory for international destinations.
+                  (C for Domestic and M for International)
+                example: John Chen
+              companyName:
+                type: string
+                maxLength: 30
+                minLength: 0
+                pattern: ^$|.*[^\s].*
+                description: Company name of consignee. Either name or company name
+                  is required for US domestic packages. (C for Domestic and International)
+                example: Chen Inc
+              address1:
+                type: string
+                maxLength: 50
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: Address line 1 of consignee. (M for Domestic and International)
+                example: 4-355 Admiral Blvd
+              address2:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 2 of consignee. (O for Domestic and International)
+                example: Test2
+              address3:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 3 of consignee. Not supported for US domestic
+                  consignee addresses. For International packages, address line 3 is
+                  accepted if address line 2 is also provided. (N for Domestic and C
+                  for International)
+                example: Test3
+              city:
+                type: string
+                maxLength: 40
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: City of consignee. (M for Domestic and International)
+                example: Mississauga
+              state:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: State of consignee. Must be a valid 2-character state code
+                  for US domestic consignee address. Mandatory for some international
+                  destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (C for Domestic and O for International)
+                example: true
+              country:
+                type: string
+                maxLength: 2
+                minLength: 2
+                pattern: ^[A-Z]{2}$
+                description: Country of consignee. Must be a valid 2-character ISO country
+                  code. (M for Domestic and International)
+                example: CA
+              postalCode:
+                type: string
+                maxLength: 10
+                minLength: 3
+                description: Postal Code of consignee. For US domestic consignee address,
+                  only 5-digit (NNNNN) and extended 9-digit (NNNNN-NNNN) formats are
+                  allowed. For other destinations, requirement varies by Country. (M
+                  for Domestic and C for International)
+                example: L5T 2N1
+              email:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Email of consignee. Mandatory for some international destinations.
+                  See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (O for Domestic and C for International)
+                example: johnchen@johnchen.com
+              phone:
+                type: string
+                maxLength: 26
+                minLength: 0
+                description: Phone of consignee. Mandatory for some international destinations.
+                  See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (O for Domestic and C for International)
+                example: 444-234-4034
+              deliveryInstructions:
+                type: string
+                minLength: 0
+                maxLength: 500
+                description: This is where delivery instructions can be provided. (O
+                  for Domestic and International)
+                example: Leave at front door.
+              isBusiness:
+                type: boolean
+                example: 'true'
+                description: Indicates whether the consignee address is a business address
+                  (as opposed to a private residence). (O for Domestic and International)
+                enum:
+                - true
+                - false
+              idNumber:
+                type: string
+                minLength: 0
+                maxLength: 30
+                example: S85795ED4
+                description: Consignee government ID number. Mandatory for some international
+                  destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information.  (N for Domestic and C for International)'
+              idType:
+                type: number
+                minimum: 0
+                maximum: 1
+                example: 1
+                enum:
+                - 1
+                - 2
+                - 3
+                - 4
+                description: Consignee government ID number type. See [Consignee ID](
+                  https://developer.dhl.com/api-reference/references#get-started-section/consignee-id-types
+                  ) Types for valid values. Mandatory for some international destinations.
+                  See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (N for Domestic and C for International)
+              taxId:
+                type: string
+                minLength: 0
+                maxLength: 50
+                example: 90000230082958122
+                description: Consignee government ID number. Mandatory for some international
+                  destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (N for Domestic and C for International)
+              taxIdType:
+                type: number
+                enum:
+                - 0
+                - 1
+                - 2
+                - 3
+                - 4
+                - 5
+                example: 1
+                description: Consignee tax ID type. See [Tax ID Types]( https://developer.dhl.com/api-reference/references#get-started-section/tax-id-types
+                  ) for valid values. Mandatory for some international destinations.
+                  See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (N for Domestic and C for International)
+        returnAddress:
+            type: object
+            description: Address where package should be returned if it cannot be delivered.(M for Domestic and International)
+            properties:
+              name:
+                type: string
+                maxLength: 50
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: Name of return address. (C for Domestic and M for International)
+                example: Joe Bloggs
+              companyName:
+                type: string
+                maxLength: 30
+                minLength: 0
+                pattern: ^$|.*[^\s].*
+                description: Company name of return address. Either name or company
+                  name is required for US domestic packages. (C for Domestic and International)
+                example: Joe Inc.
+              address1:
+                type: string
+                maxLength: 50
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: Address line 1 of return address. (M for Domestic and International)
+                example: 4552 Old Dixie Hwy
+              address2:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 2 of return address. (O for Domestic and International)
+                example: Near Pixar Road
+              address3:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 3 of return address. (N for Domestic and C
+                  for International)
+                example: Near Pixar Road
+              city:
+                type: string
+                maxLength: 40
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: City of return address. (M for Domestic and International)
+                example: Baltimore
+              state:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: State of return address. (C for Domestic and O for International)
+                example: MD
+              country:
+                type: string
+                maxLength: 2
+                minLength: 2
+                pattern: ^[A-Z]{2}$
+                description: Two-character ISO return address country code. (M for Domestic and International)
+                example: US
+              postalCode:
+                type: string
+                maxLength: 10
+                minLength: 3
+                description: Postal code of return address. (M for Domestic and C for
+                  International)
+                example: 30024
+              email:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Email of return address. Mandatory for some international
+                  destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (O for Domestic and International)
+                example: joebloggs@joebloggs.com
+              phone:
+                type: string
+                maxLength: 26
+                minLength: 0
+                description: Phone of return address. Mandatory for some international
+                  destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations
+                  ) section for more information. (O for Domestic and  International)
+                example: 123-123-6789
+        pickupAddress:
+            type: object
+            description: Address where the package is picked up from. If not provided,the address associated with the pickup account will be used. ( O for International)
+            properties:
+              name:
+                type: string
+                maxLength: 30
+                minLength: 0
+                pattern: ^$|.*[^\s].*
+                description: Name of pickup contact. (C for International)
+                example: John K
+              companyName:
+                type: string
+                maxLength: 30
+                minLength: 0
+                pattern: ^$|.*[^\s].*
+                description: Company name of pickup contact. (C
+                  for International)
+                example: Acme Shoe Co.
+              address1:
+                type: string
+                maxLength: 50
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: Address line 1 of pickup address. (M for International)
+                example: 123 Findings Drive
+              address2:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 2 of pickup address. (O for International)
+                example: Suite 100
+              address3:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: Address line 3 of pickup address.(C for International)
+                example: Near Diagon Alley
+              city:
+                type: string
+                maxLength: 40
+                minLength: 1
+                pattern: ^$|.*[^\s].*
+                description: City of pickup address. (M for International)
+                example: Norcross
+              state:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: State of pickup address. (O for International)
+                example: GA
+              country:
+                type: string
+                maxLength: 2
+                minLength: 2
+                pattern: ^[A-Z]{2}$
+                description: Two-character ISO pickup address country code. (M for International)
+                example: US
+              postalCode:
+                type: string
+                maxLength: 10
+                minLength: 3
+                description: Postal code of the pickup address. (C for International)
+                example: '30092'
+              email:
+                type: string
+                maxLength: 50
+                minLength: 0
+                description: "Email of pickup contact. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations) section for more information. (C for International )"
+                example: johnk@johnk.com
+              phone:
+                type: string
+                maxLength: 26
+                minLength: 0
+                description: "Phone of pickup contact. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations) section for more information. (C for International )"
+                example: 123-123-0000
+        shipperAddress:
+              type: object
+              description: Seller's address and other related information. If not provided, the account's pickup address will be used. If fulfilling for a merchant, this should reflect the merchant's information. (O for International)
+              properties:
+                name:
+                  type: string
+                  maxLength: 30
+                  minLength: 0
+                  pattern: '^$|.*[^\s].*'
+                  description: Name of seller contact.(M for International)
+                  example: John 
+                companyName:
+                  type: string
+                  maxLength: 30
+                  minLength: 0
+                  pattern: '^$|.*[^\s].*'
+                  description: Company name of seller contact.(C for International)
+                  example: DHL Inc.
+                address1:
+                  type: string
+                  maxLength: 50
+                  minLength: 1
+                  pattern: '^$|.*[^\s].*'
+                  description: Address line 1 of seller address.(M for International)
+                  example: Findings Drive
+                address2:
+                  type: string
+                  maxLength: 50
+                  minLength: 0
+                  description: Address line 2 of seller address.(O for International)
+                  example: Near Diagon Alley
+                address3:
+                  type: string
+                  maxLength: 50
+                  minLength: 0
+                  description: Address line 3 of seller address.(C for International)
+                  example: Near Diagon Alley
+                city:
+                  type: string
+                  maxLength: 40
+                  minLength: 1
+                  pattern: '^$|.*[^\s].*'
+                  description: City of seller address.(M for International)
+                  example: Norcross
+                state:
+                  type: string
+                  maxLength: 50
+                  minLength: 0
+                  description: State of seller address.(O for International)
+                  example: GA
+                country:
+                  type: string
+                  maxLength: 2
+                  minLength: 2
+                  pattern: '^[A-Z]{2}$'
+                  description: Two-character ISO seller address country code.(M for International)
+                  example: US
+                postalCode:
+                  type: string
+                  maxLength: 10
+                  minLength: 3
+                  description: Postal code of the seller address.(C for International)
+                  example: 30092
+                email:
+                  type: string
+                  maxLength: 50
+                  minLength: 0
+                  description: "Email of seller contact. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations ) section for more information. (C for International)"
+                  example: johnk@johnk.com
+                phone:
+                  type: string
+                  maxLength: 26
+                  minLength: 0
+                  description: "Phone of seller contact. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations ) section for more information. (C for International)"
+                  example: 123-123-0000
+                taxId: 
+                  type: string
+                  maxLength: 50
+                  minLength: 0
+                  description: Seller tax ID. Required if taxIdType is '3'. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations ) section for more information.(C for International)
+                  example: 90000230082958122
+                taxIdType:
+                  type: number
+                  description: Seller tax ID type. See the [Tax ID Types] https://developer.dhl.com/api-reference/references-dhl-ecommerce-americas#get-started-section/tax-id-types section for valid values. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations ) section for more information. (C for International)
+                  enum:
+                    - 0
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+                  example: 1
+        packageDetail:
+          type: object
+          description: Object that contains the package detail.(M for Domestic and
+            International)
+          required:
+          - packageId
+          - packageDescription
+          - weight
+          properties:
+            packageId:
+              type: string
+              maxLength: 30
+              minLength: 1
+              pattern: ^[a-zA-Z0-9]([a-zA-Z0-9_.\-]*[a-zA-Z0-9])?$
+              description: Customer-provided package ID, also known as the CCN (customer
+                confirmation number) or the GM number. Not case sensitive. Can contain
+                the following special characters except in the beginning or the end
+                of the string "-", ".","_". We recommend a minimum length of 8 characters.(M
+                for Domestic and International)
+              example: GM60511234500000001
+            packageDescription:
+              type: string
+              maxLength: 50
+              minLength: 1
+              description: Description of the contents of the package. (M for Domestic
+                and International)
+              example: Toys for kids
+            packageReference:
+              type: string
+              maxLength: 20
+              minLength: 0
+              description: A prefix that will be prepended to the human-readable Package
+                ID and display at the bottom of the label along with a barcode of
+                the package ID. (O for Domestic and International)
+              example: test
+            orderSource:
+              type: string
+              description: Web shop, web platform, or merchant site from which the
+                order originated. (O for Domestic and International)
+              minLength: 0
+              maxLength: 80
+              example: www.shopify.com
+            customsCertificate:
+              type: string
+              description: Customs Certificate. (N for Domestic and O for International)
+              minLength: 0
+              maxLength: 50
+              example: ID0032675NA4
+            customsLicense:
+              type: string
+              description: Customs License. (N for Domestic and O for International)
+              minLength: 0
+              maxLength: 50
+              example: 985X00001357
+            contentCategory:
+              type: string
+              description: "Identified the DHL eCommerce dangerous goods category\
+                \ code. DHL eCommerce accepts two types of Dangerous Goods, Lithium\
+                \ batteries and Limited Quantity material (other regulated materials\
+                \ for domestic transport only). While some sub-categories of Lithium\
+                \ batteries can be transported via DHL eCommerce\u2019s expedited\
+                \ air network, Limited Quantity materials are only allowed for ground\
+                \ transportation.   Refer to valid values under References.(O for\
+                \ Domestic and International)"
+              example: '03'
+              minLength: 2
+              maxLength: 2
+            billingReference1:
+              type: string
+              example: DSJDHFIK863
+              maxLength: 30
+              minLength: 0
+              description: String of characters that can be used to aggregate billing
+                data (can be unique per parcel). billingReference1 is also referred
+                to as Reference. (O for Domestic and International)
+            billingReference2:
+              type: string
+              example: DSJDHFIK863
+              maxLength: 30
+              minLength: 0
+              description: Secondary string of characters that can be used to aggregate
+                billing data (can be unique per parcel). billingReference2 is also
+                referred to as Batch(O for Domestic and N for International)
+            customLabelText1:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: String of characters that can be used to show additional
+                text on the label to assist with pick/pack processes. Values entered
+                will NOT be captured on the invoices. Some examples include order
+                numbers, miscellaneous notes, and department information.(O for Domestic
+                and International)
+              example: Order number 123456789
+            customLabelText2:
+              type: string
+              maxLength: 50
+              minLength: 0
+              description: Secondary string of characters that can be used to show
+                additional text on the label to assist with pick/pack processes. Values
+                entered will NOT be captured on the invoices. Some examples include
+                order numbers, miscellaneous notes, and department information.  (O
+                for Domestic and International)
+              example: Project ABC
+            weight:
+              type: object
+              required:
+              - value
+              - unitOfMeasure
+              description: Object that contains the package weight details. Mainly
+                used for validating and identifying the right shipping product. See
+                Weights for defined values. Please conform to product limitations.
+                (M for Domestic and International)
+              properties:
+                value:
+                  type: number
+                  maximum: 999999.99
+                  minimum: 0
+                  description: Total package weight. (M for Domestic and International)
+                  format: float
+                  example: 28.8
+                unitOfMeasure:
+                  type: string
+                  description: Unit of measure for the weight. (M for Domestic and
+                    International)
+                  example: OZ
+                  enum:
+                  - LB
+                  - OZ
+                  - KG
+                  - G
+            dimension:
+              type: object
+              description: Object that contains the package dimension details. This
+                will be used to calculate the dimensional weight. See [Weights]( https://developer.dhl.com/api-reference/references#get-started-section/weight-units
+                ) for defined values.  Please conform to product limitations. (O for
+                Domestic and International)
+              required:
+              - length
+              - width
+              - height
+              - unitofMeasure
+              properties:
+                length:
+                  type: number
+                  format: float
+                  description: Length of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                width:
+                  type: number
+                  format: float
+                  description: Width of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                height:
+                  type: number
+                  format: float
+                  description: Height of the package. Please conform to product limitations.
+                    (M for Domestic and International)
+                  minimum: 0
+                  maximum: 9999.99
+                  example: 8.25
+                unitOfMeasure:
+                  type: string
+                  description: Unit of measure for dimensions. (M for Domestic and
+                    International)
+                  enum:
+                  - IN
+                  - CM
+                  example: IN
+                packageType:
+                  type: string
+                  description: Type of package (used for determining dimensional weight).
+                    If packageType is anything other than '1' then a discount factor
+                    will be applied. See [Package Types]( https://developer.dhl.com/api-reference/references#get-started-section/package-types
+                    ) for valid values. (O for Domestic and International )
+                  enum:
+                  - '1'
+                  - '2'
+                  - '3'
+                  example: '1'
+        shippingCost:
+          type: object
+          description: Object that contains the package shipping cost details.(O for
+            Domestic and M for International)
+          required:
+          - currency
+          properties:
+            currency:
+              type: string
+              maxLength: 3
+              minLength: 3
+              description: Three-character ISO Currency code. (M for Domestic and
+                International)
+              example: USD
+            freight:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Freight charges for the package in the currency specified.
+                (O for Domestic and International)
+              example: 9.0
+            declaredValue:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Total declared value for the package in the currency specified.
+                While not mandatory, best practice is to provide if available. Many
+                International destinations have a limit of 2500 USD. (O for Domestic
+                and International)
+              example: 76.0
+            insuredValue:
+              type: number
+              format: float
+              maximum: 99999999.99
+              minimum: 0
+              description: Total insured value of the package in the currency specified.
+                (O for Domestic and International)
+              example: 89.0
+            duty:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 99999999.99
+              example: 6.0
+              description: Duty charges for the package in the currency specified.
+                (O for Domestic and International)
+            dutiesPaid:
+              type: boolean
+              enum:
+              - true
+              - false
+              description: "Whether or not duties were pre-paid by the consignee;\
+                \ false for DDU shipments, true for DDP shipments. If the user doesn\u2019\
+                t specify then its marked DDU by default. Some international products\
+                \ and destinations do not offer both DDP and DDU. See the [International\
+                \ Regulations](https://developer.dhl.com/api-reference/references#get-started-section/international-regulations)\
+                \ section for more information.(N for Domestic and O for International)"
+              example: 'false'
+            taxesPaid:
+              type: boolean
+              enum:
+              - true
+              - false
+              description: Whether or not duties were pre-paid by the shipper. (N
+                for Domestic and O for International)
+              example: 'false'
+            tax:
+              type: number
+              format: float
+              description: Tax charges for the package in the currency specified.
+                (O for Domestic and International)
+              example: 10.0
+              minimum: 0
+              maximum: 99999999.99
+        customsDetails:
+            type: array
+            description: Object that contains the customsDetails for the package. Mandatory for International, APO/FPO/DPO and non-continental shipments. (M)
+            items:
+              type: object
+              required:
+              - itemDescription
+              - countryOfOrigin
+              - packagedQuantity
+              - skuNumber
+              - itemValue
+              - currency
+              properties:
+                itemDescription:
+                  type: string
+                  example: "Board game - toys"
+                  description: Detailed description of the commodity item - Used for customs clearance. Accuracy and Detail are required. (M for International)
+                  minLength: 3
+                  maxLength: 50
+                countryOfOrigin:
+                  type: string
+                  maxLength: 2
+                  minLength: 2
+                  pattern: '^[A-Z]{2}$'
+                  description: Two-Character Country Code for Origin Manufacturer Country of the product. (M for International)
+                  example: CN
+                hsCode:
+                  type: string
+                  maxLength: 20
+                  minLength: 6
+                  description: The Harmonized Tariff Schedule is a number assigned to every possible commodity that can be imported or exported from any country. Please do not include any decimals "." in this field. Mandatory for some international destinations. See the [International Regulations]( https://developer.dhl.com/api-reference/references#get-started-section/international-regulations ) section for more information. (C for International)
+                  example: '644556'
+                packagedQuantity:
+                  type: integer
+                  maximum: 999999
+                  minimum: 1
+                  description: Quantity of the same item in the package. (M for International)
+                  format: int32
+                  example: 2
+                skuNumber:
+                  type: string
+                  maxLength: 20
+                  minLength: 1
+                  description: SKU or item code - Used for product verification on clients website during customs clearance process. (M for International)
+                  example: "123"
+                itemValue:
+                  type: number
+                  format: float
+                  maximum: 99999999.99
+                  minimum: 0.01
+                  description: Commercial value of the commodity (per each) in the currency specified. (M for International)
+                  example: 34
+                currency:
+                  type: string
+                  example: "USD"
+                  minLength: 3
+                  maxLength: 3
+                  description: Three-character ISO Currency code for this iteration of commodity. (M for International)
+                productUrl:
+                  type: string
+                  maxLength: 255
+                  minLength: 0  
+                  example: 'https://widgets.io/cat/1234'
+                  description: Product URL, may be used for product verification during customs clearance process. (O for International)
+    DomesticResponse:
+      type: object
+      properties:
+        timestamp:
+              type: string
+              description: Date and time of the label request; ISO-8601 date/time
+                format.(M)
+              format: date-time
+              example: '2020-02-10T21:53:16.735Z'
+              minLength: 1
+              maxLength: 50
+        pickup:
+          type: string
+          maxLength: 10
+          minLength: 1
+          description: DHLeCS pickup account number. You will receive this
+            number from DHL sales after onboarding. (M)
+          example: '5234567'
+        distributionCenter:
+          type: string
+          maxLength: 6
+          minLength: 1
+          description: DHL eCommerce Distribution center where the package
+            will be lodged after pickup. Depends on the pickup location
+            and this may not be the same as what was submitted in the request.
+            (M)
+          example: USRDU1
+        labels:
+          type: array
+          items:
+            type: object
+            properties:
+              createdOn:
+                type: string
+                format: date-time
+                minLength: 1
+                maxLength: 50
+                example: '2020-02-10T21:51:34.000Z'
+                description: Date and time the label was created in UTC
+                  format. (M)
+              packageId:
+                type: string
+                maxLength: 30
+                minLength: 1
+                description: Customer-provided package ID, also known as
+                  the CCN (customer confirmation number) or the GM number.
+                  (M)
+                example: V4-TEST-1581371343739
+              dhlPackageId:
+                type: string
+                example: '3387191106122423'
+                maxLength: 16
+                minLength: 1
+                description: DHL-generated package ID. (M)
+              trackingId:
+                type: string
+                example: '420300249374869903500011991305'
+                maxLength: 30
+                minLength: 1
+                description: Last-mile carrier package ID. For international
+                  shipments, this ID is only available after the package
+                  has been shipped. For domestic shipments, this ID contains
+                  the full USPS IMpb number and is always available. If
+                  the package is overlabeled for any reason, this field
+                  contains the latest carrier package ID. (C)
+              labelData:
+                type: string
+                description: This will be an encoded string containing the
+                  shipping label image or a plain text zpl string depending
+                  on the format requested. (M)
+                minLength: 0
+                maxLength: 100000
+                example: iVBORw0KGgoAAAANSUhEUgAAAywAAATCAQAAAAB3HF9MAAAV...
+              encodeType:
+                type: string
+                example: BASE64
+                description: Either base64 or plain text depending on the
+                  label format requested.
+                enum:
+                - BASE64
+                - PLAIN
+              format:
+                type: string
+                description: Formats supported are ZPL, PNG, or PDF. One
+                  of these formats depending on the label format requested.
+                  (M)
+                enum:
+                - ZPL
+                - PNG
+                - PDF
+                example: ZPL
+              link:
+                type: string
+                minLength: 1
+                maxLength: 150
+                description: Link to the label. (M)
+                example: https://api-sandbox.dhlecs.com/shipping/v4/label/pickup-identifier-example?packageId=V4-TEST-1586965592482
+              labelDetail:
+                type: object
+                properties:
+                  serviceLevel:
+                    type: string
+                    description: If service level for the piece is Ground Service, indicates GRD. (C)
+                    example: GRD
+                    minLength: 1
+                    maxLength: 30
+                  outboundSortCode:
+                    type: string
+                    example: '62'
+                    description: Identifies the DHL eCommerce outbound sort code.(O)
+                    minLength: 1
+                    maxLength: 30
+                  sortingSetupVersion:
+                    type: string
+                    example: '1'
+                    minLength: 1
+                    maxLength: 30
+                    description: Defines the sort code version used to generate the sort code.(O)
+                  inboundSortCode:
+                    type: string
+                    example: n59
+                    minLength: 1
+                    maxLength: 30
+                    description: String identifying the DHL eCommerce inbound sort code.(O)
+                  serviceEndorsement:
+                    type: string
+                    example: '1'
+                    minLength: 1
+                    maxLength: 30
+                    description: Ancillary service endorsements are used
+                      to request a new address and to provide the USPS with
+                      instructions on how to handle undeliverable-as-addressed
+                      pieces. The endorsements are the same for all classes
+                      of mail, but the treatment and cost differ by class
+                      of mail. Use of an ancillary service endorsement on
+                      a mailpiece obligates the mailer to pay any applicable
+                      charges for forwarding, return, and separate address
+                      notification charges. (O)
+                  intendedReceivingFacility:
+                    type: string
+                    example: USRDU1
+                    minLength: 1
+                    maxLength: 30
+                    description: Identifies the final DHL eCommerce facility from which the shipment will be injected into the USPS mail stream.(O)
+                  mailBanner:
+                    type: string
+                    example: USPS PARCEL SELECT
+                    description: This element contains banner text that
+                      is required on the piece by the USPS. (O)
+                    minLength: 1
+                    maxLength: 30
+                  customsDetailsProvided:
+                    type: boolean
+                    description: True if at least one customs details (commodity
+                      level) data was provided in the request. Not required
+                      for US Domestic products. (N)
+                    example: 'false'
+        orderedProductId:
+          type: string
+          maxLength: 10
+          minLength: 1
+          pattern: ^[A-Z]{3}$
+          description: DHL eCommerce three-character product code that was
+            requested. Please refer to our documentation site for a full
+            list of product codes. (M)
+          example: GND
+    InternationalResponse:
+      type: object
+      properties:
+        timestamp:
+              type: string
+              description: Date and time of the label request; ISO-8601 date/time
+                format.(M)
+              format: date-time
+              example: '2020-02-10T21:53:16.735Z'
+              minLength: 1
+              maxLength: 50
+        pickup:
+          type: string
+          maxLength: 10
+          minLength: 1
+          description: DHLeCS pickup account number. You will receive this
+            number from DHL sales after onboarding. (M)
+          example: '5234567'
+        distributionCenter:
+          type: string
+          maxLength: 6
+          minLength: 1
+          description: DHL eCommerce Distribution center where the package
+            will be lodged after pickup. Depends on the pickup location
+            and this may not be the same as what was submitted in the request.
+            (M)
+          example: USRDU1
+        labels:
+          type: array
+          items:
+            type: object
+            properties:
+              createdOn:
+                type: string
+                format: date-time
+                minLength: 1
+                maxLength: 50
+                example: '2020-02-10T21:51:34.000Z'
+                description: Date and time the label was created in UTC
+                  format. (M)
+              packageId:
+                type: string
+                maxLength: 30
+                minLength: 1
+                description: Customer-provided package ID, also known as
+                  the CCN (customer confirmation number) or the GM number.
+                  (M)
+                example: V4-TEST-1581371343739
+              dhlPackageId:
+                type: string
+                example: '3387191106122423'
+                maxLength: 16
+                minLength: 1
+                description: DHL-generated package ID. (M)
+              labelData:
+                type: string
+                description: This will be an encoded string containing the
+                  shipping label image or a plain text zpl string depending
+                  on the format requested. (M)
+                minLength: 0
+                maxLength: 100000
+                example: iVBORw0KGgoAAAANSUhEUgAAAywAAATCAQAAAAB3HF9MAAAV...
+              encodeType:
+                type: string
+                example: BASE64
+                description: Either base64 or plain text depending on the
+                  label format requested.
+                enum:
+                - BASE64
+                - PLAIN
+              format:
+                type: string
+                description: Formats supported are ZPL, PNG, or PDF. One
+                  of these formats depending on the label format requested.
+                  (M)
+                enum:
+                - ZPL
+                - PNG
+                - PDF
+                example: ZPL
+              link:
+                type: string
+                minLength: 1
+                maxLength: 150
+                description: Link to the label. (M)
+                example: https://api-sandbox.dhlecs.com/shipping/v4/label/pickup-identifier-example?packageId=V4-TEST-1586965592482
+              labelDetail:
+                type: object
+                properties:
+                  serviceEndorsement:
+                    type: string
+                    description: >
+                      Ancillary service endorsements are used to request a new address and to provide the USPS with instructions on how to handle undeliverable-as-addressed pieces.
+                      The endorsements are the same for all classes of mail, but the treatment and cost differ by class of mail.
+                      Use of an ancillary service endorsement on a mailpiece obligates the mailer to pay any applicable charges for forwarding, return, and separate address notification charges.(O)
+                    example: "1"
+                    minLength: 1
+                    maxLength: 30
+                  intendedReceivingFacility:
+                      type: string
+                      example: USRDU1
+                      minLength: 1
+                      maxLength: 30
+                      description: Identifies the final DHL eCommerce facility from which the shipment will be injected into the USPS mail stream.(O)
+                  customsDetailsProvided:
+                      type: boolean
+                      example: true
+                      enum:
+                      - true
+                      - false
+                      description: true if at least one customs details (commodity level) data was provided in the request. Not required for US Domestic products.(M)
+        orderedProductId:
+          type: string
+          maxLength: 10
+          minLength: 1
+          pattern: ^[A-Z]{3}$
+          description: DHL eCommerce three-character product code that was
+            requested. Please refer to our documentation site for a full
+            list of product codes. (M)
+          example: PLT
+security:
+- OAuth2: []

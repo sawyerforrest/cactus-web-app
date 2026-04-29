@@ -1,0 +1,451 @@
+openapi: 3.0.0
+info:
+  title: Webhook API
+  version: 4.0.0
+  description: |
+    API for managing webhooks for pickup customer accounts in DHL.
+
+servers:
+  - url: https://api-sandbox.dhlecs.com
+    description: Sandbox Environment
+  - url: https://api.dhlecs.com
+    description: Production Environment
+paths:
+  /account/v4/webhooks:
+    post:
+      summary: Create Webhook
+      description: |
+        This endpoint allows you to create a new webhook registration for a specific pickup customer account. Only one webhook registration may be created per pickup customer account. Webhook callback URLs must use HTTPS.
+        
+        HTTP Basic Authentication is supported and recommended, but not required. 
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pickup:
+                  type: string
+                  example: "5234567"
+                  minLength: 4
+                  maxLength: 10
+                  description: |
+                    DHL eCommerce pickup account number. This is not the same as the Sold To Account number.(C)
+                trackingId:
+                  type: string
+                  description: |
+                    Accepts the following package identifiers - packageId, dhlPackageId, deliveryConfirmationNumber, and trackingId. We recommend using the deliveryConfirmationNumber in combination with the pickup to guarantee uniqueness.(C)
+                  minLength: 1
+                  maxLength: 30
+                  example: "9261290234835400877745"
+                hookType:
+                  type: string
+                  enum: [TRACK_EVENTS]
+                  example: "TRACK_EVENTS"
+                  description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                url:
+                  type: string
+                  format: uri
+                  example: "https://example.com"
+                  minLength: 1
+                  maxLength: 255
+                  description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                username:
+                  type: string
+                  example: "abc123"
+                  minLength: 0
+                  maxLength: 50
+                  description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                password:
+                  type: string
+                  example: "**"
+                  minLength: 0
+                  maxLength: 50
+                  description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                active:
+                  type: boolean
+                  enum:
+                    - true
+                    - false
+                  example: "true"
+                  description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+      parameters:
+        - name: User-Agent
+          in: header
+          description: "Information about the client application making the request."
+          schema:
+            type: string
+            default: "eCOMv4 DHLeC Developer portal" 
+      responses:
+        '200':
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hookId:
+                    type: string
+                    example: "c27d7042-f748-4785-b577-90be560dbb5a"
+                    description: Unique webhook identifier.(M)
+                    minLength: 36
+                    maxLength: 36
+                  trackingId:
+                    type: string
+                    description: Accepts the following package identifiers - packageId, dhlPackageId, deliveryConfirmationNumber, and trackingId. We recommend using the deliveryConfirmationNumber in combination with the pickup to guarantee uniqueness.(C)
+                    minLength: 1
+                    maxLength: 30
+                    example: "9261290234835400877745"
+                  pickup:
+                    type: string
+                    example: "5234567"
+                    minLength: 4
+                    maxLength: 10
+                    description: DHL eCommerce pickup account number. This is not the same as the Sold To Account number.(M)
+                  hookType:
+                    type: string
+                    example: "TRACK_EVENTS"
+                    description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                  url:
+                    type: string
+                    format: uri
+                    example: "https://example.com/"
+                    minLength: 1
+                    description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                    maxLength: 255
+                  username:
+                    type: string
+                    example: "abc123"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  password:
+                    type: string
+                    example: "**"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  active:
+                    type: boolean
+                    enum:
+                      - true
+                      - false
+                    example: "true"	
+                    description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+
+    get:
+      summary: List Webhooks
+      description: This endpoint allows you to retrieve a list of all webhooks owned by the current API credentials.
+      parameters:
+        - name: User-Agent
+          in: header
+          description: "Information about the client application making the request."
+          schema:
+            type: string
+            default: "eCOMv4 DHLeC Developer portal" 
+      responses:
+        '200':
+          description: A list of webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhooks:
+                    type: array
+                    description: The webhooks owned by the current user. (M)
+                    items:
+                      type: object
+                      properties:
+                        hookId:
+                          type: string
+                          example: "c27d7042-f748-4785-b577-90be560dbb5a"
+                          description: Unique webhook identifier.(M)
+                          minLength: 36
+                          maxLength: 36
+                        pickup:
+                          type: string
+                          example: "5234567"
+                          minLength: 4
+                          maxLength: 10
+                          description: DHL eCommerce pickup account number. This is not the same as the Sold To Account number.(M)
+                        hookType:
+                          type: string
+                          example: "TRACK_EVENTS"
+                          description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                        url:
+                          type: string
+                          format: uri
+                          example: "https://example.com/"
+                          description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                          minLength: 1
+                          maxLength: 255
+                        username:
+                          type: string
+                          example: "abc123"
+                          minLength: 0
+                          maxLength: 50
+                          description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                        password:
+                          type: string
+                          example: "**"
+                          minLength: 0
+                          maxLength: 50
+                          description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                        active:
+                          type: boolean
+                          enum:
+                            - true
+                            - false
+                          example: "true"	
+                          description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+
+        '400':
+          description: "Bad Request"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/400.0000003"
+                  title:
+                    type: string
+                    example: "Invalid request"
+
+  /account/v4/webhooks/{hookId}:
+    parameters:
+      - name: hookId
+        in: path
+        required: true
+        description: The ID of the webhook to retrieve, update, or delete.
+        schema:
+          type: string
+          
+      - name: User-Agent
+        in: header
+        description: "Information about the client application making the request."
+        schema:
+          type: string
+          default: "eCOMv4 DHLeC Developer portal" 
+
+    get:
+      summary: Get Webhook
+      description: This endpoint allows you to retrieve information about a specific webhook, given the hookId.
+      responses:
+        '200':
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hookId:
+                    type: string
+                    example: "c27d7042-f748-4785-b577-90be560dbb5a"
+                    description: Unique webhook identifier.(M)
+                    minLength: 36
+                    maxLength: 36
+                  pickup:
+                    type: string
+                    example: "5234567"
+                    minLength: 4
+                    maxLength: 10
+                    description: DHL eCommerce pickup account number. This is not the same as the Sold To Account(M) number.
+                  hookType:
+                    type: string
+                    example: "TRACK_EVENTS"
+                    description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                  url:
+                    type: string
+                    format: uri
+                    example: "https://example.com/"
+                    description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                    minLength: 1
+                    maxLength: 255
+                  username:
+                    type: string
+                    example: "abc123"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  password:
+                    type: string
+                    example: "**"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  active:
+                    type: boolean
+                    enum:
+                      - true
+                      - false
+                    example: "true"	
+                    description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+        '401':
+          description: No credentials provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/401.0000008"
+                  title:
+                    type: string
+                    example: "No credentials provided"
+
+        '404':
+          description: "Hook Not Found"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/404.0404003"
+                  title:
+                    type: string
+                    example: "Hook Not Found"
+
+    put:
+      summary: Update Webhook
+      description: | 
+        This endpoint allows you to modify a specific webhook, given the hookId. Note that the `hookId`, `pickup`, and `hookType` may not be modified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pickup:
+                  type: string
+                  example: "5234567"
+                  minLength: 4
+                  maxLength: 10
+                  description: DHL eCommerce pickup account number. This is not the same as the Sold To Account number. (M)
+                hookType:
+                  type: string
+                  example: "TRACK_EVENTS"
+                  description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                url:
+                  type: string
+                  format: uri
+                  example: "https://example.com/"
+                  minLength: 1
+                  maxLength: 255
+                  description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                username:
+                  type: string
+                  example: "abc123"
+                  minLength: 0
+                  maxLength: 50
+                  description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                password:
+                  type: string
+                  example: "**"
+                  minLength: 0
+                  maxLength: 50
+                  description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                active:
+                  type: boolean
+                  enum:
+                    - true
+                    - false
+                  example: "true"	
+                  description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+      parameters:
+          - name: User-Agent
+            in: header
+            description: "Information about the client application making the request."
+            schema:
+              type: string
+              default: "eCOMv4 DHLeC Developer portal"  
+
+      responses:
+        '200':
+          description: Webhook updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hookId:
+                    type: string
+                    example: "c27d7042-f748-4785-b577-90be560dbb5a"
+                    description: Unique webhook identifier.(M)
+                    minLength: 36
+                    maxLength: 36
+                  pickup:
+                    type: string
+                    example: "5234567"
+                    minLength: 4
+                    maxLength: 10
+                    description: DHL eCommerce pickup account number. This is not the same as the Sold To Account number.(M)
+                  hookType:
+                    type: string
+                    example: "TRACK_EVENTS"
+                    description: The type of webhook. Currently, the only valid hookType is TRACK_EVENTS.(M)
+                  url:
+                    type: string
+                    format: uri
+                    example: "https://example.com/"
+                    minLength: 1
+                    description: The URL to send events to. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(M)
+                    maxLength: 255
+                  username:
+                    type: string
+                    example: "abc123"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication username to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  password:
+                    type: string
+                    example: "**"
+                    minLength: 0
+                    maxLength: 50
+                    description: HTTP Basic Authentication password to use when connecting to the URL. It is recommended (but not required) that the webhook URL be secured using HTTP Basic Authentication.(O)
+                  active:
+                    type: boolean
+                    enum:
+                    - true
+                    - false
+                    example: "true"	
+                    description: Whether or not the webhook is active. Webhooks may be automatically deactivated if event delivery fails too often.(M)
+
+    delete:
+      summary: Delete Webhook
+      description: This endpoint allows you to delete a specific webhook, given the hookId.
+      responses:
+        '200':
+          description: Webhook deleted successfully
+        '500':
+          description: "Internal gateway server error"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "https://api-sandbox.dhlecs.com/docs/errors/500.0000002"
+                  title:
+                    type: string
+                    example: "Internal gateway server error"
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      description: This API uses OAuth 2 with the client-credentials grant flow
+      flows:
+        clientCredentials:
+          tokenUrl: https://api-sandbox.dhlecs.com/auth/v4/accesstoken
+          scopes: {}
+
+security:
+  - OAuth2: []
