@@ -1,61 +1,51 @@
 // ==========================================================
 // FILE: src/alamo/app/pld-analysis/reference-data/coverage-zips/page.tsx
-// PURPOSE: GOFO Regional ZIP-coverage view + (forthcoming) upload flow.
+// PURPOSE: GOFO Regional Coverage view + upload flow (preview stage).
 //
-// This file is the empty-state + loaded-state shell of the upload UI.
-// It is intentionally LAYOUT-ONLY in this commit:
-//   - No XLSX parser wired up
-//   - No commit action wired up
-//   - The Upload button is a placeholder that surfaces a "parser not yet
-//     implemented — pending source-file structure review" flash message
+// Two-stage upload flow:
+//   - Stage 1 (this file + UploadForm.tsx + actions.ts): file picker +
+//     server-side parse + preview UI showing summary + first 10 rows +
+//     warnings. NO database write at this stage.
+//   - Stage 2 (pause point #3, NOT YET WIRED): commit Server Action
+//     performs the atomic two-table TRUNCATE + bulk INSERT.
 //
-// Sub-phase 2b architecture (locked by Senior Architect):
-//   1. Server-side parsing only (no client-bundled XLSX library)
-//   2. Two-stage preview-then-commit
-//   3. Truncate-and-replace per upload (no partial merges)
-//   4. Versioning v1: simple replace-with-created_at; full audit trail later
+// The interactive upload UI lives in UploadForm.tsx (client component
+// using useActionState). This page renders the breadcrumb, status
+// card, and slots UploadForm in.
 //
 // Why GOFO/Regional is the only carrier+service combo this page surfaces:
 //   The service_coverage_zips schema supports any carrier + service, but in
 //   v1 the only restricted-footprint service that needs a ZIP coverage list
-//   is GOFO Regional (~70% of US ZIPs across 7 hubs — actually 8 hubs as of
-//   v1.10.0-019). DHL eCom, USPS, etc. don't need a ZIP allowlist — they
-//   service-or-don't via API/zone-matrix lookup. If a future restricted
-//   service joins, the schema is ready; we'll add a carrier/service picker
-//   to this page at that point.
+//   is GOFO Regional (~70% of US ZIPs across 8 hubs as of v1.10.0-019).
+//   DHL eCom, USPS, etc. don't need a ZIP allowlist — they service-or-don't
+//   via API/zone-matrix lookup. If a future restricted service joins, the
+//   schema is ready; we'll add a carrier/service picker to this page then.
 //
 // Schema reference (verified 2026-05-05):
-//   service_coverage_zips(
-//     id uuid pk default gen_random_uuid(),
-//     carrier_code carrier_code_enum not null,
-//     service_level text not null,
-//     zip5 text not null,
-//     is_serviceable boolean not null default true,
-//     effective_date date not null,
-//     deprecated_date date null,
-//     source text null,
-//     notes text null,
-//     created_at timestamptz not null default now(),
-//     UNIQUE(carrier_code, service_level, zip5, effective_date)
-//   )
+//   service_coverage_zips(carrier_code, service_level, zip5,
+//     is_serviceable, effective_date, deprecated_date, source, notes,
+//     created_at, UNIQUE(carrier_code, service_level, zip5, effective_date))
 // ==========================================================
 
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import { UploadForm } from './UploadForm'
 import {
   ChevronRight,
   ChevronLeft,
-  Upload,
   MapPin,
   AlertCircle,
   CheckCircle2,
   Clock,
 } from 'lucide-react'
 
-const ROUTE = '/pld-analysis/reference-data/coverage-zips'
 const TARGET_CARRIER = 'GOFO'
 const TARGET_SERVICE = 'Regional'
+
+// Default effective date matches the GOFO Q2 2026 publication
+// (per parser spec § 4). Operator can override on the upload form.
+const DEFAULT_EFFECTIVE_DATE = '2026-04-28'
 
 interface CoverageStatus {
   total: number
@@ -125,19 +115,6 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
   const status = await loadStatus()
   const flash = params.status ? { kind: params.status, msg: params.msg ?? '' } : null
 
-  // -------- Server actions (placeholders — parser not yet wired) --------
-
-  async function handleUploadPlaceholder(_formData: FormData) {
-    'use server'
-    redirect(
-      `${ROUTE}?status=info&msg=${encodeURIComponent(
-        'Parser not yet implemented. Pending source-XLSX structure review with Senior Architect — see chat for the next pause point.',
-      )}`,
-    )
-  }
-
-  // -------- Render --------
-
   const isLoaded = status.total > 0
 
   return (
@@ -193,64 +170,10 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
             <EmptyCard />
           )}
 
-          {/* Upload card */}
-          <div style={{
-            marginTop: 16,
-            background: 'var(--cactus-canvas)',
-            border: '0.5px solid var(--cactus-border)',
-            borderRadius: 10,
-            padding: 24,
-          }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 13, fontWeight: 500, color: 'var(--cactus-ink)',
-              marginBottom: 6,
-            }}>
-              <Upload size={16} color="var(--cactus-forest)" />
-              {isLoaded ? 'Replace with new upload' : 'Upload coverage XLSX'}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--cactus-muted)', marginBottom: 16, lineHeight: 1.55 }}>
-              Server-side parse. Two-stage preview-then-commit: after upload
-              you&apos;ll see the first 10 parsed rows + total counts + any
-              validation warnings before anything writes to the database. The
-              commit step writes both <strong>service_coverage_zips</strong>
-              and <strong>gofo_regional_zone_matrix</strong> in a single
-              transaction.
-            </div>
-
-            <form action={handleUploadPlaceholder} encType="multipart/form-data">
-              <div style={{
-                display: 'grid', gridTemplateColumns: '1fr auto', gap: 12,
-                alignItems: 'center',
-              }}>
-                <input
-                  name="file"
-                  type="file"
-                  accept=".xlsx,.xls"
-                  required
-                  style={{
-                    width: '100%', padding: '8px 10px',
-                    background: 'var(--cactus-canvas)',
-                    border: '0.5px dashed var(--cactus-border-mid)',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    color: 'var(--cactus-ink)',
-                    fontFamily: 'inherit',
-                  }}
-                />
-                <button type="submit" style={primaryButtonStyle}>
-                  <Upload size={12} />
-                  Upload &amp; preview
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--cactus-hint)', marginTop: 8 }}>
-                Source format: GOFO published US Regional ZIP coverage list (.xlsx).
-                Single sheet with ZIP5 entries — exact column conventions to be
-                confirmed with the source XLSX before parser is wired.
-              </div>
-            </form>
+          {/* Upload form (client component — useActionState drives preview UI) */}
+          <div style={{ marginTop: 16 }}>
+            <UploadForm defaultEffectiveDate={DEFAULT_EFFECTIVE_DATE} />
           </div>
-
         </div>
       </div>
     </div>
@@ -369,16 +292,4 @@ function Flash({ kind, msg }: { kind: string; msg: string }) {
       </div>
     </div>
   )
-}
-
-const primaryButtonStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  padding: '8px 14px',
-  background: 'var(--cactus-forest)',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  fontSize: 12, fontWeight: 500,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
 }
