@@ -211,7 +211,7 @@ export default async function DieselPricesPage({ searchParams }: PageProps) {
           padding: '0 24px', height: 48,
           display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <a href="/pld-analysis" style={{ fontSize: 13, color: 'var(--cactus-muted)' }}>PLD Analysis</a>
+          <a href="/pld-analysis" style={{ fontSize: 13, color: 'var(--cactus-muted)' }}>PLD Roundup</a>
           <ChevronRight size={14} color="var(--cactus-hint)" />
           <a href="/pld-analysis/reference-data" style={{ fontSize: 13, color: 'var(--cactus-muted)' }}>Reference Data</a>
           <ChevronRight size={14} color="var(--cactus-hint)" />
@@ -456,14 +456,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function SourcePill({ source }: { source: string }) {
+  // MANUAL uses sand grey to match the "seeded / system constant" treatment
+  // on the reference-data index page. Amber would imply "needs attention,"
+  // which is the wrong semantic for an operator-entered correction.
   const isManual = source === 'MANUAL'
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       fontSize: 10, fontWeight: 500,
-      color: isManual ? 'var(--cactus-amber-text)' : 'var(--cactus-forest)',
-      background: isManual ? 'var(--cactus-amber-bg)' : 'var(--cactus-mint)',
-      border: `0.5px solid ${isManual ? '#FCD34D' : '#C5DBC0'}`,
+      color: isManual ? 'var(--cactus-muted)' : 'var(--cactus-forest)',
+      background: isManual ? 'var(--cactus-sand)' : 'var(--cactus-mint)',
+      border: `0.5px solid ${isManual ? 'var(--cactus-border)' : '#C5DBC0'}`,
       padding: '1px 6px', borderRadius: 999,
       letterSpacing: '0.02em',
     }}>

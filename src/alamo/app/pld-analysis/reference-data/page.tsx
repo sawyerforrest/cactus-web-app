@@ -166,7 +166,7 @@ export default async function ReferenceDataPage() {
         }}>
           <a href="/pld-analysis" style={{
             fontSize: 13, color: 'var(--cactus-muted)',
-          }}>PLD Analysis</a>
+          }}>PLD Roundup</a>
           <ChevronRight size={14} color="var(--cactus-hint)" />
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>
             Reference Data
@@ -237,7 +237,7 @@ export default async function ReferenceDataPage() {
               secondary={`Effective ${status.dhl_fuel_latest_effective ?? '—'} · Indexed to weekly diesel price · DHL published PDF`}
               action={{
                 label: 'View / edit',
-                href: '#design-review-pending',
+                href: '/pld-analysis/reference-data/fuel-tiers',
               }}
             />
             <Row

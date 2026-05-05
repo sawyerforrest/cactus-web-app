@@ -38,7 +38,7 @@ const navItems = {
     { label: 'Meter Health', href: '/meters', Icon: Gauge },
   ],
   tools: [
-    { label: 'PLD/Rate Analysis', href: '/pld', Icon: BarChart2 },
+    { label: 'PLD Roundup', href: '/pld-analysis', Icon: BarChart2 },
     { label: 'Reference Data', href: '/pld-analysis/reference-data', Icon: Database },
     { label: 'Audit Log', href: '/audit', Icon: ScrollText },
   ],
