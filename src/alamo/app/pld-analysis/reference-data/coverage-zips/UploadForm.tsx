@@ -22,9 +22,8 @@ import { Upload, AlertCircle, AlertTriangle, CheckCircle2, RotateCcw } from 'luc
 import {
   previewGofoRegionalUpload,
   commitGofoRegionalUpload,
-  initialPreviewState,
-  type PreviewState,
 } from './actions'
+import { initialPreviewState, type PreviewState } from './types'
 
 interface UploadFormProps {
   defaultEffectiveDate: string

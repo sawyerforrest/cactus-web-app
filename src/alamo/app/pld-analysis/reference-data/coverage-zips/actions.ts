@@ -29,11 +29,8 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import {
-  parseGofoRegionalXlsx,
-  type ParsedZipRow,
-  type ParserSummary,
-} from '@/lib/pld-analysis/gofo-regional-parser'
+import { parseGofoRegionalXlsx } from '@/lib/pld-analysis/gofo-regional-parser'
+import { initialPreviewState, type PreviewState } from './types'
 
 const ROUTE = '/pld-analysis/reference-data/coverage-zips'
 const BUCKET = 'pld-uploads'
@@ -42,30 +39,6 @@ const PATH_PREFIX = 'coverage-zips'
 // =============================================================
 // Stage 1: previewGofoRegionalUpload (useActionState)
 // =============================================================
-
-export type PreviewStatus = 'idle' | 'parsing' | 'preview' | 'error'
-
-export interface PreviewState {
-  status: PreviewStatus
-  errors: string[]
-  warnings: string[]
-  summary: ParserSummary | null
-  firstTenRows: ParsedZipRow[]
-  effectiveDate: string | null
-  fileName: string | null
-  stagePath: string | null  // path within the pld-uploads bucket once uploaded
-}
-
-export const initialPreviewState: PreviewState = {
-  status: 'idle',
-  errors: [],
-  warnings: [],
-  summary: null,
-  firstTenRows: [],
-  effectiveDate: null,
-  fileName: null,
-  stagePath: null,
-}
 
 export async function previewGofoRegionalUpload(
   _prev: PreviewState,
