@@ -65,6 +65,22 @@ ALTER TABLE dhl_ecom_dcs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY dhl_ecom_dcs_authenticated_select ON dhl_ecom_dcs
   FOR SELECT TO authenticated USING (true);
 
+-- Table-level GRANTs. RLS policies alone aren't enough — Postgres requires
+-- both an RLS-allowed predicate AND a base SELECT (or other) privilege at
+-- the table level. Without these grants, queries from authenticated /
+-- service_role roles fail with "permission denied for table dhl_ecom_dcs"
+-- even though the policy would otherwise admit the row.
+--
+-- Original v1.10.0-022 shipped without these GRANTs (RLS + policy only),
+-- which broke the Zone Matrices upload screen's dhl_ecom_dcs lookup at
+-- runtime. Fix applied as v1_10_0_022_fix_dhl_ecom_dcs_grants hotfix on
+-- 2026-05-05; this canonical file now includes them inline so a from-
+-- scratch replay matches the live state. See PATTERNS.md (forthcoming
+-- Pattern 6: "Tables with RLS still need explicit role GRANTs").
+GRANT SELECT ON dhl_ecom_dcs TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER, TRUNCATE
+  ON dhl_ecom_dcs TO service_role;
+
 COMMIT;
 
 -- ----------------------------------------------------------------------------
