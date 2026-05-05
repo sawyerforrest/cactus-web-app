@@ -28,7 +28,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { SubmitButton } from '@/components/SubmitButton'
-import { previewDhlEcomZones } from './actions'
+import { previewDhlEcomZones, commitDhlEcomZones } from './actions'
 import { initialPreviewState, type PreviewState, CANONICAL_DC_CODES } from './types'
 
 export function UploadForm() {
@@ -195,8 +195,16 @@ function PreviewPanel({ state }: { state: PreviewState }) {
       <FirstRowsTable rows={state.firstRows} dcCode={s.dcs[0]?.dc_code ?? ''} />
 
       <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
-        {/* Commit form (placeholder until pause point #4 wires the action). */}
-        <form action="/pld-analysis/reference-data/zone-matrices?status=info&msg=Commit+action+not+yet+wired+%E2%80%94+pause+point+%234+deliverable.+Surfacing+to+Senior+Architect+for+preview+verification+with+the+real+18+files." method="get" style={{ display: 'inline' }}>
+        <form action={commitDhlEcomZones} style={{ display: 'inline' }}>
+          {/* Hidden inputs carry the upload context. Commit action
+              re-fetches the 18 staged files by UUID + canonical DC list,
+              re-parses, validates re-parse summary matches these
+              expected counts, then runs the atomic write. */}
+          <input type="hidden" name="upload_uuid" value={state.uploadUuid ?? ''} />
+          <input type="hidden" name="expected_rows" value={s.totalRows} />
+          <input type="hidden" name="expected_files" value={s.totalFiles} />
+          <input type="hidden" name="effective_date" value={s.resolvedEffectiveDate} />
+          <input type="hidden" name="matrix_version" value={s.matrixVersion} />
           <SubmitButton style={primaryButtonStyle} pendingLabel="Committing 16,740 rows…">
             <CheckCircle2 size={12} />
             Commit ({s.totalRows.toLocaleString('en-US')} rows · {s.totalFiles} DCs · effective {s.resolvedEffectiveDate})
@@ -206,8 +214,8 @@ function PreviewPanel({ state }: { state: PreviewState }) {
           <RotateCcw size={12} />
           Upload different files
         </a>
-        <span style={{ fontSize: 11, color: 'var(--cactus-amber-text)', marginLeft: 'auto' }}>
-          Commit action not yet wired — pause point #4 deliverable.
+        <span style={{ fontSize: 11, color: 'var(--cactus-muted)', marginLeft: 'auto' }}>
+          Atomic write — scoped DELETE + bulk INSERT in one transaction. Stage files deleted on success.
         </span>
       </div>
     </div>
