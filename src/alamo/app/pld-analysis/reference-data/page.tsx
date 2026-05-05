@@ -42,7 +42,6 @@ import {
   ChevronRight,
   CheckCircle2,
   Circle,
-  RefreshCw,
 } from 'lucide-react'
 
 interface RefDataStatus {
@@ -249,12 +248,7 @@ export default async function ReferenceDataPage() {
               secondary={`Latest week: ${status.diesel_latest_week ?? '—'} · Last EIA fetch: ${fmtRelative(status.diesel_last_fetched_at)} · Auto-refresh: Mondays 11:00 UTC`}
               action={{
                 label: 'View / manual entry',
-                href: '#design-review-pending',
-              }}
-              secondaryAction={{
-                label: 'Fetch now',
-                href: '#design-review-pending',
-                icon: <RefreshCw size={12} />,
+                href: '/pld-analysis/reference-data/diesel-prices',
               }}
               isLast
             />
