@@ -214,8 +214,8 @@ function EmptyCard() {
         </div>
         <div style={{ fontSize: 12, color: 'var(--cactus-muted)', lineHeight: 1.5 }}>
           DHL eCom Ground rating becomes available once all 18 per-DC
-          zone files are loaded. Upload the complete set below to populate
-          16,740 zone matrix rows in one transaction.
+          zone files are loaded. Upload the complete set below — all
+          16,740 zone rows load atomically.
         </div>
       </div>
     </div>

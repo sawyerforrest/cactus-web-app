@@ -302,7 +302,7 @@ export default async function ReferenceDataPage() {
               }
               secondary="Per-DC origin × dest ZIP3 zone matrix. 18 files, one per distribution center, atomic upload."
               action={{
-                label: status.dhl_ecom_zones_total > 0 ? 'View / replace' : 'Upload XLSX',
+                label: status.dhl_ecom_zones_total > 0 ? 'Replace upload' : 'Upload XLSX',
                 href: '/pld-analysis/reference-data/zone-matrices',
               }}
             />
