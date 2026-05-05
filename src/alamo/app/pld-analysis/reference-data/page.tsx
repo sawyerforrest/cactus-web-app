@@ -84,7 +84,7 @@ async function loadStatus(): Promise<RefDataStatus> {
     dieselLatestWeek,
     dieselLastFetchedAt,
     zoneMatrices,
-    dhlEcomZonesSample,
+    dhlEcomZonesStatusRes,
     countryZoneMatrices,
     regionalZoneMatrix,
     coverageZips,
@@ -107,13 +107,15 @@ async function loadStatus(): Promise<RefDataStatus> {
     admin.from('diesel_price_history').select('effective_week_start').order('effective_week_start', { ascending: false }).limit(1),
     admin.from('diesel_price_history').select('fetched_at').order('fetched_at', { ascending: false }).limit(1),
     admin.from('carrier_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
-    admin
-      .from('carrier_zone_matrices')
-      .select('origin_zip3, effective_date')
-      .eq('carrier_code', 'DHL_ECOM')
-      .eq('service_level', 'Ground')
-      .is('deprecated_date', null)
-      .limit(20000),
+    // DHL eCom Domestic zones aggregate via the v1.10.0-024 server-side
+    // function — avoids the PostgREST row-cap that broke the prior
+    // sample-and-dedup pattern (read 20k rows, count distinct
+    // origin_zip3 client-side; cap truncated the response and produced a
+    // wrong DC count).
+    admin.rpc('carrier_zone_matrix_status', {
+      p_carrier: 'DHL_ECOM',
+      p_service: 'Ground',
+    }),
     admin.from('carrier_country_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_regional_zone_matrix').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('service_coverage_zips').select('*', { count: 'exact', head: false }).limit(0),
@@ -123,15 +125,14 @@ async function loadStatus(): Promise<RefDataStatus> {
 
   const hubRowList = (hubsRows.data ?? []) as Array<{ hub_code: string }>
 
-  // Compute DHL eCom Domestic Zones scoped stats from the sample rows.
-  const dhlEcomSample = (dhlEcomZonesSample.data ?? []) as Array<{
-    origin_zip3: string
-    effective_date: string
-  }>
-  const dhlEcomDistinctDcs = new Set(dhlEcomSample.map(r => r.origin_zip3)).size
-  const dhlEcomLatestEffective = dhlEcomSample
-    .map(r => r.effective_date)
-    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
+  // RPC returns one row with the four aggregate fields. Tolerate a transient
+  // RPC error by treating the slice as empty (renders not-loaded state on
+  // the index row rather than 500ing the whole page).
+  const dhlEcomStatusRow = (Array.isArray(dhlEcomZonesStatusRes.data)
+    ? dhlEcomZonesStatusRes.data[0]
+    : dhlEcomZonesStatusRes.data) as
+    | { total_rows: number; distinct_dcs: number; latest_effective: string | null }
+    | undefined
 
   return {
     zip3_centroids: zip3Centroids.count ?? 0,
@@ -150,9 +151,9 @@ async function loadStatus(): Promise<RefDataStatus> {
     service_coverage_zips: coverageZips.count ?? 0,
     analysis_rate_cards_active: rateCards.count ?? 0,
     analysis_rate_card_cells: rateCardCells.count ?? 0,
-    dhl_ecom_zones_total: dhlEcomSample.length,
-    dhl_ecom_zones_dcs: dhlEcomDistinctDcs,
-    dhl_ecom_zones_effective: dhlEcomLatestEffective,
+    dhl_ecom_zones_total: dhlEcomStatusRow?.total_rows ?? 0,
+    dhl_ecom_zones_dcs: dhlEcomStatusRow?.distinct_dcs ?? 0,
+    dhl_ecom_zones_effective: dhlEcomStatusRow?.latest_effective ?? null,
   }
 }
 

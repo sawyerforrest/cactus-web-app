@@ -56,44 +56,38 @@ interface ZonesStatus {
 async function loadStatus(): Promise<ZonesStatus> {
   const admin = createAdminSupabaseClient()
 
-  // Pull both the count and a sample slice (used to compute distinct
-  // origin_zip3s and the latest effective_date / created_at). Same query
-  // pattern as GOFO Regional Coverage's loadStatus.
-  const [countRes, sampleRes] = await Promise.all([
-    admin
-      .from('carrier_zone_matrices')
-      .select('*', { count: 'exact', head: false })
-      .eq('carrier_code', TARGET_CARRIER)
-      .eq('service_level', TARGET_SERVICE)
-      .is('deprecated_date', null)
-      .limit(0),
-    admin
-      .from('carrier_zone_matrices')
-      .select('origin_zip3, effective_date, created_at')
-      .eq('carrier_code', TARGET_CARRIER)
-      .eq('service_level', TARGET_SERVICE)
-      .is('deprecated_date', null)
-      .order('created_at', { ascending: false })
-      .limit(20000),
-  ])
+  // Use the v1.10.0-024 server-side aggregate function. Computing the
+  // distinct DC count client-side over a row-fetched sample ran into
+  // PostgREST's response cap when the matrix was fully loaded — at 16,740
+  // rows in a single transaction, all created_at values tie, and the
+  // returned slice contained only 2 distinct origin_zip3 values. Aggregating
+  // server-side returns one row with all four numbers, no cap concern.
+  const { data, error } = await admin.rpc('carrier_zone_matrix_status', {
+    p_carrier: TARGET_CARRIER,
+    p_service: TARGET_SERVICE,
+  })
 
-  const sample = (sampleRes.data ?? []) as Array<{
-    origin_zip3: string
-    effective_date: string
-    created_at: string
-  }>
+  if (error) {
+    // Fail soft — render an empty-state-looking card on transient DB error
+    // rather than 500ing the whole page.
+    return {
+      total: 0,
+      distinct_origin_zip3s: 0,
+      effective_date: null,
+      latest_created_at: null,
+    }
+  }
 
-  const distinctOrigins = new Set(sample.map(r => r.origin_zip3)).size
-  const latestCreatedAt = sample[0]?.created_at ?? null
-  const latestEffective = sample
-    .map(r => r.effective_date)
-    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
+  // RPC returns a single-row result (one row, four columns).
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { total_rows: number; distinct_dcs: number; latest_effective: string | null; latest_created_at: string | null }
+    | undefined
 
   return {
-    total: countRes.count ?? 0,
-    distinct_origin_zip3s: distinctOrigins,
-    effective_date: latestEffective,
-    latest_created_at: latestCreatedAt,
+    total: row?.total_rows ?? 0,
+    distinct_origin_zip3s: row?.distinct_dcs ?? 0,
+    effective_date: row?.latest_effective ?? null,
+    latest_created_at: row?.latest_created_at ?? null,
   }
 }
 
