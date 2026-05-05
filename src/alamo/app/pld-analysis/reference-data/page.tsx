@@ -298,7 +298,7 @@ export default async function ReferenceDataPage() {
               secondary="Per-carrier per-service ZIP coverage list. Used by GOFO Regional and other footprint-restricted services."
               action={{
                 label: status.service_coverage_zips > 0 ? 'View / replace' : 'Upload XLSX',
-                href: '#design-review-pending',
+                href: '/pld-analysis/reference-data/coverage-zips',
               }}
               isLast
             />

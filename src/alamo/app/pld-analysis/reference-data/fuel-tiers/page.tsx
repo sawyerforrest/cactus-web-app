@@ -319,6 +319,7 @@ export default async function FuelTiersPage({ searchParams }: PageProps) {
                   initial={row}
                   isLast={isLast}
                   formAction={saveTier}
+                  activeEffectiveDate={activeEffectiveDate}
                 />
               ) : (
                 <ReadRow
@@ -335,6 +336,7 @@ export default async function FuelTiersPage({ searchParams }: PageProps) {
                 initial={null}
                 isLast={true}
                 formAction={saveTier}
+                activeEffectiveDate={activeEffectiveDate}
               />
             ) : null}
           </div>
@@ -426,10 +428,11 @@ function ReadRow({ row, isLast, disableEdit }: {
   )
 }
 
-function FormRow({ initial, isLast, formAction }: {
+function FormRow({ initial, isLast, formAction, activeEffectiveDate }: {
   initial: FuelTierRow | null
   isLast: boolean
   formAction: (formData: FormData) => Promise<void>
+  activeEffectiveDate: string | null
 }) {
   const isEdit = !!initial
   return (
@@ -440,12 +443,12 @@ function FormRow({ initial, isLast, formAction }: {
       <div style={{
         display: 'grid',
         gridTemplateColumns: '180px 110px 110px 1fr 110px',
-        padding: '10px 16px',
+        padding: '10px 16px 10px 12px',
         gap: 12,
         fontSize: 12,
         borderBottom: isLast ? 'none' : '0.5px solid var(--cactus-border)',
+        borderLeft: '4px solid var(--cactus-forest)',
         alignItems: 'center',
-        background: 'var(--cactus-mint)',
       }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <input
@@ -484,7 +487,11 @@ function FormRow({ initial, isLast, formAction }: {
           style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
         />
         <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--cactus-muted)', fontSize: 11 }}>
-          {isEdit ? fmtDate(initial.effective_date) : '(active)'}
+          {isEdit
+            ? fmtDate(initial.effective_date)
+            : activeEffectiveDate
+              ? `→ inherits ${activeEffectiveDate}`
+              : '(no active set)'}
         </div>
         <input
           name="notes"
