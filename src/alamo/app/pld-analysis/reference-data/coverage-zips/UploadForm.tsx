@@ -19,6 +19,7 @@
 
 import { useActionState, useId } from 'react'
 import { Upload, AlertCircle, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
+import { SubmitButton } from '@/components/SubmitButton'
 import {
   previewGofoRegionalUpload,
   commitGofoRegionalUpload,
@@ -30,7 +31,10 @@ interface UploadFormProps {
 }
 
 export function UploadForm({ defaultEffectiveDate }: UploadFormProps) {
-  const [state, formAction, pending] = useActionState<PreviewState, FormData>(
+  // Note: useActionState returns [state, action, isPending]; we don't need
+  // isPending here because SubmitButton reads pending from useFormStatus()
+  // inside the form scope.
+  const [state, formAction] = useActionState<PreviewState, FormData>(
     previewGofoRegionalUpload,
     initialPreviewState,
   )
@@ -42,7 +46,6 @@ export function UploadForm({ defaultEffectiveDate }: UploadFormProps) {
   return (
     <FilePickerForm
       formAction={formAction}
-      pending={pending}
       defaultEffectiveDate={defaultEffectiveDate}
       errors={state.status === 'error' ? state.errors : []}
       warnings={state.warnings}
@@ -56,14 +59,13 @@ export function UploadForm({ defaultEffectiveDate }: UploadFormProps) {
 
 interface FilePickerFormProps {
   formAction: (formData: FormData) => void
-  pending: boolean
   defaultEffectiveDate: string
   errors: string[]
   warnings: string[]
 }
 
 function FilePickerForm({
-  formAction, pending, defaultEffectiveDate, errors, warnings,
+  formAction, defaultEffectiveDate, errors, warnings,
 }: FilePickerFormProps) {
   const dateId = useId()
   const fileId = useId()
@@ -129,18 +131,10 @@ function FilePickerForm({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            type="submit"
-            disabled={pending}
-            style={{
-              ...primaryButtonStyle,
-              opacity: pending ? 0.6 : 1,
-              cursor: pending ? 'wait' : 'pointer',
-            }}
-          >
+          <SubmitButton style={primaryButtonStyle} pendingLabel="Parsing…">
             <Upload size={12} />
-            {pending ? 'Parsing…' : 'Upload & preview'}
-          </button>
+            Upload &amp; preview
+          </SubmitButton>
           <span style={{ fontSize: 11, color: 'var(--cactus-hint)' }}>
             Default date matches GOFO&apos;s Q2 2026 publication. Override if your
             source file represents a different effective date.
@@ -202,10 +196,10 @@ function PreviewPanel({ state }: { state: PreviewState }) {
           <input type="hidden" name="effective_date" value={state.effectiveDate ?? ''} />
           <input type="hidden" name="expected_coverage_rows" value={s.expectedCoverageRows} />
           <input type="hidden" name="expected_matrix_rows" value={s.expectedZoneMatrixRows} />
-          <button type="submit" style={primaryButtonStyle}>
+          <SubmitButton style={primaryButtonStyle} pendingLabel="Committing…">
             <CheckCircle2 size={12} />
             Commit ({s.expectedCoverageRows.toLocaleString('en-US')} ZIPs · {s.expectedZoneMatrixRows.toLocaleString('en-US')} matrix rows)
-          </button>
+          </SubmitButton>
         </form>
         <a href="/pld-analysis/reference-data/coverage-zips" style={cancelButtonStyle}>
           <RotateCcw size={12} />

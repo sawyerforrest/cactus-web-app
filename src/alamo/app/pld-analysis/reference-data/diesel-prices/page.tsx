@@ -37,6 +37,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Sidebar from '@/components/Sidebar'
+import { SubmitButton } from '@/components/SubmitButton'
 import { ChevronRight, Pencil, RefreshCw, ChevronLeft, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface DieselRow {
@@ -304,7 +305,9 @@ export default async function DieselPricesPage({ searchParams }: PageProps) {
                   </Field>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button type="submit" style={primaryButtonStyle}>Save entry</button>
+                  <SubmitButton style={primaryButtonStyle} pendingLabel="Saving…">
+                    Save entry
+                  </SubmitButton>
                   <span style={{ fontSize: 11, color: 'var(--cactus-hint)', alignSelf: 'center' }}>
                     Inserts new week or overwrites existing one. Source = MANUAL.
                   </span>
@@ -334,9 +337,9 @@ export default async function DieselPricesPage({ searchParams }: PageProps) {
                 Manual entries are preserved.
               </div>
               <form action={triggerEiaFetch} style={{ marginTop: 'auto' }}>
-                <button type="submit" style={{ ...primaryButtonStyle, width: '100%' }}>
+                <SubmitButton style={{ ...primaryButtonStyle, width: '100%' }} pendingLabel="Fetching…">
                   <RefreshCw size={12} /> Fetch now
-                </button>
+                </SubmitButton>
               </form>
             </div>
           </div>

@@ -43,6 +43,7 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/sup
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Sidebar from '@/components/Sidebar'
+import { SubmitButton } from '@/components/SubmitButton'
 import { ChevronRight, ChevronLeft, Plus, Pencil, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface FuelTierRow {
@@ -501,9 +502,13 @@ function FormRow({ initial, isLast, formAction, activeEffectiveDate }: {
           style={inputStyle}
         />
         <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-          <button type="submit" style={{ ...primaryButtonStyle, padding: '4px 10px', fontSize: 11 }}>
+          <SubmitButton
+            style={{ ...primaryButtonStyle, padding: '4px 10px', fontSize: 11 }}
+            pendingLabel="Saving…"
+            spinnerSize={10}
+          >
             Save
-          </button>
+          </SubmitButton>
           <a href={ROUTE} style={{ ...cancelButtonStyle, padding: '4px 10px', fontSize: 11 }}>
             Cancel
           </a>
