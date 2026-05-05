@@ -33,8 +33,11 @@ const BUCKET = 'pld-uploads'
 const PATH_PREFIX = 'zone-matrices'
 
 // Filename → DC code helper. Returns null when not parseable.
+// Accepts spaces or underscores in the prefix per the canonical DHL-published
+// format ("DHL eCommerce Zones Table_<DC>.xlsx") plus the underscored
+// variant. Captured DC code is uppercased for lookup consistency.
 function dcCodeFromFilename(name: string): string | null {
-  const m = /^DHL_eCommerce_Zones_Table_([A-Z]{3})\.xlsx$/i.exec(name)
+  const m = /^DHL[ _]eCommerce[ _]Zones[ _]Table_([A-Z]{3})\.xlsx$/i.exec(name)
   return m ? m[1].toUpperCase() : null
 }
 

@@ -32,7 +32,13 @@ const SHEET_NAME = 'ZONES'
 const HEADER_ROW = 3
 const FIRST_DATA_ROW = 4
 const EXPECTED_DATA_ROWS = 930
-const FILENAME_REGEX = /^DHL_eCommerce_Zones_Table_([A-Z]{3})\.xlsx$/
+// Filename regex accepts either spaces or underscores in the prefix (DHL
+// publishes the canonical name with spaces — "DHL eCommerce Zones Table_ATL.xlsx" —
+// but earlier docs and chat-upload metadata normalized to underscores). The
+// trailing underscore before the DC code is consistent in both forms. The
+// /i flag tolerates case variation in case DHL ever re-publishes with
+// different title-case.
+const FILENAME_REGEX = /^DHL[ _]eCommerce[ _]Zones[ _]Table_([A-Z]{3})\.xlsx$/i
 
 const EXPECTED_HEADERS = ['ORIGIN', 'ORIGIN_ZIP3', 'DEST_ZIP3', 'ZONE', 'UPDATED'] as const
 
@@ -151,16 +157,20 @@ async function parseSingleFile(
 ): Promise<SingleFileOutcome> {
   const errors: string[] = []
 
-  // 1. Validate filename pattern + DC code
+  // 1. Validate filename pattern + DC code. /i flag means the captured DC
+  // code may be lowercase if DHL ever publishes that way; normalize to
+  // uppercase before the lookup.
   const fnameMatch = FILENAME_REGEX.exec(fileName)
   if (!fnameMatch) {
     return {
       ok: false,
-      errors: [`Filename "${fileName}" doesn't match DHL_eCommerce_Zones_Table_<DC>.xlsx`],
+      errors: [
+        `Filename "${fileName}" doesn't match the expected pattern "DHL eCommerce Zones Table_<DC>.xlsx" (also accepts the underscored variant "DHL_eCommerce_Zones_Table_<DC>.xlsx").`,
+      ],
       parsed: null,
     }
   }
-  const dcCode = fnameMatch[1]
+  const dcCode = fnameMatch[1].toUpperCase()
   const dcRow = dcLookup.byCode.get(dcCode)
   if (!dcRow) {
     return {

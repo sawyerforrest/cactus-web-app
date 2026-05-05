@@ -160,7 +160,7 @@ export default async function ZoneMatricesPage({ searchParams }: PageProps) {
             Per-DC origin × destination ZIP3 zone matrix for DHL eCommerce
             domestic Ground service. Sourced from DHL&apos;s 18
             <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '0 2px' }}>
-              DHL_eCommerce_Zones_Table_&lt;DC&gt;.xlsx
+              DHL eCommerce Zones Table_&lt;DC&gt;.xlsx
             </code>{' '}
             files. Re-uploads scope-delete the prior DHL Ground rows from{' '}
             <strong>carrier_zone_matrices</strong> and INSERT all 16,740

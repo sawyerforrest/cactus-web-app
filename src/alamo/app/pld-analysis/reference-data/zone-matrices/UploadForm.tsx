@@ -101,9 +101,10 @@ function FilePickerForm({ formAction, errors, warnings }: FilePickerFormProps) {
         </div>
         Filenames must match{' '}
         <code style={{ fontFamily: 'var(--font-mono)' }}>
-          DHL_eCommerce_Zones_Table_&lt;DC&gt;.xlsx
+          DHL eCommerce Zones Table_&lt;DC&gt;.xlsx
         </code>
-        , one per DC across the canonical 18:{' '}
+        {' '}(spaces or underscores in the prefix both accepted), one per
+        DC across the canonical 18:{' '}
         <span style={{ fontFamily: 'var(--font-mono)' }}>
           {CANONICAL_DC_CODES.join(', ')}
         </span>
