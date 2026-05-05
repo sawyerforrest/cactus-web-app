@@ -60,6 +60,7 @@ interface RefDataStatus {
   service_coverage_zips: number
   analysis_rate_cards_active: number
   analysis_rate_card_cells: number
+  gofo_hub_codes: string[]
 }
 
 async function loadStatus(): Promise<RefDataStatus> {
@@ -72,7 +73,7 @@ async function loadStatus(): Promise<RefDataStatus> {
   const [
     zip3Centroids,
     proximity,
-    hubs,
+    hubsRows,
     remoteZip3s,
     fuelTiers,
     fuelLatest,
@@ -88,7 +89,13 @@ async function loadStatus(): Promise<RefDataStatus> {
   ] = await Promise.all([
     admin.from('zip3_centroids').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_hub_proximity').select('*', { count: 'exact', head: false }).limit(0),
-    admin.from('gofo_hubs').select('*', { count: 'exact', head: false }).limit(0),
+    // gofo_hubs: pull both the count AND the hub_code list in one query so
+    // the displayed list is always live-derived from the database. The
+    // primary ordering matches the natural grouping used elsewhere
+    // (West-to-East-ish across the lower 48: LAX, DFW, ORD, EWR, JFK, ATL,
+    // MIA, SLC). We sort by primary_zip5 ascending as a deterministic
+    // proxy for that ordering.
+    admin.from('gofo_hubs').select('hub_code, primary_zip5').order('primary_zip5', { ascending: true }),
     admin.from('gofo_remote_zip3s').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('dhl_ecom_fuel_tiers').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('dhl_ecom_fuel_tiers').select('effective_date').order('effective_date', { ascending: false }).limit(1),
@@ -103,10 +110,13 @@ async function loadStatus(): Promise<RefDataStatus> {
     admin.from('analysis_rate_card_cells').select('*', { count: 'exact', head: false }).limit(0),
   ])
 
+  const hubRowList = (hubsRows.data ?? []) as Array<{ hub_code: string }>
+
   return {
     zip3_centroids: zip3Centroids.count ?? 0,
     gofo_hub_proximity: proximity.count ?? 0,
-    gofo_hubs: hubs.count ?? 0,
+    gofo_hubs: hubRowList.length,
+    gofo_hub_codes: hubRowList.map(h => h.hub_code),
     gofo_remote_zip3s: remoteZip3s.count ?? 0,
     dhl_ecom_fuel_tiers: fuelTiers.count ?? 0,
     dhl_fuel_latest_effective: fuelLatest.data?.[0]?.effective_date ?? null,
@@ -209,7 +219,7 @@ export default async function ReferenceDataPage() {
               title="GOFO Hubs"
               loaded={status.gofo_hubs > 0}
               primary={`${fmtNumber(status.gofo_hubs)} hubs`}
-              secondary="System constant — LAX, DFW, ORD, EWR_JFK, ATL, MIA, SLC. Edits require a migration."
+              secondary={`System constant — ${status.gofo_hub_codes.join(', ') || '(no hubs loaded)'}. Edits require a migration.`}
               readOnly
             />
             <Row

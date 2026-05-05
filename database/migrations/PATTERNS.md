@@ -90,6 +90,24 @@ COMMIT;
 
 ---
 
+## Pattern 5: UI lists of reference data must be live-queried, never hardcoded
+
+**Rule:** When a UI surface displays a list of reference values (hub codes, carrier codes, enum members, seeded constants), query the source-of-truth table at render time. Do not hardcode comma-separated strings of those values into JSX, even when the underlying data is "constant."
+
+**Why:** The classic failure mode is "count is queried, list is hardcoded" — the count updates when the data changes, but the list doesn't, so the page contradicts itself in a way that's invisible to type-checking and tests. v1.10.0-019 split the EWR_JFK hub into EWR + JFK, the live count went from 7 → 8 immediately, but the Reference Data index page kept rendering "LAX, DFW, ORD, EWR_JFK, ATL, MIA, SLC. 8 hubs" until manually noticed.
+
+**How:**
+- Pull the list from the same query that produces the count (or a parallel query in the same `Promise.all`).
+- Pick a deterministic ordering (alphabetical, or by a domain-meaningful column like `primary_zip5` for hubs) so the rendered string is stable across renders.
+- If the list is long, truncate visually with "X, Y, Z, … +N more" rather than hardcoding "common values" — same principle.
+- Empty-state fallback: handle the case where the table has zero rows (e.g., `'(no hubs loaded)'`) so a deploy mid-seed doesn't render literal "[ ]".
+
+**When to bend the rule:** SQL constraints, migration text, and historical-record comments may legitimately list pre-mutation state (e.g., a migration's pre-flight comment describing what was true at apply time). Those are append-only documentation of a moment in time, not live-rendered UI. Leave them as-is when state changes.
+
+**Example:** the Reference Data index page (`src/alamo/app/pld-analysis/reference-data/page.tsx`) — `gofo_hubs` row pulls `hub_code` from the table in the same `Promise.all` that fetches the count, joins with `', '`, renders inline. Same code path produces both numbers, so they can't drift.
+
+---
+
 ## How to add a new pattern to this doc
 
 When a migration teaches us something the existing patterns don't cover:
@@ -103,3 +121,4 @@ When a migration teaches us something the existing patterns don't cover:
 ## Document history
 
 - **2026-05-05 (v1.10.0):** Initial creation. Captures patterns 1-4 from Phase 1 + Phase 2 build.
+- **2026-05-05 (v1.10.0):** Pattern 5 added after v1.10.0-019 hub split surfaced a stale hardcoded list on the Reference Data index page.
