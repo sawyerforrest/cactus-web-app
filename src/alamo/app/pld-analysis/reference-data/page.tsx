@@ -61,6 +61,9 @@ interface RefDataStatus {
   analysis_rate_cards_active: number
   analysis_rate_card_cells: number
   gofo_hub_codes: string[]
+  dhl_ecom_zones_total: number          // scoped to DHL_ECOM/Ground
+  dhl_ecom_zones_dcs: number             // distinct origin_zip3 for DHL_ECOM/Ground
+  dhl_ecom_zones_effective: string | null // latest effective_date for DHL_ECOM/Ground
 }
 
 async function loadStatus(): Promise<RefDataStatus> {
@@ -81,6 +84,7 @@ async function loadStatus(): Promise<RefDataStatus> {
     dieselLatestWeek,
     dieselLastFetchedAt,
     zoneMatrices,
+    dhlEcomZonesSample,
     countryZoneMatrices,
     regionalZoneMatrix,
     coverageZips,
@@ -103,6 +107,13 @@ async function loadStatus(): Promise<RefDataStatus> {
     admin.from('diesel_price_history').select('effective_week_start').order('effective_week_start', { ascending: false }).limit(1),
     admin.from('diesel_price_history').select('fetched_at').order('fetched_at', { ascending: false }).limit(1),
     admin.from('carrier_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
+    admin
+      .from('carrier_zone_matrices')
+      .select('origin_zip3, effective_date')
+      .eq('carrier_code', 'DHL_ECOM')
+      .eq('service_level', 'Ground')
+      .is('deprecated_date', null)
+      .limit(20000),
     admin.from('carrier_country_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_regional_zone_matrix').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('service_coverage_zips').select('*', { count: 'exact', head: false }).limit(0),
@@ -111,6 +122,16 @@ async function loadStatus(): Promise<RefDataStatus> {
   ])
 
   const hubRowList = (hubsRows.data ?? []) as Array<{ hub_code: string }>
+
+  // Compute DHL eCom Domestic Zones scoped stats from the sample rows.
+  const dhlEcomSample = (dhlEcomZonesSample.data ?? []) as Array<{
+    origin_zip3: string
+    effective_date: string
+  }>
+  const dhlEcomDistinctDcs = new Set(dhlEcomSample.map(r => r.origin_zip3)).size
+  const dhlEcomLatestEffective = dhlEcomSample
+    .map(r => r.effective_date)
+    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0] ?? null
 
   return {
     zip3_centroids: zip3Centroids.count ?? 0,
@@ -129,6 +150,9 @@ async function loadStatus(): Promise<RefDataStatus> {
     service_coverage_zips: coverageZips.count ?? 0,
     analysis_rate_cards_active: rateCards.count ?? 0,
     analysis_rate_card_cells: rateCardCells.count ?? 0,
+    dhl_ecom_zones_total: dhlEcomSample.length,
+    dhl_ecom_zones_dcs: dhlEcomDistinctDcs,
+    dhl_ecom_zones_effective: dhlEcomLatestEffective,
   }
 }
 
@@ -270,12 +294,16 @@ export default async function ReferenceDataPage() {
             <Row
               icon={<Layers size={18} color="var(--cactus-forest)" />}
               title="DHL eCom Domestic Zones"
-              loaded={status.carrier_zone_matrices > 0}
-              primary={status.carrier_zone_matrices > 0 ? `${fmtNumber(status.carrier_zone_matrices)} matrix rows` : 'Not loaded'}
-              secondary="ZIP3 origin × ZIP3 destination zone matrix. Published by DHL eCommerce."
+              loaded={status.dhl_ecom_zones_total > 0}
+              primary={
+                status.dhl_ecom_zones_total > 0
+                  ? `${fmtNumber(status.dhl_ecom_zones_total)} rows · ${status.dhl_ecom_zones_dcs} DCs · Effective ${status.dhl_ecom_zones_effective ?? '—'}`
+                  : 'Not loaded'
+              }
+              secondary="Per-DC origin × dest ZIP3 zone matrix. 18 files, one per distribution center, atomic upload."
               action={{
-                label: status.carrier_zone_matrices > 0 ? 'View / replace' : 'Upload XLSX',
-                href: '#design-review-pending',
+                label: status.dhl_ecom_zones_total > 0 ? 'View / replace' : 'Upload XLSX',
+                href: '/pld-analysis/reference-data/zone-matrices',
               }}
             />
             <Row
