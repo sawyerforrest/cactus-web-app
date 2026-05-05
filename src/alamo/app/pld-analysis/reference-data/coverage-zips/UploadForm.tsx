@@ -21,6 +21,7 @@ import { useActionState, useId } from 'react'
 import { Upload, AlertCircle, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
 import {
   previewGofoRegionalUpload,
+  commitGofoRegionalUpload,
   initialPreviewState,
   type PreviewState,
 } from './actions'
@@ -193,7 +194,15 @@ function PreviewPanel({ state }: { state: PreviewState }) {
       <div style={{
         marginTop: 16, display: 'flex', gap: 8, alignItems: 'center',
       }}>
-        <form action="/pld-analysis/reference-data/coverage-zips?status=info&msg=Commit+not+yet+wired+%E2%80%94+pause+point+%233+deliverable.+Re-upload+to+test+preview+again." method="get" style={{ display: 'inline' }}>
+        <form action={commitGofoRegionalUpload} style={{ display: 'inline' }}>
+          {/* Hidden inputs carry the staged-file reference + the expected
+              row counts from preview. The commit action re-parses the
+              staged file and validates the re-parse summary matches
+              these expected counts before any DB write. */}
+          <input type="hidden" name="stage_path" value={state.stagePath ?? ''} />
+          <input type="hidden" name="effective_date" value={state.effectiveDate ?? ''} />
+          <input type="hidden" name="expected_coverage_rows" value={s.expectedCoverageRows} />
+          <input type="hidden" name="expected_matrix_rows" value={s.expectedZoneMatrixRows} />
           <button type="submit" style={primaryButtonStyle}>
             <CheckCircle2 size={12} />
             Commit ({s.expectedCoverageRows.toLocaleString('en-US')} ZIPs · {s.expectedZoneMatrixRows.toLocaleString('en-US')} matrix rows)
@@ -203,8 +212,8 @@ function PreviewPanel({ state }: { state: PreviewState }) {
           <RotateCcw size={12} />
           Upload different file
         </a>
-        <span style={{ fontSize: 11, color: 'var(--cactus-amber-text)', marginLeft: 'auto' }}>
-          Commit action not yet wired — pause point #3 deliverable.
+        <span style={{ fontSize: 11, color: 'var(--cactus-muted)', marginLeft: 'auto' }}>
+          Atomic write to both tables. Stage file deleted on success.
         </span>
       </div>
     </div>

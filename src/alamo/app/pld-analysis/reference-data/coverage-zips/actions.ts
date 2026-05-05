@@ -2,27 +2,46 @@
 // FILE: src/alamo/app/pld-analysis/reference-data/coverage-zips/actions.ts
 // PURPOSE: Server Actions for the GOFO Regional Coverage upload flow.
 //
-// Two stages:
-//   1. previewGofoRegionalUpload — parses the XLSX server-side,
-//      returns summary/warnings/firstTenRows for the operator to
-//      review before any DB write.
-//   2. commitGofoRegionalUpload — NOT YET IMPLEMENTED. Pause point
-//      #3 deliverable. Will perform the atomic two-table write
-//      (TRUNCATE service_coverage_zips + gofo_regional_zone_matrix,
-//      then bulk INSERT new rows from the parsed file).
+// Two stages, two actions:
+//   1. previewGofoRegionalUpload (useActionState pattern)
+//      Parses the XLSX server-side, uploads the source file to the
+//      pld-uploads/coverage-zips/<uuid>.xlsx staging path, returns
+//      summary/warnings/firstTenRows + stagePath so the operator can
+//      review before committing.
 //
-// State carried back to the client component via useActionState.
-// JSON-serializable types only — no Buffer/File objects in state.
+//   2. commitGofoRegionalUpload (regular form action — redirects)
+//      Reads the staged file from Storage by stagePath, re-parses,
+//      validates the re-parse summary matches what the operator saw
+//      in preview (defensive guard), calls the
+//      commit_gofo_regional_upload() Postgres function via .rpc() to
+//      perform the atomic dual-table TRUNCATE + INSERT, deletes the
+//      stage file on success, and redirects to the page with a status
+//      flash showing the row counts written.
+//
+// Cleanup is layered (per Senior Architect's Pause Point #3 decision):
+//   - Commit success: stage file deleted immediately by this action.
+//   - Cron sweep: pld-uploads-cleanup-stale runs daily at 08:00 UTC and
+//     removes any stage files older than 24 hours (abandoned previews).
 // ==========================================================
 
 'use server'
 
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import {
   parseGofoRegionalXlsx,
   type ParsedZipRow,
   type ParserSummary,
 } from '@/lib/pld-analysis/gofo-regional-parser'
+
+const ROUTE = '/pld-analysis/reference-data/coverage-zips'
+const BUCKET = 'pld-uploads'
+const PATH_PREFIX = 'coverage-zips'
+
+// =============================================================
+// Stage 1: previewGofoRegionalUpload (useActionState)
+// =============================================================
 
 export type PreviewStatus = 'idle' | 'parsing' | 'preview' | 'error'
 
@@ -34,6 +53,7 @@ export interface PreviewState {
   firstTenRows: ParsedZipRow[]
   effectiveDate: string | null
   fileName: string | null
+  stagePath: string | null  // path within the pld-uploads bucket once uploaded
 }
 
 export const initialPreviewState: PreviewState = {
@@ -44,6 +64,7 @@ export const initialPreviewState: PreviewState = {
   firstTenRows: [],
   effectiveDate: null,
   fileName: null,
+  stagePath: null,
 }
 
 export async function previewGofoRegionalUpload(
@@ -72,7 +93,6 @@ export async function previewGofoRegionalUpload(
       effectiveDate,
     }
   }
-  // Sanity cap: year not absurd
   const yearNum = parseInt(effectiveDate.slice(0, 4), 10)
   const thisYear = new Date().getUTCFullYear()
   if (yearNum < 2020 || yearNum > thisYear + 5) {
@@ -114,7 +134,8 @@ export async function previewGofoRegionalUpload(
     }
   }
 
-  // Parse
+  // Parse first — only stage the file if parse succeeds. No point storing
+  // a malformed file.
   let arrayBuffer: ArrayBuffer
   try {
     arrayBuffer = await fileEntry.arrayBuffer()
@@ -142,11 +163,35 @@ export async function previewGofoRegionalUpload(
     }
   }
 
-  // Success — return preview state. The full coverageRows / zoneMatrixRows
-  // arrays are intentionally NOT returned to the client. The commit Server
-  // Action (pause point #3) will receive a fresh upload of the file or
-  // pull it from a staging path; the preview only needs summary + first
-  // ten rows + warnings.
+  // Stage the file in Storage so the commit action can re-parse it without
+  // requiring the operator to re-upload. The path includes a UUID to
+  // prevent collisions across simultaneous operators (anticipating
+  // multi-operator post-v1.5).
+  const admin = createAdminSupabaseClient()
+  const stagePath = `${PATH_PREFIX}/${crypto.randomUUID()}.xlsx`
+
+  const uploadRes = await admin.storage
+    .from(BUCKET)
+    .upload(stagePath, arrayBuffer, {
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      upsert: false,
+    })
+
+  if (uploadRes.error) {
+    return {
+      ...initialPreviewState,
+      status: 'error',
+      errors: [`Stage-file upload failed: ${uploadRes.error.message}. Re-try the upload.`],
+      effectiveDate,
+      fileName: fileEntry.name,
+    }
+  }
+
+  // Success — the full coverageRows / zoneMatrixRows arrays are NOT
+  // returned to the client. The commit action will re-fetch the stage
+  // file and re-parse to produce them. Re-parse-on-commit is a
+  // single-source-of-truth feature, not a bug — the parser is the only
+  // place that can produce these rows.
   return {
     status: 'preview',
     errors: [],
@@ -155,19 +200,123 @@ export async function previewGofoRegionalUpload(
     firstTenRows: result.firstTenRows,
     effectiveDate,
     fileName: fileEntry.name,
+    stagePath,
   }
 }
 
-// commitGofoRegionalUpload — NOT YET IMPLEMENTED
-// Pause point #3 will:
-//   - Receive a fresh file upload (operator re-selects the same file) OR
-//     pull the previously-staged file from Supabase Storage by token
-//   - Re-parse to get the full coverageRows / zoneMatrixRows arrays
-//   - Run a single transaction:
-//       BEGIN;
-//       TRUNCATE TABLE service_coverage_zips;
-//       TRUNCATE TABLE gofo_regional_zone_matrix;
-//       INSERT INTO service_coverage_zips ...   -- 8,361 rows
-//       INSERT INTO gofo_regional_zone_matrix ... -- 66,884 rows in chunks of 1000
-//       COMMIT;
-//   - Redirect to the page with a success flash showing both row counts
+// =============================================================
+// Stage 2: commitGofoRegionalUpload (redirect-on-completion)
+// =============================================================
+
+function commitErrorRedirect(msg: string): never {
+  redirect(`${ROUTE}?status=error&msg=${encodeURIComponent(msg)}`)
+}
+
+export async function commitGofoRegionalUpload(formData: FormData): Promise<void> {
+  // Auth check
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    commitErrorRedirect('Not authenticated.')
+  }
+
+  // Parse hidden form inputs from the preview panel
+  const stagePath = String(formData.get('stage_path') ?? '').trim()
+  const effectiveDate = String(formData.get('effective_date') ?? '').trim()
+  const expectedCoverage = parseInt(String(formData.get('expected_coverage_rows') ?? '0'), 10)
+  const expectedMatrix = parseInt(String(formData.get('expected_matrix_rows') ?? '0'), 10)
+
+  if (!stagePath || !stagePath.startsWith(`${PATH_PREFIX}/`)) {
+    commitErrorRedirect('Missing or malformed stage path. Re-upload the file.')
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+    commitErrorRedirect('Missing or malformed effective date. Re-upload the file.')
+  }
+  if (!Number.isInteger(expectedCoverage) || expectedCoverage <= 0) {
+    commitErrorRedirect('Missing expected coverage row count. Re-upload the file.')
+  }
+  if (!Number.isInteger(expectedMatrix) || expectedMatrix <= 0) {
+    commitErrorRedirect('Missing expected matrix row count. Re-upload the file.')
+  }
+
+  const admin = createAdminSupabaseClient()
+
+  // Download the staged file
+  const dl = await admin.storage.from(BUCKET).download(stagePath)
+  if (dl.error || !dl.data) {
+    commitErrorRedirect(
+      `Stage file not found at ${stagePath}. The file may have been swept by the daily cleanup cron, or the upload session expired. Re-upload to retry.`,
+    )
+  }
+
+  let arrayBuffer: ArrayBuffer
+  try {
+    arrayBuffer = await dl.data!.arrayBuffer()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    commitErrorRedirect(`Failed to read staged file: ${msg}`)
+  }
+
+  // Re-parse — this is the single source of truth for the row arrays.
+  const result = await parseGofoRegionalXlsx(arrayBuffer!, effectiveDate)
+
+  if (!result.ok || !result.summary) {
+    // If re-parse fails after preview succeeded, something is very wrong
+    // (file corruption in Storage, parser regression, etc.). Surface
+    // clearly and abort.
+    const detail = result.errors.slice(0, 3).join('; ')
+    commitErrorRedirect(
+      `Re-parse failed at commit time: ${detail}. Aborting write. Re-upload to retry.`,
+    )
+  }
+
+  // Defensive: confirm the re-parse summary matches what we showed in
+  // preview. If it diverged, the staged file was tampered with or the
+  // parser changed between preview and commit — either way, abort.
+  if (result.summary!.expectedCoverageRows !== expectedCoverage) {
+    commitErrorRedirect(
+      `Re-parse mismatch: expected ${expectedCoverage} ZIPs, got ${result.summary!.expectedCoverageRows}. Aborting write. Re-upload to retry.`,
+    )
+  }
+  if (result.summary!.expectedZoneMatrixRows !== expectedMatrix) {
+    commitErrorRedirect(
+      `Re-parse mismatch: expected ${expectedMatrix} matrix rows, got ${result.summary!.expectedZoneMatrixRows}. Aborting write. Re-upload to retry.`,
+    )
+  }
+
+  // Atomic dual-table write via the SECURITY DEFINER PG function.
+  // Function body is one transaction; if either INSERT fails, both
+  // TRUNCATEs roll back and the prior active set survives.
+  const rpc = await admin.rpc('commit_gofo_regional_upload', {
+    p_coverage: result.coverageRows,
+    p_matrix: result.zoneMatrixRows,
+  })
+
+  if (rpc.error) {
+    commitErrorRedirect(`Database write failed: ${rpc.error.message}. Prior data preserved (transaction rolled back). Re-upload to retry.`)
+  }
+
+  const written = (rpc.data ?? {}) as { coverage_rows_written?: number; matrix_rows_written?: number }
+  const coverageWritten = written.coverage_rows_written ?? 0
+  const matrixWritten = written.matrix_rows_written ?? 0
+
+  // Sanity guard on the function's return values
+  if (coverageWritten !== expectedCoverage || matrixWritten !== expectedMatrix) {
+    commitErrorRedirect(
+      `DB function reported ${coverageWritten}/${matrixWritten} rows written, expected ${expectedCoverage}/${expectedMatrix}. Investigate.`,
+    )
+  }
+
+  // Layer 1 of cleanup: delete the stage file now that the commit
+  // succeeded. Layer 2 (cron) will sweep any orphans tomorrow morning
+  // regardless. We don't fail the commit on a delete error; the cron
+  // catches stragglers.
+  await admin.storage.from(BUCKET).remove([stagePath])
+
+  revalidatePath(ROUTE)
+  redirect(
+    `${ROUTE}?status=success&msg=${encodeURIComponent(
+      `Committed: ${coverageWritten.toLocaleString('en-US')} ZIPs and ${matrixWritten.toLocaleString('en-US')} zone matrix rows written atomically. Effective ${effectiveDate}.`,
+    )}`,
+  )
+}
