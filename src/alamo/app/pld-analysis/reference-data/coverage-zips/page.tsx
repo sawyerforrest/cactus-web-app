@@ -60,7 +60,6 @@ const TARGET_SERVICE = 'Regional'
 interface CoverageStatus {
   total: number
   effective_date: string | null
-  earliest_created_at: string | null
   latest_created_at: string | null
   source_sample: string | null
 }
@@ -68,12 +67,17 @@ interface CoverageStatus {
 async function loadStatus(): Promise<CoverageStatus> {
   const admin = createAdminSupabaseClient()
 
+  // Count is filtered to is_serviceable=true. The schema supports negative
+  // entries (is_serviceable=false) for explicit exclusions, but the
+  // operator-facing "X ZIPs serviceable" headline only counts the positive
+  // allowlist.
   const [countRes, latestRes] = await Promise.all([
     admin
       .from('service_coverage_zips')
       .select('*', { count: 'exact', head: false })
       .eq('carrier_code', TARGET_CARRIER)
       .eq('service_level', TARGET_SERVICE)
+      .eq('is_serviceable', true)
       .is('deprecated_date', null)
       .limit(0),
     admin
@@ -86,22 +90,6 @@ async function loadStatus(): Promise<CoverageStatus> {
       .limit(1),
   ])
 
-  // Spread separately so the earliest can also be tracked. We fetch the
-  // earliest created_at via a second targeted call only when there's at
-  // least one row — saves a roundtrip on empty-state.
-  let earliestCreatedAt: string | null = null
-  if ((countRes.count ?? 0) > 0) {
-    const earliest = await admin
-      .from('service_coverage_zips')
-      .select('created_at')
-      .eq('carrier_code', TARGET_CARRIER)
-      .eq('service_level', TARGET_SERVICE)
-      .is('deprecated_date', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-    earliestCreatedAt = (earliest.data?.[0]?.created_at as string | undefined) ?? null
-  }
-
   const latest = latestRes.data?.[0] as
     | { effective_date: string; source: string | null; created_at: string }
     | undefined
@@ -109,7 +97,6 @@ async function loadStatus(): Promise<CoverageStatus> {
   return {
     total: countRes.count ?? 0,
     effective_date: latest?.effective_date ?? null,
-    earliest_created_at: earliestCreatedAt,
     latest_created_at: latest?.created_at ?? null,
     source_sample: latest?.source ?? null,
   }
@@ -173,7 +160,7 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
           <ChevronRight size={14} color="var(--cactus-hint)" />
           <a href="/pld-analysis/reference-data" style={{ fontSize: 13, color: 'var(--cactus-muted)' }}>Reference Data</a>
           <ChevronRight size={14} color="var(--cactus-hint)" />
-          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Coverage ZIPs</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>GOFO Regional Coverage</div>
         </div>
 
         <div style={{ padding: '20px 24px', maxWidth: 880 }}>
@@ -184,22 +171,17 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
             <ChevronLeft size={14} /> Back to Reference Data
           </a>
 
-          {/* Page header with carrier/service badges */}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
-            <div style={{
-              fontSize: 20, fontWeight: 500, color: 'var(--cactus-ink)',
-              letterSpacing: '-0.02em',
-            }}>Coverage ZIPs</div>
-            <CarrierBadge label={TARGET_CARRIER} />
-            <ServiceBadge label={TARGET_SERVICE} />
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--cactus-muted)', marginBottom: 20 }}>
-            Per-ZIP service coverage list for GOFO Regional. The rating engine
-            uses this to decide whether a destination ZIP is in GOFO Regional&apos;s
-            ~70% US footprint. ZIPs not on this list fall through to GOFO
-            Standard or another selected carrier. Re-uploads truncate and
-            replace the active set in one transaction — partial merges are
-            not supported.
+          {/* Page header */}
+          <div style={{
+            fontSize: 20, fontWeight: 500, color: 'var(--cactus-ink)',
+            letterSpacing: '-0.02em', marginBottom: 4,
+          }}>GOFO Regional Coverage</div>
+          <div style={{ fontSize: 13, color: 'var(--cactus-muted)', marginBottom: 20, lineHeight: 1.55 }}>
+            Single upload populates the GOFO Regional coverage list (which
+            ZIPs are serviceable) <strong>and</strong> the GOFO Regional zone
+            matrix (hub × ZIP → zone). Atomic — both tables update together
+            or not at all. Re-uploads truncate and replace both active sets
+            in one transaction; partial merges are not supported.
           </div>
 
           {flash ? <Flash kind={flash.kind} msg={flash.msg} /> : null}
@@ -227,11 +209,13 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
               <Upload size={16} color="var(--cactus-forest)" />
               {isLoaded ? 'Replace with new upload' : 'Upload coverage XLSX'}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--cactus-muted)', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--cactus-muted)', marginBottom: 16, lineHeight: 1.55 }}>
               Server-side parse. Two-stage preview-then-commit: after upload
-              you&apos;ll see the first 10 parsed rows + total count + any
-              validation warnings before anything writes to the database.
-              Parsing is GOFO-Regional-specific (single sheet, ZIP5 column).
+              you&apos;ll see the first 10 parsed rows + total counts + any
+              validation warnings before anything writes to the database. The
+              commit step writes both <strong>service_coverage_zips</strong>
+              and <strong>gofo_regional_zone_matrix</strong> in a single
+              transaction.
             </div>
 
             <form action={handleUploadPlaceholder} encType="multipart/form-data">
@@ -267,16 +251,6 @@ export default async function CoverageZipsPage({ searchParams }: PageProps) {
             </form>
           </div>
 
-          {/* View-all link — placeholder, browse view deferred */}
-          {isLoaded ? (
-            <div style={{
-              marginTop: 12, fontSize: 12, color: 'var(--cactus-hint)', textAlign: 'right',
-            }}>
-              <span style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                View all {fmtNumber(status.total)} ZIPs (browse view forthcoming)
-              </span>
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
@@ -306,11 +280,12 @@ function EmptyCard() {
       </div>
       <div>
         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)', marginBottom: 4 }}>
-          No coverage ZIPs loaded yet
+          No coverage loaded yet
         </div>
         <div style={{ fontSize: 12, color: 'var(--cactus-muted)', lineHeight: 1.5 }}>
-          GOFO Regional rating won&apos;t resolve until a coverage list is
-          loaded. Upload the GOFO Regional ZIP coverage XLSX below to begin.
+          GOFO Regional rating becomes available once the coverage list and
+          zone matrix are loaded. Upload GOFO&apos;s published Regional XLSX
+          below to populate both in one transaction.
         </div>
       </div>
     </div>
@@ -354,39 +329,6 @@ function LoadedCard({ status }: { status: CoverageStatus }) {
         </div>
       </div>
     </div>
-  )
-}
-
-function CarrierBadge({ label }: { label: string }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      fontSize: 11, fontWeight: 500,
-      color: 'var(--cactus-forest)',
-      background: 'var(--cactus-mint)',
-      border: '0.5px solid #C5DBC0',
-      padding: '2px 8px', borderRadius: 999,
-      letterSpacing: '0.02em',
-      fontFamily: 'var(--font-mono)',
-    }}>
-      {label}
-    </span>
-  )
-}
-
-function ServiceBadge({ label }: { label: string }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      fontSize: 11, fontWeight: 500,
-      color: 'var(--cactus-muted)',
-      background: 'var(--cactus-sand)',
-      border: '0.5px solid var(--cactus-border)',
-      padding: '2px 8px', borderRadius: 999,
-      letterSpacing: '0.02em',
-    }}>
-      {label}
-    </span>
   )
 }
 

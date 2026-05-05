@@ -280,24 +280,17 @@ export default async function ReferenceDataPage() {
               }}
             />
             <Row
-              icon={<Map size={18} color="var(--cactus-forest)" />}
-              title="GOFO Regional Zone Matrix"
-              loaded={status.gofo_regional_zone_matrix > 0}
-              primary={status.gofo_regional_zone_matrix > 0 ? `${fmtNumber(status.gofo_regional_zone_matrix)} matrix rows` : 'Not loaded'}
-              secondary="Injection-point hub × destination ZIP5. ~58k rows when fully loaded."
-              action={{
-                label: status.gofo_regional_zone_matrix > 0 ? 'View / replace' : 'Upload XLSX',
-                href: '#design-review-pending',
-              }}
-            />
-            <Row
               icon={<MapPin size={18} color="var(--cactus-forest)" />}
-              title="Service Coverage ZIPs"
-              loaded={status.service_coverage_zips > 0}
-              primary={status.service_coverage_zips > 0 ? `${fmtNumber(status.service_coverage_zips)} ZIP entries` : 'Not loaded'}
-              secondary="Per-carrier per-service ZIP coverage list. Used by GOFO Regional and other footprint-restricted services."
+              title="GOFO Regional Coverage"
+              loaded={status.service_coverage_zips > 0 && status.gofo_regional_zone_matrix > 0}
+              primary={
+                status.service_coverage_zips > 0 || status.gofo_regional_zone_matrix > 0
+                  ? `${fmtNumber(status.service_coverage_zips)} ZIPs · ${fmtNumber(status.gofo_regional_zone_matrix)} matrix rows`
+                  : 'Not loaded'
+              }
+              secondary="Coverage list + zone matrix from a single GOFO Regional XLSX. Atomic dual-table upload."
               action={{
-                label: status.service_coverage_zips > 0 ? 'View / replace' : 'Upload XLSX',
+                label: status.service_coverage_zips > 0 || status.gofo_regional_zone_matrix > 0 ? 'View / replace' : 'Upload XLSX',
                 href: '/pld-analysis/reference-data/coverage-zips',
               }}
               isLast
