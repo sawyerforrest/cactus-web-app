@@ -17,6 +17,7 @@ import {
   Flag,
   Gauge,
   BarChart2,
+  Database,
   ScrollText,
   LogOut,
 } from 'lucide-react'
@@ -38,6 +39,7 @@ const navItems = {
   ],
   tools: [
     { label: 'PLD/Rate Analysis', href: '/pld', Icon: BarChart2 },
+    { label: 'Reference Data', href: '/pld-analysis/reference-data', Icon: Database },
     { label: 'Audit Log', href: '/audit', Icon: ScrollText },
   ],
 }
