@@ -270,6 +270,21 @@ function SelectedCardPreview({
   return <CellTable detail={detail} sourceFromSummary={sourceFromSummary} />
 }
 
+// Visual-treatment helpers for the DHL preview's extended zones (11-13 =
+// territory zones HI/AK/PR/etc — used less often, prone to pricing gaps).
+// The mute-and-divider treatment reduces visual competition with Zones 1-8
+// during operator spot-checks. GOFO Standard / Regional previews (Pauses 4/5)
+// have no extended zones, so these helpers return false for every zone in
+// those flows and no special casing happens.
+const isExtendedZone = (zone: string): boolean => {
+  const num = parseInt(zone.replace(/^Zone\s+/, ''), 10)
+  return Number.isFinite(num) && num >= 11
+}
+const isFirstExtendedZone = (zone: string): boolean => zone === 'Zone 11'
+
+// Ink at ~20% — the column-boundary divider into Zone 11.
+const EXTENDED_DIVIDER = '0.5px solid rgba(13, 18, 16, 0.2)'
+
 function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; sourceFromSummary: string }) {
   // Pivot: group cells by (weight_value, weight_unit), then for each row
   // collect the 11-zone rate map. Sort rows by unit (oz before lb) then
@@ -318,9 +333,18 @@ function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; so
           <thead>
             <tr>
               <th style={thStyle}>Weight</th>
-              {OUTPUT_ZONES.map(z => (
-                <th key={z} style={{ ...thStyle, textAlign: 'right' }}>{z}</th>
-              ))}
+              {OUTPUT_ZONES.map(z => {
+                const ext = isExtendedZone(z)
+                const firstExt = isFirstExtendedZone(z)
+                return (
+                  <th key={z} style={{
+                    ...thStyle,
+                    textAlign: 'right',
+                    ...(ext ? { opacity: 0.6 } : null),
+                    ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
+                  }}>{z}</th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
@@ -333,10 +357,30 @@ function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; so
                 </td>
                 {OUTPUT_ZONES.map(z => {
                   const v = r.cells.get(z)
+                  const ext = isExtendedZone(z)
+                  const firstExt = isFirstExtendedZone(z)
+                  // Null placeholder ("—") stays at hint color regardless —
+                  // already de-emphasized; double-dimming would push it
+                  // toward invisible.
                   if (v === null || v === undefined) {
-                    return <td key={z} style={{ ...tdStyle, textAlign: 'right', color: 'var(--cactus-hint)' }}>—</td>
+                    return (
+                      <td key={z} style={{
+                        ...tdStyle,
+                        textAlign: 'right',
+                        color: 'var(--cactus-hint)',
+                        ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
+                      }}>—</td>
+                    )
                   }
-                  return <td key={z} style={{ ...tdStyle, textAlign: 'right' }}>${v.toFixed(2)}</td>
+                  // Non-null rate: extended-zone cells get the 60% mute.
+                  return (
+                    <td key={z} style={{
+                      ...tdStyle,
+                      textAlign: 'right',
+                      ...(ext ? { opacity: 0.6 } : null),
+                      ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
+                    }}>${v.toFixed(2)}</td>
+                  )
                 })}
               </tr>
             ))}
