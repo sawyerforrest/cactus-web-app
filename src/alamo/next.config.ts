@@ -21,12 +21,19 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // WHY: Default server action body limit is 1MB. UPS detail
-  // invoices with 4000+ rows exceed this. 10MB covers all
-  // realistic carrier invoice file sizes.
+  // WHY: Default server action body limit is 1MB. Real workloads need more:
+  //   - UPS detail invoices with 4000+ rows
+  //   - PLD reference-data uploads, especially the GOFO Standard zone
+  //     workbook (8 tabs × 93,100 ZIP5 rows ≈ 6-8MB raw, larger after
+  //     multipart encoding) and future rate-card XLSXs
+  // 20MB gives ample headroom for both today's files and the rate-card
+  // sets coming in sub-phase 2b. Per-file size guards in individual
+  // Server Actions stay tighter (e.g. 10MB on each DHL Domestic per-DC
+  // file) so genuinely oversized uploads still fail fast with a
+  // user-friendly message.
   experimental: {
     serverActions: {
-      bodySizeLimit: '10mb',
+      bodySizeLimit: '20mb',
     },
   },
 };
