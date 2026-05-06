@@ -1,22 +1,33 @@
 // ==========================================================
 // FILE: src/alamo/app/pld-analysis/reference-data/zone-matrices/actions.ts
-// PURPOSE: Server Actions for the DHL eCom Domestic Zone Matrices upload flow.
+// PURPOSE: Server Actions for the Zone Matrices upload flows. Hosts both
+//   the DHL eCom Domestic flow (multi-file, 18 per-DC XLSX) and the
+//   GOFO Standard flow (single-file workbook with 8 hub tabs). The
+//   service selector in UploadForm.tsx routes to the right action
+//   pair based on operator choice.
 //
-// Two stages:
-//   1. previewDhlEcomZones (useActionState pattern, multi-file)
+// DHL eCom Domestic stages:
+//   1. previewDhlEcomZones (useActionState, multi-file)
 //      Validates the 18-file set, parses each file via the shared
 //      parser, uploads each accepted file to
 //      pld-uploads/zone-matrices/<upload_uuid>/<dc_code>.xlsx, returns
 //      summary + first rows + warnings + stagePaths so the operator
 //      can review before committing.
 //
-//   2. commitDhlEcomZones — NOT YET IMPLEMENTED. Pause point #4
-//      deliverable. Will re-fetch all 18 stage files from Storage,
-//      re-parse, validate the re-parse summary matches preview's
-//      expected counts, dispatch to the v1.10.0-023
-//      commit_dhl_ecom_zones_upload() Postgres function for the
-//      atomic scoped-DELETE + bulk INSERT, delete all 18 stage files
-//      on success.
+//   2. commitDhlEcomZones — re-fetches all 18 stage files from Storage,
+//      re-parses, validates the re-parse summary matches preview's
+//      expected counts, dispatches to v1.10.0-023's
+//      commit_dhl_ecom_zones_upload() PG function for the atomic
+//      scoped-DELETE + bulk INSERT, deletes the 18 stage files on
+//      success.
+//
+// GOFO Standard stages (parser/commit not yet wired — pause-point #1
+// shipped UI shell only):
+//   1. previewGofoStandardZones — currently STUB. Returns an info-flash
+//      so the form is exercisable end-to-end. Real implementation
+//      lands alongside the parser at lib/pld-analysis/gofo-standard-parser.ts.
+//   2. commitGofoStandardZones — STUB. Will dispatch to v1.10.0-025's
+//      commit_gofo_standard_zones_upload() PG function once authored.
 // ==========================================================
 
 'use server'
@@ -29,7 +40,14 @@ import {
   type DcLookup,
   type FileBuffer,
 } from '@/lib/pld-analysis/dhl-ecom-zones-parser'
-import { initialPreviewState, type PreviewState, CANONICAL_DC_CODES } from './types'
+import {
+  initialPreviewState,
+  type PreviewState,
+  CANONICAL_DC_CODES,
+  initialGofoPreviewState,
+  type GofoPreviewState,
+  DEFAULT_GOFO_STANDARD_EFFECTIVE_DATE,
+} from './types'
 
 const ROUTE = '/pld-analysis/reference-data/zone-matrices'
 const BUCKET = 'pld-uploads'
@@ -350,6 +368,123 @@ export async function commitDhlEcomZones(formData: FormData): Promise<void> {
   redirect(
     `${ROUTE}?status=success&msg=${encodeURIComponent(
       `Committed: ${matrixWritten.toLocaleString('en-US')} DHL eCom Ground zone matrix rows across ${expectedFiles} DCs written atomically. Effective ${effectiveDate}.`,
+    )}`,
+  )
+}
+
+// =============================================================
+// GOFO Standard — Stage 1: previewGofoStandardZones (STUB)
+// =============================================================
+// Pause point #1 deliverable surfaces only the UI shell. The real
+// parser at lib/pld-analysis/gofo-standard-parser.ts lands in the
+// next commit; this action validates the shape of the form data
+// (file present, effective date well-formed) and echoes back an
+// info-flash so the operator can see the round-trip works.
+//
+// Effective date validation here mirrors what the real preview will
+// enforce — operator-picked, ISO YYYY-MM-DD, sane range — so once
+// the parser ships only the body changes, not the contract with
+// UploadForm.tsx.
+
+const MIN_EFFECTIVE_YEAR = 2024
+const MAX_EFFECTIVE_YEAR = new Date().getUTCFullYear() + 5
+
+function validateGofoFormShape(formData: FormData): {
+  errors: string[]
+  effectiveDate: string
+  hasFile: boolean
+  fileName: string | null
+  fileSize: number | null
+} {
+  const errors: string[] = []
+  const effectiveDate = String(formData.get('effective_date') ?? '').trim()
+  const fileEntry = formData.get('file')
+  const file = fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : null
+
+  if (!file) {
+    errors.push('No file selected. Pick the GOFO Standard zones .xlsx workbook.')
+  } else {
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      errors.push(`File "${file.name}" is not a .xlsx. Only .xlsx accepted.`)
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      errors.push(`File "${file.name}" exceeds 10MB. The GOFO workbook is typically a few MB; check the upload.`)
+    }
+  }
+
+  if (!effectiveDate) {
+    errors.push('Effective date is required.')
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+    errors.push(`Effective date "${effectiveDate}" must be ISO YYYY-MM-DD.`)
+  } else {
+    const yr = parseInt(effectiveDate.slice(0, 4), 10)
+    if (yr < MIN_EFFECTIVE_YEAR || yr > MAX_EFFECTIVE_YEAR) {
+      errors.push(`Effective date year ${yr} is outside the sane range ${MIN_EFFECTIVE_YEAR}–${MAX_EFFECTIVE_YEAR}.`)
+    }
+  }
+
+  return {
+    errors,
+    effectiveDate: effectiveDate || DEFAULT_GOFO_STANDARD_EFFECTIVE_DATE,
+    hasFile: file !== null,
+    fileName: file?.name ?? null,
+    fileSize: file?.size ?? null,
+  }
+}
+
+export async function previewGofoStandardZones(
+  prev: GofoPreviewState,
+  formData: FormData,
+): Promise<GofoPreviewState> {
+  // Auth
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: ['Not authenticated. Please sign in again.'],
+      effectiveDate: prev.effectiveDate || DEFAULT_GOFO_STANDARD_EFFECTIVE_DATE,
+    }
+  }
+
+  const shape = validateGofoFormShape(formData)
+  if (shape.errors.length > 0) {
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: shape.errors,
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+
+  // STUB until the GOFO Standard parser lands. Surface an info-flash so
+  // operators see the form posts and the effective date round-trips.
+  // Replace this block with: read file buffer → loadHubLookup() →
+  // parseGofoStandardZones() → stage to Storage → return preview state.
+  return {
+    ...initialGofoPreviewState,
+    status: 'error',
+    errors: [
+      `Parser not yet wired. File "${shape.fileName}" (${(shape.fileSize ?? 0).toLocaleString('en-US')} bytes) accepted, effective date ${shape.effectiveDate} validated. Real parse + preview lands in the next commit per pause-point sequencing.`,
+    ],
+    effectiveDate: shape.effectiveDate,
+  }
+}
+
+// =============================================================
+// GOFO Standard — Stage 2: commitGofoStandardZones (STUB)
+// =============================================================
+
+export async function commitGofoStandardZones(_formData: FormData): Promise<void> {
+  // Until the parser + v1.10.0-025 commit function are in place, this
+  // bounces back to the screen with an info flash. Once wired, the body
+  // mirrors commitDhlEcomZones: re-fetch single stage file by uploadUuid,
+  // re-parse, validate counts match preview, call rpc('commit_gofo_standard_zones_upload'),
+  // delete stage file, redirect with success.
+  redirect(
+    `${ROUTE}?status=info&msg=${encodeURIComponent(
+      'GOFO Standard commit not yet wired — UI shell only at pause-point #1.',
     )}`,
   )
 }

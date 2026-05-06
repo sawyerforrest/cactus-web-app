@@ -1,39 +1,37 @@
 // ==========================================================
 // FILE: src/alamo/app/pld-analysis/reference-data/zone-matrices/page.tsx
-// PURPOSE: DHL eCom Domestic Zone matrices view + upload flow shell.
+// PURPOSE: Zone Matrices view + dual-flow upload shell.
 //
-// Two-stage upload flow (mirrors GOFO Regional Coverage):
-//   - Stage 1 (this file + UploadForm.tsx + actions.ts): file picker
-//     + server-side parse + preview UI showing summary + first rows
-//     + warnings. NO database write at this stage.
-//   - Stage 2 (lands in next commit): commit Server Action performs
-//     the atomic scoped-DELETE + bulk INSERT into carrier_zone_matrices.
+// Two flows live on this screen, routed by a service-tab selector
+// inside UploadForm:
+//   - DHL eCom Domestic Zones (multi-file, 18 per-DC XLSX)
+//   - GOFO Standard Zones (single-file workbook, 8 hub tabs)
 //
-// CURRENT COMMIT: empty-state shell only. The interactive upload UI
-// lives in UploadForm.tsx but the parser is not yet wired (returns
-// an info-flash error on submit). Pause point #2 deliverable per
-// Senior Architect.
+// Both ultimately write into carrier_zone_matrices but with disjoint
+// (carrier_code, service_level) scopes:
+//   - DHL eCom Ground:    carrier_code='DHL_ECOM', service_level='Ground'
+//   - GOFO Standard:      carrier_code='GOFO',     service_level='Standard'
 //
-// Why "DHL eCom Domestic Zones" is the only carrier+service combo this
-// page surfaces today:
-//   The carrier_zone_matrices schema supports any carrier/service combo,
-//   but in v1 the only carrier publishing per-DC zone XLSX files is DHL
-//   eCommerce (Ground). GOFO Standard zones may join this screen later
-//   pending Sawyer's GOFO rep response. DHL Intl is country-pair-based
-//   and lives in carrier_country_zone_matrices, not here.
+// Re-uploads scope-delete only their own slice; the other carrier's
+// rows are untouched. The ?service= query param deep-links the
+// Reference Data index to the right tab.
 //
 // Schema reference (verified 2026-05-05):
 //   carrier_zone_matrices(carrier_code, service_level, matrix_version,
 //     origin_zip3, dest_zip3, zone, effective_date, deprecated_date,
 //     source, notes, created_at)
-//   dhl_ecom_dcs(dc_code, origin_code, dc_zip3, city, state, ...)
-//     — 18 rows, seeded by v1.10.0-022
+//   gofo_hubs(hub_code, primary_zip5, ...) — 8 rows post v1.10.0-019 split
+//
+// Status aggregation uses the v1.10.0-024 carrier_zone_matrix_status
+// RPC twice (once per service slice) — Pattern 7 reuse, no new
+// migration required for either status surface.
 // ==========================================================
 
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import { UploadForm } from './UploadForm'
+import { type ServiceMode } from './types'
 import {
   ChevronRight,
   ChevronLeft,
@@ -43,52 +41,57 @@ import {
   Clock,
 } from 'lucide-react'
 
-const TARGET_CARRIER = 'DHL_ECOM'
-const TARGET_SERVICE = 'Ground'
-
-interface ZonesStatus {
+interface SliceStatus {
   total: number
   distinct_origin_zip3s: number
   effective_date: string | null
   latest_created_at: string | null
 }
 
+interface ZonesStatus {
+  dhl: SliceStatus
+  gofo: SliceStatus
+}
+
+const EMPTY_SLICE: SliceStatus = {
+  total: 0,
+  distinct_origin_zip3s: 0,
+  effective_date: null,
+  latest_created_at: null,
+}
+
 async function loadStatus(): Promise<ZonesStatus> {
   const admin = createAdminSupabaseClient()
 
-  // Use the v1.10.0-024 server-side aggregate function. Computing the
-  // distinct DC count client-side over a row-fetched sample ran into
-  // PostgREST's response cap when the matrix was fully loaded — at 16,740
-  // rows in a single transaction, all created_at values tie, and the
-  // returned slice contained only 2 distinct origin_zip3 values. Aggregating
-  // server-side returns one row with all four numbers, no cap concern.
-  const { data, error } = await admin.rpc('carrier_zone_matrix_status', {
-    p_carrier: TARGET_CARRIER,
-    p_service: TARGET_SERVICE,
-  })
+  // Both slices via the v1.10.0-024 server-side aggregate. Pattern 7
+  // (function generalization) — same helper accepts (carrier, service)
+  // so we call it once per slice. Server-side aggregation sidesteps the
+  // PostgREST row-cap that broke the prior client-side dedup pattern.
+  const [dhlRes, gofoRes] = await Promise.all([
+    admin.rpc('carrier_zone_matrix_status', {
+      p_carrier: 'DHL_ECOM',
+      p_service: 'Ground',
+    }),
+    admin.rpc('carrier_zone_matrix_status', {
+      p_carrier: 'GOFO',
+      p_service: 'Standard',
+    }),
+  ])
 
-  if (error) {
-    // Fail soft — render an empty-state-looking card on transient DB error
-    // rather than 500ing the whole page.
+  function toSlice(res: { data: unknown; error: unknown }): SliceStatus {
+    if (res.error) return EMPTY_SLICE
+    const row = (Array.isArray(res.data) ? res.data[0] : res.data) as
+      | { total_rows: number; distinct_dcs: number; latest_effective: string | null; latest_created_at: string | null }
+      | undefined
     return {
-      total: 0,
-      distinct_origin_zip3s: 0,
-      effective_date: null,
-      latest_created_at: null,
+      total: row?.total_rows ?? 0,
+      distinct_origin_zip3s: row?.distinct_dcs ?? 0,
+      effective_date: row?.latest_effective ?? null,
+      latest_created_at: row?.latest_created_at ?? null,
     }
   }
 
-  // RPC returns a single-row result (one row, four columns).
-  const row = (Array.isArray(data) ? data[0] : data) as
-    | { total_rows: number; distinct_dcs: number; latest_effective: string | null; latest_created_at: string | null }
-    | undefined
-
-  return {
-    total: row?.total_rows ?? 0,
-    distinct_origin_zip3s: row?.distinct_dcs ?? 0,
-    effective_date: row?.latest_effective ?? null,
-    latest_created_at: row?.latest_created_at ?? null,
-  }
+  return { dhl: toSlice(dhlRes), gofo: toSlice(gofoRes) }
 }
 
 function fmtTimestamp(iso: string | null): string {
@@ -100,8 +103,12 @@ function fmtNumber(n: number): string {
   return n.toLocaleString('en-US')
 }
 
+function parseService(raw: string | undefined): ServiceMode {
+  return raw === 'gofo-standard' ? 'gofo-standard' : 'dhl-ecom-domestic'
+}
+
 interface PageProps {
-  searchParams: Promise<{ status?: string; msg?: string }>
+  searchParams: Promise<{ status?: string; msg?: string; service?: string }>
 }
 
 export default async function ZoneMatricesPage({ searchParams }: PageProps) {
@@ -113,7 +120,7 @@ export default async function ZoneMatricesPage({ searchParams }: PageProps) {
 
   const status = await loadStatus()
   const flash = params.status ? { kind: params.status, msg: params.msg ?? '' } : null
-  const isLoaded = status.total > 0
+  const initialService = parseService(params.service)
 
   return (
     <div style={{
@@ -135,7 +142,7 @@ export default async function ZoneMatricesPage({ searchParams }: PageProps) {
           <ChevronRight size={14} color="var(--cactus-hint)" />
           <a href="/pld-analysis/reference-data" style={{ fontSize: 13, color: 'var(--cactus-muted)' }}>Reference Data</a>
           <ChevronRight size={14} color="var(--cactus-hint)" />
-          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>DHL eCom Domestic Zones</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)' }}>Zone Matrices</div>
         </div>
 
         <div style={{ padding: '20px 24px', maxWidth: 880 }}>
@@ -149,31 +156,38 @@ export default async function ZoneMatricesPage({ searchParams }: PageProps) {
           <div style={{
             fontSize: 20, fontWeight: 500, color: 'var(--cactus-ink)',
             letterSpacing: '-0.02em', marginBottom: 4,
-          }}>DHL eCom Domestic Zones</div>
+          }}>Zone Matrices</div>
           <div style={{ fontSize: 13, color: 'var(--cactus-muted)', marginBottom: 20, lineHeight: 1.55 }}>
-            Per-DC origin × destination ZIP3 zone matrix for DHL eCommerce
-            domestic Ground service. Sourced from DHL&apos;s 18
-            <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, padding: '0 2px' }}>
-              DHL eCommerce Zones Table_&lt;DC&gt;.xlsx
-            </code>{' '}
-            files. Re-uploads scope-delete the prior DHL Ground rows from{' '}
-            <strong>carrier_zone_matrices</strong> and INSERT all 16,740
-            new rows in one transaction; other carriers&apos; zone data
-            is untouched.
+            Origin × destination ZIP3 zone matrices for the carriers and
+            services rated by the engine. Two flows live here today: DHL
+            eCommerce Ground (per-DC, 18 files atomic) and GOFO Standard
+            (single 8-tab workbook, ZIP5→ZIP3 lossless aggregation). Both
+            write into <strong>carrier_zone_matrices</strong> with
+            disjoint (carrier, service) scopes — re-uploads on one
+            service never touch the other&apos;s rows.
           </div>
 
           {flash ? <Flash kind={flash.kind} msg={flash.msg} /> : null}
 
-          {/* Status card */}
-          {isLoaded ? (
-            <LoadedCard status={status} />
-          ) : (
-            <EmptyCard />
-          )}
+          {/* Status cards — one per service slice */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SliceCard
+              title="DHL eCom Ground"
+              originLabel="DCs"
+              expectedOrigins={18}
+              status={status.dhl}
+            />
+            <SliceCard
+              title="GOFO Standard"
+              originLabel="hubs"
+              expectedOrigins={8}
+              status={status.gofo}
+            />
+          </div>
 
-          {/* Upload form (client component — useActionState drives preview UI) */}
+          {/* Upload form (client component) — service-tab selector inside */}
           <div style={{ marginTop: 16 }}>
-            <UploadForm />
+            <UploadForm initialService={initialService} />
           </div>
         </div>
       </div>
@@ -185,69 +199,69 @@ export default async function ZoneMatricesPage({ searchParams }: PageProps) {
 // Sub-components
 // =====================
 
-function EmptyCard() {
+function SliceCard({
+  title, originLabel, expectedOrigins, status,
+}: {
+  title: string
+  originLabel: string
+  expectedOrigins: number
+  status: SliceStatus
+}) {
+  const isLoaded = status.total > 0
   return (
     <div style={{
       background: 'var(--cactus-canvas)',
       border: '0.5px solid var(--cactus-border)',
       borderRadius: 10,
-      padding: 24,
-      display: 'flex', alignItems: 'center', gap: 16,
-    }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 10,
-        background: 'var(--cactus-mint)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <Layers size={22} color="var(--cactus-forest)" />
-      </div>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)', marginBottom: 4 }}>
-          No DHL eCom zones loaded yet
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--cactus-muted)', lineHeight: 1.5 }}>
-          DHL eCom Ground rating becomes available once all 18 per-DC
-          zone files are loaded. Upload the complete set below — all
-          16,740 zone rows load atomically.
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function LoadedCard({ status }: { status: ZonesStatus }) {
-  return (
-    <div style={{
-      background: 'var(--cactus-canvas)',
-      border: '0.5px solid var(--cactus-border)',
-      borderRadius: 10,
-      padding: 20,
+      padding: 18,
       display: 'grid',
-      gridTemplateColumns: '44px 1fr',
-      gap: 16,
+      gridTemplateColumns: '40px 1fr',
+      gap: 14,
       alignItems: 'flex-start',
     }}>
       <div style={{
-        width: 44, height: 44, borderRadius: 10,
+        width: 40, height: 40, borderRadius: 10,
         background: 'var(--cactus-mint)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <Layers size={22} color="var(--cactus-forest)" />
+        <Layers size={20} color="var(--cactus-forest)" />
       </div>
       <div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--cactus-ink)', marginBottom: 4 }}>
-          {fmtNumber(status.total)} matrix rows · {status.distinct_origin_zip3s} DCs
+        <div style={{
+          fontSize: 13, fontWeight: 500, color: 'var(--cactus-ink)',
+          marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          {title}
+          {isLoaded ? null : (
+            <span style={{
+              fontSize: 10, fontWeight: 500,
+              color: 'var(--cactus-amber-text)',
+              background: 'var(--cactus-amber-bg)',
+              border: '0.5px solid #FCD34D',
+              padding: '1px 6px', borderRadius: 999,
+            }}>not loaded</span>
+          )}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--cactus-muted)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={12} />
-            Active set loaded {fmtTimestamp(status.latest_created_at)}
+        {isLoaded ? (
+          <>
+            <div style={{ fontSize: 13, color: 'var(--cactus-slate)' }}>
+              {fmtNumber(status.total)} matrix rows · {status.distinct_origin_zip3s} {originLabel}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--cactus-muted)', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Clock size={11} />
+                Active set loaded {fmtTimestamp(status.latest_created_at)}
+              </div>
+              {status.effective_date ? (
+                <div>Effective {status.effective_date}</div>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--cactus-muted)', lineHeight: 1.5 }}>
+            No data loaded yet. Upload the {originLabel === 'DCs' ? `${expectedOrigins} per-DC files` : `single ${expectedOrigins}-tab workbook`} below.
           </div>
-          {status.effective_date ? (
-            <div>Effective {status.effective_date}</div>
-          ) : null}
-        </div>
+        )}
       </div>
     </div>
   )

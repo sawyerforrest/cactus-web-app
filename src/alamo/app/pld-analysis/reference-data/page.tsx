@@ -61,9 +61,12 @@ interface RefDataStatus {
   analysis_rate_cards_active: number
   analysis_rate_card_cells: number
   gofo_hub_codes: string[]
-  dhl_ecom_zones_total: number          // scoped to DHL_ECOM/Ground
-  dhl_ecom_zones_dcs: number             // distinct origin_zip3 for DHL_ECOM/Ground
-  dhl_ecom_zones_effective: string | null // latest effective_date for DHL_ECOM/Ground
+  dhl_ecom_zones_total: number              // scoped to DHL_ECOM/Ground
+  dhl_ecom_zones_dcs: number                // distinct origin_zip3 for DHL_ECOM/Ground
+  dhl_ecom_zones_effective: string | null    // latest effective_date for DHL_ECOM/Ground
+  gofo_standard_zones_total: number         // scoped to GOFO/Standard
+  gofo_standard_zones_hubs: number          // distinct origin_zip3 for GOFO/Standard
+  gofo_standard_zones_effective: string | null // latest effective_date for GOFO/Standard
 }
 
 async function loadStatus(): Promise<RefDataStatus> {
@@ -85,6 +88,7 @@ async function loadStatus(): Promise<RefDataStatus> {
     dieselLastFetchedAt,
     zoneMatrices,
     dhlEcomZonesStatusRes,
+    gofoStandardZonesStatusRes,
     countryZoneMatrices,
     regionalZoneMatrix,
     coverageZips,
@@ -107,14 +111,17 @@ async function loadStatus(): Promise<RefDataStatus> {
     admin.from('diesel_price_history').select('effective_week_start').order('effective_week_start', { ascending: false }).limit(1),
     admin.from('diesel_price_history').select('fetched_at').order('fetched_at', { ascending: false }).limit(1),
     admin.from('carrier_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
-    // DHL eCom Domestic zones aggregate via the v1.10.0-024 server-side
-    // function — avoids the PostgREST row-cap that broke the prior
-    // sample-and-dedup pattern (read 20k rows, count distinct
-    // origin_zip3 client-side; cap truncated the response and produced a
-    // wrong DC count).
+    // Per-service zone-matrix slices via the v1.10.0-024 server-side aggregate
+    // (Pattern 7 reuse). Server-side aggregation avoids the PostgREST row-cap
+    // that broke the prior sample-and-dedup pattern. Two separate calls so
+    // each service's slice surfaces independently on the index.
     admin.rpc('carrier_zone_matrix_status', {
       p_carrier: 'DHL_ECOM',
       p_service: 'Ground',
+    }),
+    admin.rpc('carrier_zone_matrix_status', {
+      p_carrier: 'GOFO',
+      p_service: 'Standard',
     }),
     admin.from('carrier_country_zone_matrices').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_regional_zone_matrix').select('*', { count: 'exact', head: false }).limit(0),
@@ -131,6 +138,12 @@ async function loadStatus(): Promise<RefDataStatus> {
   const dhlEcomStatusRow = (Array.isArray(dhlEcomZonesStatusRes.data)
     ? dhlEcomZonesStatusRes.data[0]
     : dhlEcomZonesStatusRes.data) as
+    | { total_rows: number; distinct_dcs: number; latest_effective: string | null }
+    | undefined
+
+  const gofoStandardStatusRow = (Array.isArray(gofoStandardZonesStatusRes.data)
+    ? gofoStandardZonesStatusRes.data[0]
+    : gofoStandardZonesStatusRes.data) as
     | { total_rows: number; distinct_dcs: number; latest_effective: string | null }
     | undefined
 
@@ -154,6 +167,9 @@ async function loadStatus(): Promise<RefDataStatus> {
     dhl_ecom_zones_total: dhlEcomStatusRow?.total_rows ?? 0,
     dhl_ecom_zones_dcs: dhlEcomStatusRow?.distinct_dcs ?? 0,
     dhl_ecom_zones_effective: dhlEcomStatusRow?.latest_effective ?? null,
+    gofo_standard_zones_total: gofoStandardStatusRow?.total_rows ?? 0,
+    gofo_standard_zones_hubs: gofoStandardStatusRow?.distinct_dcs ?? 0,
+    gofo_standard_zones_effective: gofoStandardStatusRow?.latest_effective ?? null,
   }
 }
 
@@ -304,7 +320,22 @@ export default async function ReferenceDataPage() {
               secondary="Per-DC origin × dest ZIP3 zone matrix. 18 files, one per distribution center, atomic upload."
               action={{
                 label: status.dhl_ecom_zones_total > 0 ? 'Replace upload' : 'Upload XLSX',
-                href: '/pld-analysis/reference-data/zone-matrices',
+                href: '/pld-analysis/reference-data/zone-matrices?service=dhl-ecom-domestic',
+              }}
+            />
+            <Row
+              icon={<Layers size={18} color="var(--cactus-forest)" />}
+              title="GOFO Standard Zones"
+              loaded={status.gofo_standard_zones_total > 0}
+              primary={
+                status.gofo_standard_zones_total > 0
+                  ? `${fmtNumber(status.gofo_standard_zones_total)} rows · ${status.gofo_standard_zones_hubs} hubs · Effective ${status.gofo_standard_zones_effective ?? '—'}`
+                  : 'Not loaded'
+              }
+              secondary="Per-hub origin × dest ZIP3 zone matrix. Single workbook with 8 injection-point hub tabs, ZIP5→ZIP3 lossless aggregation."
+              action={{
+                label: status.gofo_standard_zones_total > 0 ? 'Replace upload' : 'Upload XLSX',
+                href: '/pld-analysis/reference-data/zone-matrices?service=gofo-standard',
               }}
             />
             <Row
