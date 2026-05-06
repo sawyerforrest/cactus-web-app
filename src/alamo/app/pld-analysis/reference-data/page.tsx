@@ -43,6 +43,7 @@ import {
   CheckCircle2,
   Circle,
 } from 'lucide-react'
+import { RATE_CARD_SCOPES } from './rate-cards/scopes'
 
 interface RefDataStatus {
   zip3_centroids: number
@@ -69,6 +70,7 @@ interface RefDataStatus {
   gofo_standard_zones_effective: string | null // latest effective_date for GOFO/Standard
   dhl_das_zips_total: number                // active set count from dhl_ecom_das_zips
   dhl_das_zips_effective: string | null      // latest effective_date from dhl_ecom_das_zips
+  rate_cards_scopes_loaded: number          // rows from analysis_rate_cards_status_aggregate (one per loaded scope)
 }
 
 async function loadStatus(): Promise<RefDataStatus> {
@@ -98,6 +100,7 @@ async function loadStatus(): Promise<RefDataStatus> {
     rateCardCells,
     dhlDasZipsCount,
     dhlDasZipsLatestEffective,
+    rateCardScopesAggregateRes,
   ] = await Promise.all([
     admin.from('zip3_centroids').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_hub_proximity').select('*', { count: 'exact', head: false }).limit(0),
@@ -137,6 +140,11 @@ async function loadStatus(): Promise<RefDataStatus> {
     // Covered by the partial index from v1.10.0-026.
     admin.from('dhl_ecom_das_zips').select('*', { count: 'exact', head: false }).is('deprecated_date', null).limit(0),
     admin.from('dhl_ecom_das_zips').select('effective_date').is('deprecated_date', null).order('effective_date', { ascending: false }).limit(1),
+    // Rate-cards loaded-scope count via the v1.10.0-029 status aggregate.
+    // The function returns one row per (carrier, service_level_group,
+    // fulfillment_mode) tuple that has at least one rate card; row count
+    // is the loaded-scope count out of RATE_CARD_SCOPES.length (5).
+    admin.rpc('analysis_rate_cards_status_aggregate'),
   ])
 
   const hubRowList = (hubsRows.data ?? []) as Array<{ hub_code: string }>
@@ -181,6 +189,9 @@ async function loadStatus(): Promise<RefDataStatus> {
     gofo_standard_zones_effective: gofoStandardStatusRow?.latest_effective ?? null,
     dhl_das_zips_total: dhlDasZipsCount.count ?? 0,
     dhl_das_zips_effective: dhlDasZipsLatestEffective.data?.[0]?.effective_date ?? null,
+    rate_cards_scopes_loaded: Array.isArray(rateCardScopesAggregateRes.data)
+      ? rateCardScopesAggregateRes.data.length
+      : 0,
   }
 }
 
@@ -398,15 +409,17 @@ export default async function ReferenceDataPage() {
           <Card>
             <Row
               icon={<Tag size={18} color="var(--cactus-forest)" />}
-              title="Analysis Rate Cards"
-              loaded={status.analysis_rate_cards_active > 0}
-              primary={status.analysis_rate_cards_active > 0
-                ? `${fmtNumber(status.analysis_rate_cards_active)} active cards · ${fmtNumber(status.analysis_rate_card_cells)} total cells`
-                : 'Not loaded'}
-              secondary="Cactus base-cost cards and lead-quoted cards. Separate from production public.rate_cards."
+              title="Rate Cards"
+              loaded={status.rate_cards_scopes_loaded > 0}
+              primary={
+                status.rate_cards_scopes_loaded > 0
+                  ? `${status.rate_cards_scopes_loaded} of ${RATE_CARD_SCOPES.length} scopes loaded · ${fmtNumber(status.analysis_rate_cards_active)} active cards · ${fmtNumber(status.analysis_rate_card_cells)} total cells`
+                  : `0 of ${RATE_CARD_SCOPES.length} scopes loaded`
+              }
+              secondary="Cactus base-cost cards across DHL eCom Domestic + GOFO Standard/Regional × Pickup/Dropoff. Separate from production public.rate_cards."
               action={{
-                label: status.analysis_rate_cards_active > 0 ? 'Manage' : 'Upload XLSX',
-                href: '#design-review-pending',
+                label: status.rate_cards_scopes_loaded > 0 ? 'Manage' : 'Upload XLSX',
+                href: '/pld-analysis/reference-data/rate-cards',
               }}
               isLast
             />
