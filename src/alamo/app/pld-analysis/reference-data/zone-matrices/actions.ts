@@ -21,13 +21,21 @@
 //      scoped-DELETE + bulk INSERT, deletes the 18 stage files on
 //      success.
 //
-// GOFO Standard stages (parser/commit not yet wired — pause-point #1
-// shipped UI shell only):
-//   1. previewGofoStandardZones — currently STUB. Returns an info-flash
-//      so the form is exercisable end-to-end. Real implementation
-//      lands alongside the parser at lib/pld-analysis/gofo-standard-parser.ts.
-//   2. commitGofoStandardZones — STUB. Will dispatch to v1.10.0-025's
-//      commit_gofo_standard_zones_upload() PG function once authored.
+// GOFO Standard stages:
+//   1. previewGofoStandardZones (useActionState, single-file)
+//      Validates the .xlsx + operator-picked effective date, loads
+//      gofo_hubs (Pattern 5 live query for origin_zip3), parses via
+//      parseGofoStandardZonesFile (single workbook → 8 hub tabs →
+//      ZIP5→ZIP3 lossless aggregation → 7,448 rows), uploads to
+//      pld-uploads/zone-matrices/<upload_uuid>/gofo-standard.xlsx,
+//      returns summary + first rows + warnings + stagePath.
+//
+//   2. commitGofoStandardZones — currently STUB (pause point #4
+//      deliverable). Will re-fetch the staged file, re-parse, validate
+//      the re-parse summary matches preview's expected counts, dispatch
+//      to v1.10.0-025's commit_gofo_standard_zones_upload() PG function
+//      for the atomic scoped-DELETE + bulk INSERT, delete the stage
+//      file on success.
 // ==========================================================
 
 'use server'
@@ -41,11 +49,16 @@ import {
   type FileBuffer,
 } from '@/lib/pld-analysis/dhl-ecom-zones-parser'
 import {
+  parseGofoStandardZonesFile,
+  type HubLookup,
+} from '@/lib/pld-analysis/gofo-standard-parser'
+import {
   initialPreviewState,
   type PreviewState,
   CANONICAL_DC_CODES,
   initialGofoPreviewState,
   type GofoPreviewState,
+  CANONICAL_GOFO_HUB_CODES,
   DEFAULT_GOFO_STANDARD_EFFECTIVE_DATE,
 } from './types'
 
@@ -373,29 +386,19 @@ export async function commitDhlEcomZones(formData: FormData): Promise<void> {
 }
 
 // =============================================================
-// GOFO Standard — Stage 1: previewGofoStandardZones (STUB)
+// GOFO Standard — Stage 1: previewGofoStandardZones
 // =============================================================
-// Pause point #1 deliverable surfaces only the UI shell. The real
-// parser at lib/pld-analysis/gofo-standard-parser.ts lands in the
-// next commit; this action validates the shape of the form data
-// (file present, effective date well-formed) and echoes back an
-// info-flash so the operator can see the round-trip works.
-//
-// Effective date validation here mirrors what the real preview will
-// enforce — operator-picked, ISO YYYY-MM-DD, sane range — so once
-// the parser ships only the body changes, not the contract with
-// UploadForm.tsx.
 
 const MIN_EFFECTIVE_YEAR = 2024
 const MAX_EFFECTIVE_YEAR = new Date().getUTCFullYear() + 5
 
-function validateGofoFormShape(formData: FormData): {
+interface GofoFormShape {
   errors: string[]
   effectiveDate: string
-  hasFile: boolean
-  fileName: string | null
-  fileSize: number | null
-} {
+  file: File | null
+}
+
+function validateGofoFormShape(formData: FormData): GofoFormShape {
   const errors: string[] = []
   const effectiveDate = String(formData.get('effective_date') ?? '').trim()
   const fileEntry = formData.get('file')
@@ -426,10 +429,26 @@ function validateGofoFormShape(formData: FormData): {
   return {
     errors,
     effectiveDate: effectiveDate || DEFAULT_GOFO_STANDARD_EFFECTIVE_DATE,
-    hasFile: file !== null,
-    fileName: file?.name ?? null,
-    fileSize: file?.size ?? null,
+    file,
   }
+}
+
+// Pattern 5 live query — origin_zip3 for each hub is derived from
+// gofo_hubs.primary_zip5 at parse time, never hardcoded. If the EWR/JFK
+// split (v1.10.0-019) ever changes, the parser inherits the new ZIPs
+// without code changes.
+async function loadHubLookup(): Promise<HubLookup> {
+  const admin = createAdminSupabaseClient()
+  const { data, error } = await admin
+    .from('gofo_hubs')
+    .select('hub_code, primary_zip5')
+  if (error) throw new Error(`Failed to load gofo_hubs: ${error.message}`)
+
+  const byHub = new Map<string, { primary_zip5: string }>()
+  for (const row of (data ?? []) as Array<{ hub_code: string; primary_zip5: string }>) {
+    byHub.set(row.hub_code, { primary_zip5: row.primary_zip5 })
+  }
+  return { byHub }
 }
 
 export async function previewGofoStandardZones(
@@ -449,42 +468,120 @@ export async function previewGofoStandardZones(
   }
 
   const shape = validateGofoFormShape(formData)
-  if (shape.errors.length > 0) {
+  if (shape.errors.length > 0 || !shape.file) {
     return {
       ...initialGofoPreviewState,
       status: 'error',
-      errors: shape.errors,
+      errors: shape.errors.length > 0 ? shape.errors : ['No file provided.'],
       effectiveDate: shape.effectiveDate,
     }
   }
 
-  // STUB until the GOFO Standard parser lands. Surface an info-flash so
-  // operators see the form posts and the effective date round-trips.
-  // Replace this block with: read file buffer → loadHubLookup() →
-  // parseGofoStandardZones() → stage to Storage → return preview state.
+  // Read file buffer
+  let buffer: ArrayBuffer
+  try {
+    buffer = await shape.file.arrayBuffer()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: [`Failed to read "${shape.file.name}": ${msg}`],
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+
+  // Load hub lookup (Pattern 5 live query)
+  let hubLookup: HubLookup
+  try {
+    hubLookup = await loadHubLookup()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: [`Failed to load gofo_hubs lookup: ${msg}`],
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+  if (hubLookup.byHub.size < CANONICAL_GOFO_HUB_CODES.length) {
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: [
+        `gofo_hubs has ${hubLookup.byHub.size} rows; expected at least ${CANONICAL_GOFO_HUB_CODES.length}. Re-apply migration v1.10.0-019.`,
+      ],
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+
+  // Parse
+  const result = await parseGofoStandardZonesFile(
+    { name: shape.file.name, buffer },
+    hubLookup,
+    shape.effectiveDate,
+  )
+
+  if (!result.ok || !result.summary) {
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: result.errors,
+      warnings: result.warnings,
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+
+  // Stage to Storage. Single file under upload_uuid namespace, mirroring
+  // the DHL pattern so the daily cron sweep at pld-uploads-cleanup-stale
+  // catches orphans uniformly across both flows.
+  const admin = createAdminSupabaseClient()
+  const uploadUuid = crypto.randomUUID()
+  const stagePath = `${PATH_PREFIX}/${uploadUuid}/gofo-standard.xlsx`
+  const upload = await admin.storage.from(BUCKET).upload(stagePath, buffer, {
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    upsert: false,
+  })
+  if (upload.error) {
+    return {
+      ...initialGofoPreviewState,
+      status: 'error',
+      errors: [`Stage upload failed: ${upload.error.message}. Re-try the upload.`],
+      warnings: result.warnings,
+      effectiveDate: shape.effectiveDate,
+    }
+  }
+
   return {
-    ...initialGofoPreviewState,
-    status: 'error',
-    errors: [
-      `Parser not yet wired. File "${shape.fileName}" (${(shape.fileSize ?? 0).toLocaleString('en-US')} bytes) accepted, effective date ${shape.effectiveDate} validated. Real parse + preview lands in the next commit per pause-point sequencing.`,
-    ],
+    status: 'preview',
+    errors: [],
+    warnings: result.warnings,
+    summary: result.summary,
+    firstRows: result.firstRows,
+    stagePath,
+    uploadUuid,
     effectiveDate: shape.effectiveDate,
   }
 }
 
 // =============================================================
-// GOFO Standard — Stage 2: commitGofoStandardZones (STUB)
+// GOFO Standard — Stage 2: commitGofoStandardZones (STUB until pause-point #4)
 // =============================================================
+//
+// The v1.10.0-025 PG function commit_gofo_standard_zones_upload(p_rows jsonb)
+// is already applied and verified — this stub stays in place only because
+// the spec sequencing has Senior Architect verifying the preview output
+// against the real workbook BEFORE commit wiring lands. Once greenlit,
+// the body mirrors commitDhlEcomZones: re-fetch single stage file by
+// uploadUuid, re-parse via parseGofoStandardZonesFile, validate the
+// re-parse summary matches preview's expected counts, call
+// rpc('commit_gofo_standard_zones_upload', { p_rows: result.zoneMatrixRows }),
+// delete the stage file on success, redirect with success.
 
 export async function commitGofoStandardZones(_formData: FormData): Promise<void> {
-  // Until the parser + v1.10.0-025 commit function are in place, this
-  // bounces back to the screen with an info flash. Once wired, the body
-  // mirrors commitDhlEcomZones: re-fetch single stage file by uploadUuid,
-  // re-parse, validate counts match preview, call rpc('commit_gofo_standard_zones_upload'),
-  // delete stage file, redirect with success.
   redirect(
     `${ROUTE}?status=info&msg=${encodeURIComponent(
-      'GOFO Standard commit not yet wired — UI shell only at pause-point #1.',
+      'GOFO Standard commit wiring lands at pause-point #4. The parsed preview verifies against the spec; commit awaits Senior Architect signoff.',
     )}`,
   )
 }
