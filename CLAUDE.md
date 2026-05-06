@@ -60,3 +60,6 @@ from the org_carrier_account row. Use it consistently.
 
 ## Stack
 TypeScript / Node.js / Next.js / PostgreSQL via Supabase / Anthropic Claude API / Cursor IDE
+
+## Database migrations
+Read `database/migrations/PATTERNS.md` before authoring any migration. Patterns there are derived from real failures in this codebase.
