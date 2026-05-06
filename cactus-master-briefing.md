@@ -1,5 +1,5 @@
 # CACTUS LOGISTICS OS — MASTER BRIEFING DOCUMENT
-# VERSION: 1.9.0 | UPDATED: 2026-04-29
+# VERSION: 1.11.0 | UPDATED: 2026-05-06
 #
 # HOW TO USE:
 # Paste this entire document as the first message in any new
@@ -55,6 +55,13 @@ Anthropic Claude API, GitHub, Cursor IDE.
 - Warehance WMS integration (first lassoed integration)
 - The Alamo: internal admin dashboard
 - Cactus Portal: client-facing dashboard
+- PLD Analysis Engine v1 (pulled forward from Phase 2)
+    Internal sales tool living in the Alamo
+    Initial carrier coverage: DHL eCom + GOFO
+    Rate-card-based; no carrier API integration required
+    Multi-carrier rating with winning-rate selection
+    Per-shipment savings + margin analysis
+    Polished client-facing PDF deliverable + internal margin view
 
 **Phase 2 — Growth Carriers & Analytics**
 - USPS, UniUni, GOFO, ShipX, DHL eCommerce, DHL Express
@@ -62,13 +69,12 @@ Anthropic Claude API, GitHub, Cursor IDE.
 - Analytics dashboard: trends, cost-per-package, margin health
 - Vector embeddings for semantic normalization
 - Rate volatility predictions from Shadow Ledger
-- PLD/Rate Analysis (PLD Analysis Engine internally) — two-layer sales tool:
-    Layer 1: Cactus runs PLD/Rate Analysis to win 3PL clients
-    Layer 2: 3PL clients run PLD/Rate Analysis to win merchant clients
-    Engine calls live carrier APIs for real-time rating with all surcharges
-    Rate cards + hardcoded surcharges used where API not available
-      (USPS, UniUni, GOFO, ShipX, DHL eCommerce)
-    Powered by Shadow Ledger rate intelligence over time
+- PLD Analysis Engine — Phase 2 expansion:
+    v1 launched in Phase 1 with DHL eCom + GOFO (Alamo-only, internal use)
+    Phase 2 expands carrier coverage: USPS, UniUni, ShipX rate cards
+    Phase 2 adds carrier API rating: FedEx, UPS, DHL Express
+    Phase 2 enables Layer 2: 3PL clients run PLD/Rate Analysis from Cactus Portal
+    Phase 2 adds Shadow Ledger rate intelligence integration
     Key differentiator vs DiversiFi: built on reconciled invoice data depth
 
 **Phase 3 — Full WMS & B2B Expansion**
@@ -222,7 +228,7 @@ organizations
                         (if markup baked in, set account markup = 0)
 ```
 
-### All carrier accounts are Cactus/Buku master accounts.
+### All carrier accounts are Cactus master accounts.
 No per-org carrier credentials to store or encrypt.
 
 ---
@@ -321,6 +327,57 @@ violating immutability of invoice_line_items.
 
 Margin = SUM(final_billed_rate - carrier_charge) GROUP BY org_id, week.
 No parallel raw-cost table needed.
+
+### Rule 10: Derived data must be refreshed atomically with its source
+
+When a table's data is computed from another table — rather than being an
+independent source of truth — the two tables form a derivation chain. Source
+table is the truth; derived table is a precomputed cache for query speed.
+
+Cactus schema derivation chains:
+
+  gofo_hub_proximity   ← zip3_centroids
+    Haversine compute. Used at lead_warehouses creation time to auto-select
+    nearest GOFO hub. Empty proximity table means new warehouses cannot
+    auto-assign a hub (existing warehouses keep working — their hub is
+    already stored on lead_warehouses.preferred_gofo_hub).
+
+  pld_analysis_runs.aggregations_internal/_client (JSONB)
+                       ← pld_analysis_shipments
+    Computed at run completion. Empty aggregations after re-rate means
+    PDF re-render and report views fall back to recomputing from shipments,
+    which is slow but correct.
+
+Operational discipline:
+
+  1. Source-mutating migrations must include or be immediately followed by
+     the derivation re-compute. Never leave the system in a state where
+     the derived table doesn't reflect the current source.
+
+  2. Admin UIs that mutate source data must chain the derivation as a
+     single user-visible action. Don't expose "re-seed source" and
+     "re-run derivation" as separate buttons — operators will run one
+     and forget the other.
+
+  3. Foreign keys with ON DELETE CASCADE on derived tables are correct
+     (prevents orphans), but they make TRUNCATE-and-reseed of the source
+     wipe the derived table at the moment of TRUNCATE — before the new
+     source rows are inserted. This is by design but easy to forget.
+
+  4. Document each derivation chain in
+     docs/derived-data-dependencies.md. New chains added in future
+     migrations must update that document in the same commit.
+
+  5. Source tables in derivation chains carry a COMMENT ON TABLE entry
+     warning of the dependency, visible at schema-introspection time.
+
+Failure mode if violated: derived data silently goes empty or stale. No
+errors are thrown. Production billing is unaffected because billing tables
+don't participate in derivation chains in v1.10.0. PLD Analysis Engine
+features may degrade — typically auto-assignment failures or stale report
+caches — but the rating engine itself remains operational because critical
+lookups (zone matrices, rate cells, warehouse hub assignments) are stored
+on independent tables.
 
 ---
 
@@ -486,7 +543,9 @@ Never update shipment status. Always append new event rows.
 
 ---
 
-## 10. DATABASE SCHEMA (v1.7.0 — 19 TABLES — LIVE IN SUPABASE)
+## 10. DATABASE SCHEMA (v1.10.0 — 43 TABLES — LIVE IN SUPABASE)
+
+### Production tables (19 — Phase 1 Rating & Billing Engine)
 
 | Table | Purpose |
 |---|---|
@@ -510,6 +569,56 @@ Never update shipment status. Always append new event rows.
 | `carrier_charge_routing` | Self-improving charge routing table |
 | `notification_preferences` | User email notification settings per org |
 
+### PLD Analysis Engine tables (24 — added v1.10.0)
+
+| Table | Purpose |
+|---|---|
+| `leads` | Sales leads. Promote to organizations on conversion. |
+| `lead_current_carriers` | Many-to-many: which carriers a lead currently uses. |
+| `lead_warehouses` | Multi-warehouse support per lead. Includes preferred GOFO hub. |
+| `lead_service_level_mappings` | Persistent per-lead source → Cactus service-level mappings. |
+| `global_service_level_mapping_defaults` | Seed table of common service level synonyms. |
+| `analysis_rate_cards` | Lead-scoped or global rate cards used by the PLD engine. Separate from production `rate_cards`. |
+| `analysis_rate_card_cells` | Rate matrix cells for analysis rate cards. |
+| `markup_strategies` | 4 strategy types: rate_card, fixed_amount, fixed_percentage, tiered. |
+| `markup_strategy_tiers` | Per-tier rules for TIERED markup strategies. |
+| `pld_analysis_runs` | Header for an analysis run. Versioned via parent_run_id. |
+| `pld_analysis_run_strategies` | Snapshots which markup strategy applied to which carrier per run. |
+| `pld_analysis_run_service_mappings` | Per-run snapshot of service level mappings used. |
+| `pld_analysis_shipments` | Per-shipment analysis row. Immutable once parent run = COMPLETE. |
+| `pld_analysis_shipment_rates` | Per-shipment per-carrier rate detail (multi-carrier winner picker). |
+| `carrier_zone_matrices` | ZIP3-based zone resolution (DHL eCom, GOFO Std, future USPS). |
+| `carrier_country_zone_matrices` | Country-based zone resolution (DHL eCom international). |
+| `gofo_regional_zone_matrix` | GOFO Regional injection-point-based zones. |
+| `gofo_hubs` | GOFO injection point reference (lat/long for proximity calc). |
+| `gofo_hub_proximity` | Precomputed Haversine ZIP3 → hub ranking. |
+| `zip3_centroids` | US Census ZIP3 lat/long lookup. |
+| `service_coverage_zips` | Admin-editable ZIP coverage for restricted-footprint services. |
+| `gofo_remote_zip3s` | ZIP3 prefixes triggering GOFO Standard remote variant. |
+| `dhl_ecom_fuel_tiers` | DHL eCom fuel surcharge tiers indexed to diesel price. |
+| `diesel_price_history` | Weekly EIA national diesel price (auto-fetched + manual entry). |
+
+### New enums (v1.10.0)
+
+- `carrier_code_enum`: extended with AMAZON, EPOST_GLOBAL, CIRRO, SPEEDX, ASENDIA
+- `lead_company_profile_enum`: MERCHANT, THREE_PL, OTHER
+- `lead_label_software_enum`: WAREHANCE, SHIPSTATION, PACKIYO, EXTENSIV, DEPOSCO, LOGIWA, CUSTOM, OTHER
+- `lead_source_type_enum`: BD_PARTNER, COLD_PROSPECTING, MARKETING, REFERRAL
+- `lead_stage_enum`: NEW, ENGAGED, ANALYSIS_RUN, QUOTED, WON, LOST, ARCHIVED
+- `gofo_hub_enum`: LAX, DFW, ORD, EWR_JFK (legacy, unused — see v1.10.0-019), ATL, MIA, SLC, EWR, JFK
+  Active hubs: 8 (EWR + JFK split out of EWR_JFK in v1.10.0-019). The
+  legacy EWR_JFK value remains in the type definition but no rows reference it.
+  Postgres can't drop enum values without a full type rebuild + column
+  migration; documented as orphaned, leave in place.
+- `analysis_rate_card_purpose_enum`: CACTUS_BASE_COST, LEAD_QUOTED
+- `markup_strategy_type_enum`: RATE_CARD, FIXED_AMOUNT, FIXED_PERCENTAGE, TIERED
+- `markup_tier_type_enum`: FIXED_AMOUNT, FIXED_PERCENTAGE
+- `zone_resolution_mode_enum`: ORIGIN_DEST_ZIP3, INJECTION_POINT_DEST_ZIP5, ORIGIN_COUNTRY_DEST_COUNTRY
+- `analysis_run_status_enum`: DRAFT, READY_TO_RATE, RATING, COMPLETE, FAILED, ARCHIVED
+- `shipment_rating_status_enum`: OK, UNMATCHED, NO_COVERAGE, EXCLUDED, NEEDS_MAPPING
+- `fuel_markup_treatment_enum`: COMPOUND, ADDITIVE
+- `weight_unit_enum`: OZ, LB, KG
+
 ### Key Enums
 - `carrier_account_mode_enum`: lassoed_carrier_account, dark_carrier_account
 - `shipment_source_enum`: RATING_ENGINE, INVOICE_IMPORT
@@ -519,7 +628,7 @@ Never update shipment status. Always append new event rows.
 - `billing_status_enum`: PENDING, HELD, APPROVED, INVOICED
 - `org_type_enum`: 3PL, MERCHANT, SUB_CLIENT
 - `invoice_status_enum`: UNPAID, PULLED, PAID, FAILED, VOID, OVERDUE
-- `carrier_code_enum`: UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX, DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM
+- `carrier_code_enum`: UPS, FEDEX, USPS, UNIUNI, GOFO, SHIPX, DHL_ECOM, DHL_EXPRESS, LANDMARK, ONTRAC, OSM, AMAZON, EPOST_GLOBAL, CIRRO, SPEEDX, ASENDIA
 - `shipment_event_type_enum`: RATE_REQUESTED, LABEL_CREATED, LABEL_VOIDED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERY_ATTEMPTED, DELIVERED, RETURNED_TO_SENDER, LOST, EXCEPTION, APV_ADJUSTMENT, ADDRESS_CORRECTED, DAMAGED
 - `portal_role_enum`: ADMIN, FINANCE, STANDARD
 - `notification_type_enum`: METER_RELOAD, INVOICE_READY, TRACKING_STATUS_ALERTS, PAYMENT_FAILED
@@ -642,6 +751,60 @@ src/alamo/lib/address.ts. `normalizeAddress()` is now used by both
 the parser and the locations form — keeps writers consistent so
 dark-account matching works regardless of write path.
 
+### v1.10.0 Schema Changes (PLD Analysis Engine v1)
+
+24 new tables added to support the PLD Analysis Engine. All tables
+RLS-enabled per existing convention. Soft-delete on `leads`,
+`pld_analysis_runs`, `analysis_rate_cards`, `markup_strategies` via
+nullable `deleted_at` column. Database views (`active_leads`,
+`active_pld_analysis_runs`, etc.) provided so application code reads
+filtered data without scattering `WHERE deleted_at IS NULL` clauses
+across the codebase.
+
+`pld_analysis_shipments` honors Rule 6 (immutable records) once the
+parent `pld_analysis_runs.status = 'COMPLETE'`. Re-rates create a new
+run row via `parent_run_id` — historical shipment data preserved.
+
+Enum extension: `carrier_code_enum` adds AMAZON, EPOST_GLOBAL, CIRRO,
+SPEEDX, ASENDIA for lead-side current-carrier tracking. ALTER TYPE ADD
+VALUE is non-destructive; existing rows unaffected.
+
+Reference data seeded at migration time:
+  - GOFO hubs: 7 rows at v1.10.0 seed (LAX, DFW, ORD, EWR_JFK, ATL, MIA, SLC) — split to 8 in v1.10.0-019 (EWR + JFK as distinct hubs)
+  - GOFO remote ZIP3s: 28 rows (Hawaii, Alaska, PR, USVI, Guam, Military)
+  - DHL eCom fuel tiers: 18 tier rows from May 2026 published schedule
+  - ZIP3 centroids: 896 rows from 2025 US Census ZCTA Gazetteer
+  - GOFO hub proximity: 6,272 rows at v1.10.0 seed (896 ZIP3s × 7 hubs Haversine-ranked) — recomputed to 7,168 rows in v1.10.0-019 after the 8-hub split
+
+Derivation chain (per Rule 10):
+  gofo_hub_proximity ← zip3_centroids (computed via Haversine).
+  Re-seeding zip3_centroids requires re-running the Haversine compute
+  in v1.10.0-017 to repopulate gofo_hub_proximity. Admin re-seed UI
+  must chain both operations atomically.
+
+Reference data loaded by admin via Alamo upload UI (not migration):
+  - DHL eCom domestic + international zone matrices (per service version)
+  - GOFO Regional zone matrix (8,361 ZIPs × 7 injection points)
+  - Cactus base cost rate cards (DHL eCom + GOFO)
+
+Migration files (in repo, applied in order):
+  database/migrations/v1.10.0-001-extend-carrier-enum.sql
+  database/migrations/v1.10.0-002-pld-enums.sql
+  database/migrations/v1.10.0-003-leads-tables.sql
+  database/migrations/v1.10.0-004-zone-data.sql
+  database/migrations/v1.10.0-005-rate-cards.sql
+  database/migrations/v1.10.0-006-markup-strategies.sql
+  database/migrations/v1.10.0-007-pld-runs.sql
+  database/migrations/v1.10.0-008-pld-shipments.sql
+  database/migrations/v1.10.0-009-fuel-tables.sql
+  database/migrations/v1.10.0-010-rls-policies.sql
+  database/migrations/v1.10.0-011-views.sql
+  database/migrations/v1.10.0-012-seed-reference.sql
+
+Companion code at:
+  src/alamo/pld-analysis/    — Alamo UI routes
+  src/core/pld-analysis/     — carrier-agnostic rating engine logic
+
 ---
 
 ## 11. NAMING CONVENTIONS
@@ -661,6 +824,48 @@ dark-account matching works regardless of write path.
 # ← UPDATE THIS SECTION AT THE END OF EVERY SESSION
 
 ### Completed and verified
+- [x] **Cactus Rate Provider Agreement v1.0-FINAL drafted, styled, and
+      delivered to Shipgrid (2026-05-06):** Fifth Cactus standard
+      contract template. Covers wholesale carrier-rate suppliers
+      (e.g., Shipgrid). Distinct from BD Partner Agreement (referral
+      partners) and from `partners` table per DN-10 (WMS rev-share).
+      Supports two compensation models (Margin Share / Flat Wholesale)
+      and two Authentication Mechanisms (Scoped Access Token /
+      WMS Tokenized Credential Placement) elected per relationship and
+      per Carrier. Section 6 invoicing and payment terms branch by
+      Authentication Mechanism. Insurance section was removed before
+      delivery. Stored as
+      Cactus_Rate_Provider_Agreement_v1.0-FINAL.docx in
+      cactus_dev/legal/templates/. Document is 16 pages, styled to
+      match Cactus_MSA_Template_v3 visual conventions. Full design
+      rationale and schema implications captured in DN-19 (see
+      cactus_dev/design-notes/DN-19-rate-provider-agreement-architecture.md).
+- [x] **Cactus MSA Template v4 — conditional shipment reporting clause
+      added (2026-05-06):** New Section 4(i) added to MSA template to
+      support clients using a Rate Provider via WMS Tokenized
+      Credential Placement. Conditional structure: activates by
+      written notice from Cactus identifying a Rate Provider service
+      requiring Shipment Reporting. Required fields: tracking number,
+      Carrier, service level, ship date, package weight, package
+      dimensions, ship-to ZIP/country, zone, total marked-up label
+      cost. Daily or weekly cadence. Stored as
+      Cactus_MSA_Template_v4.docx in cactus_dev/legal/templates/; v3
+      preserved alongside. Existing executed MSAs continue to operate
+      as v3 (no retroactive amendment required).
+- [x] **Business decision: counsel review skipped pre-execution for
+      first Shipgrid signing (2026-05-06):** Sawyer determined the
+      commercial value of executing the Rate Provider Agreement before
+      tomorrow's introduction call outweighed the residual legal risk.
+      Specific accepted risks: Section 7.7 liquidated damages
+      enforceability under Utah law (especially the 7.7(b) comparable-
+      account methodology), Section 12 liability cap structure under
+      Utah unconscionability doctrine, and Section 7.2(b) deemed-
+      approval mechanism construction. Mitigations: signing as Founder
+      of Cactus Logistics LLC (LLC liability protection); insurance
+      section removed so Cactus is not in immediate breach for lack of
+      GL/Cyber/E&O coverage; agreement is intended to be attorney-
+      reviewed post-execution and any changes handled via amendment
+      with Shipgrid consent.
 - [x] **v3 cross-document continuity review and template harmonization
       (2026-04-29):** All four legal templates regenerated as v3 after
       systematic cross-document review. Substantive additions to BD
@@ -698,7 +903,7 @@ dark-account matching works regardless of write path.
       review (~$1,500-$3,500 budget). Templates stored in
       `cactus_dev/legal/templates/`. Key architectural decisions
       captured in DN-13 through DN-17. MSA v2 supersedes v1 (folded in
-      Limited Agency clause from Buku review, replaced markup language
+      Limited Agency clause, replaced markup language
       with Rate Card framing, removed Order Form/Schedule A pattern in
       favor of Rate Card delivered pre-signing, bumped dispute window
       to 30 days, added CC fee waiver discretion clause with
@@ -1359,7 +1564,7 @@ Updated build queue, in priority order:
 - dispute_threshold lives on org_carrier_accounts (per-account)
 - Variance above threshold: HELD, dispute_flag=TRUE, human review
 - shipment_source: RATING_ENGINE (lassoed) or INVOICE_IMPORT (dark)
-- All carrier accounts are Cactus/Buku master accounts
+- All carrier accounts are Cactus master accounts
 - Markup applied per markup_type (v1.6.0):
     PERCENTAGE: per-component, summed, Single-Ceiling on total
     FLAT: applied once to base_charge only, surcharges pass through raw
@@ -1519,10 +1724,12 @@ Updated build queue, in priority order:
 - QuickBooks Online API integration approach
 - Dispute threshold default ($2.00 currently in schema)
 - DHL eCommerce Americas: requires sales conversation
-- PLD Analysis Engine: standard template file format to provide prospects
-  (what column headers, what order, what file type — CSV or XLSX?)
-- PLD Analysis Engine: how to handle mixed unit of weight in same file
-  (some rows LB, some rows OZ?)
+- ~~PLD Analysis Engine: standard template file format to provide prospects~~
+  RESOLVED 2026-05-04: Plain CSV with 14 required + 3 suggested columns,
+  exact-match (case-sensitive) snake_case headers. See Section 15 for spec.
+- ~~PLD Analysis Engine: how to handle mixed unit of weight in same file~~
+  RESOLVED 2026-05-04: Per-row `weight_unit` field (OZ, LB, KG). No file-
+  level assumption. Engine normalizes per row. See Section 15 for spec.
 - UPS Developer Portal: still blocked — call 1-800-782-7892, email apisupport@ups.com
 - carrier_charge_routing needs GRANT ALL to service_role on new deployments
 - carrier_invoice_formats needs GRANT ALL to service_role on new deployments
@@ -2169,9 +2376,91 @@ without sacrificing any legal content.
 **No substantive legal change** is introduced by either of these
 moves. The substantive v3 changes are in the BD Partner Agreement
 (self-contained Confidentiality, Marketing/Branding, Mutual
-Indemnification) — see DN-19 if a separate decision note is added,
-or the new Section 22.11 of this briefing for the architectural
-rationale.
+Indemnification) — see Section 22.11 of this briefing for the
+architectural rationale. (Note: DN-19 is now used for the Rate
+Provider Agreement architecture; see below.)
+
+### DN-19 — Rate Provider Agreement Architecture
+
+**Status:** RESOLVED 2026-05-06 — Rate Provider Agreement v1.0-FINAL
+delivered to Shipgrid. Pending one-time Utah business attorney
+review (pre-execution review skipped per accepted-risk decision; see
+Section 12 Completed entry).
+
+**Full design rationale and schema implications:** see
+`cactus_dev/design-notes/DN-19-rate-provider-agreement-architecture.md`.
+This stub captures only the facts future Claude needs at session
+bootstrap.
+
+**What the agreement covers.** Wholesale carrier-rate suppliers
+(e.g., Shipgrid) who provide carrier services on a wholesale basis
+for Cactus to resell to Cactus Customers under Cactus's brand and
+billing.
+
+**Naming.** Use `rate_providers` for the schema table — distinct
+from the existing `partners` table (DN-10, WMS rev-share). Both can
+apply to a single carrier account: `org_carrier_accounts.partner_id`
+references the WMS that prints the label;
+`org_carrier_accounts.rate_provider_id` references the rate source.
+Both nullable.
+
+**Schema branches the future rate-providers schema must honor:**
+
+(1) **Compensation Model** — `compensation_model_enum: MARGIN_SHARE,
+FLAT_WHOLESALE`. Quarterly margin reconciliation report runs only
+for MARGIN_SHARE; FLAT_WHOLESALE has no reconciliation and no
+aggregate data exchange.
+
+(2) **Authentication Mechanism** —
+`authentication_mechanism_enum: SCOPED_ACCESS_TOKEN,
+WMS_TOKENIZED_CREDENTIAL_PLACEMENT, OTHER`. Default at the
+rate-provider level; override capability at per-carrier and
+per-customer level.
+
+(3) **Label-generation code path branches by Authentication
+Mechanism.** Pattern A (SCOPED_ACCESS_TOKEN) goes through Rate
+Provider's API. Pattern B (WMS_TOKENIZED_CREDENTIAL_PLACEMENT)
+does NOT go through Cactus at all — labels are generated in the
+3PL's WMS. Cactus's rating engine should not call Rate Provider's
+API for Pattern B shipments.
+
+(4) **Shadow Ledger blind-spot weighting.** MARGIN_SHARE provides
+partial Carrier-billed cost calibration via quarterly aggregate
+reconciliation. FLAT_WHOLESALE provides no Carrier-billed cost
+visibility — flag as data-incomplete in PLD Engine prediction
+calibration.
+
+(5) **Billing engine branches by Authentication Mechanism.** Pattern
+A: weekly invoicing, 4-cycle Pre-Payment Period graduating to NET 15.
+Pattern B: post-Carrier-invoice invoicing, static Security Deposit
+equal to one week of estimated Carrier-billed cost held at the
+rate-provider relationship level, NET 15 from invoice receipt with
+no pre-payment period.
+
+(6) **New Shipment Report ingestion pipeline needed for Pattern B.**
+Periodic ingestion job in Alamo accepting shipment reports from 3PL
+clients (CSV, JSON, or API push), validating required fields per
+Section 3.6 of the agreement, forwarding to the relevant Rate
+Provider. New Stage of work distinct from the rate-providers schema
+work.
+
+(7) **Lead-table integration.** New
+`lead_rate_provider_registrations` child table will hang off the
+existing `leads` table to track prospect approval mechanism (12-month
+Prospect Protection Period clock, renewals, withdrawals, conversion
+events). Add new value `RATE_PROVIDER` to existing
+`lead_source_type_enum` for the rare case where a Rate Provider
+directly refers a lead.
+
+**MSA cross-impact.** MSA bumped to v4 with conditional Section
+4(i) Shipment Reporting clause that activates by written notice
+from Cactus identifying a Pattern B Rate Provider service. See the
+corresponding Section 12 Completed entry.
+
+**Insurance section status.** Removed from v1.0-FINAL because
+Cactus has no insurance in force. To be added back when Cactus
+secures GL/Cyber/E&O coverage; will require amendment to any then-
+existing Rate Provider Agreement(s).
 
 ---
 
@@ -2256,69 +2545,191 @@ cactus-web-app/
 
 ---
 
-## 15. PLD ANALYSIS ENGINE SPEC
+## 15. PLD ANALYSIS ENGINE SPEC (v1)
 
-### Client-Facing Name: PLD/Rate Analysis
-### Internal Name: PLD Analysis Engine
+### Naming convention (three tiers)
 
-### How It Works
-For each row in an uploaded PLD file, Cactus runs a live rate
-request against pre-selected carrier APIs — identical to the
-rating engine but against historical data instead of live orders.
-Same carrier abstraction layer. API where available, rate card
-where not.
+The PLD Analysis Engine has three names depending on audience and context. Code, UI, and external-facing materials must use the right name for the right audience.
 
-### Required Fields (10)
-- Ship Date — sample range, annualization, peak/stale flagging
-- Service Level — required for accurate rating and ensures cactus rates with equal service level
-- Weight — required for rating
-- Unit of Weight — LB or OZ, normalize to OZ internally
-- Length — DIM weight calculation
-- Width — DIM weight calculation
-- Height — DIM weight calculation
-- Ship From ZIP — zone calculation
-- Ship From Country Code — domestic vs international routing
-- Ship To ZIP — zone calculation
-- Ship To Country Code — domestic vs international routing
+- **Engineering name: PLD Analysis Engine.** Used for the codebase, schema, file paths, function names, documentation aimed at developers, and the internal architecture vocabulary. Folders are `src/alamo/pld-analysis/` and `src/core/pld-analysis/`. Tables are `pld_analysis_*`. Routes are `/alamo/pld-analysis/...`. This name is the engineering source of truth and is stable across the lifetime of the system.
 
-### Preferred Fields (3 — enrich output but not required)
-- Tracking or Order Number — de-duplication key
-- Carrier — enables current carrier breakdown in output
-- Total Shipping Cost — enables savings delta calculation
-  Without it: output is Cactus rate projection only
+- **Operator UI name: PLD Roundup.** Used in the Alamo sidebar, page titles, breadcrumbs, button labels, and any text Cactus operators see day-to-day. Fits the Cactus / Alamo Western theme. The verb "roundup" captures the workflow: gathering shipment data from disparate prospect sources, herding it into a unified analysis. Operators see "PLD Roundup," click into operator-facing screens with that label, and never need to know about the engineering name.
 
-### Ship Date — Two Purposes
-1. Detects sample window → annualizes savings projection
-   Example: 90 days of data → multiply savings × 4 = annual estimate
-2. Flags rate context issues:
-   - Stale data flag: data older than 18 months
-   - Peak season flag: data includes October–December
+- **Client-facing name: PLD/Rate Analysis.** Reserved for use when the Cactus Portal launches in Phase 2 and the engine becomes accessible to 3PL clients running their own merchant analyses (Layer 2). Client-facing PDF deliverables, marketing materials, and external sales decks use this name. Clients should not encounter "PLD Roundup" or "PLD Analysis Engine" — they see the engine through a different framing.
 
-### DIM Weight
-Cactus calculates DIM weight for every shipment.
-DIM weight = L × W × H ÷ 139
-Carrier bills whichever is greater: actual weight or DIM weight.
-Dimensions are required — without them rates are inaccurate.
+Practical rules:
+- New UI text inside the Alamo: use "PLD Roundup."
+- New code, schema, file paths: use `pld_analysis_*` / "PLD Analysis Engine."
+- New marketing copy or client deliverables: use "PLD/Rate Analysis."
+- When in doubt: the audience determines the name.
 
-### Carrier Rating Method by Carrier
-- FedEx → live API (Comprehensive Rates API)
-- UPS → live API (Rating API)
-- USPS → rate cards + hardcoded surcharges
-- UniUni → rate cards (no residential, no fuel surcharge)
-- GOFO → rate cards (no residential, no fuel surcharge)
-- ShipX → rate cards + fuel surcharge hardcoded
-- DHL eCommerce → rate cards (pending sales relationship)
+### Status
+v1 launched in Phase 1 (2026-05). Internal tool — Alamo only.
+Client-facing access via Cactus Portal deferred to Phase 2.
 
-### Output Includes
-- Sample date range detected
-- Annualized savings projection
-- Peak season flag (if data includes Oct–Dec)
-- Stale data flag (if data is 18+ months old)
-- Total spend in sample period vs Cactus equivalent
-- Savings by carrier, service level, zone, and lane
-- Top 10 lanes by spend
-- DIM weight upgrade flags
-- Carrier API vs rate card transparency note
+### What it does
+Analyzes a prospect's historical Package Level Data (PLD) — a CSV file
+of their shipments — by re-rating every shipment against Cactus's
+quoted rate cards, then producing a polished client-facing PDF
+showing the prospect's potential savings, plus an internal margin
+view showing Cactus's profit per shipment.
+
+### v1 carrier coverage
+- DHL eCommerce (Ground, Expedited, MAX, Intl Direct, Intl Standard)
+- GOFO (Standard with remote variant, Regional with injection-point zones)
+
+### v1.5+ planned additions
+- USPS, UniUni, ShipX rate cards
+- FedEx, UPS, DHL Express via carrier APIs
+- Phase 2: Layer 2 client-facing access from Cactus Portal
+
+### CSV Template (v1)
+
+**Required fields (14):**
+| Field | Format | Notes |
+|---|---|---|
+| `tracking_number` | string | Unique per row. Required for join + dedup. |
+| `ship_date` | ISO 8601 (YYYY-MM-DD) or US (MM/DD/YYYY) | Auto-detected, normalized to ISO. |
+| `carrier` | enum | Source carrier (e.g., FEDEX, UPS, DHL_ECOM). |
+| `service_level` | string | Source service level. Mapped to Cactus services via mapping UI. |
+| `origin_zip` | 5-digit US ZIP | Required for zone resolution. |
+| `dest_zip` | 5-digit US ZIP or empty for intl | Empty allowed when dest_country != US. |
+| `dest_country` | ISO-3166 alpha-2 | US for domestic, otherwise destination country. |
+| `weight_value` | decimal | Per-row numeric weight. |
+| `weight_unit` | enum (OZ, LB, KG) | Explicit per row — never inferred. |
+| `length` | decimal | DIM weight calc. Required if any L/W/H populated. |
+| `width` | decimal | DIM weight calc. |
+| `height` | decimal | DIM weight calc. |
+| `dim_unit` | enum (IN, CM) | Required when any L/W/H populated. |
+| `current_carrier_charge` | decimal | All-in invoice total. |
+
+**Suggested fields (3):**
+| Field | Format | Notes |
+|---|---|---|
+| `order_number` | string | Reference for client recognition in reports. |
+| `zone` | string | Source-provided zone. Audit-only — Cactus recomputes. |
+| `residential_flag` | boolean | Surcharge driver hint. v1 doesn't apply residential. |
+
+Headers must match exactly (case-sensitive). Plain CSV file format.
+
+### Rating Algorithm (per shipment)
+
+1. **Resolve warehouse from origin_zip.** Auto-match to nearest existing
+   `lead_warehouses` record. Unmapped origin → flag for admin override.
+2. **Compute Cactus zone.** Lookup against carrier-specific zone matrix
+   keyed on origin/dest ZIP3 (or country, or injection point per carrier).
+   Compare to source-provided zone — flag mismatch as audit signal.
+3. **Compute DIM weight** if L/W/H populated:
+   `dim_weight = (L × W × H) / dim_factor`
+   DIM applies only when `actual_weight > dim_min_weight_lb`
+   AND `(L × W × H) > dim_min_volume_cuin`. Per rate card.
+4. **Determine billable weight** = max(actual, DIM if applicable).
+5. **Round weight up** to next available rate card cell:
+   - Domestic ≤16 oz → ceil to next OZ
+   - Domestic >16 oz → ceil to next LB
+   - International → ceil to next 1/16 lb break
+6. **Lookup rate** in rate card via (zone, weight, weight_unit).
+7. **Compute fuel** (DHL eCom only in v1):
+   - Look up diesel price for ship_date in `diesel_price_history`
+   - Look up corresponding $/lb tier in `dhl_ecom_fuel_tiers`
+   - Sub-1-lb shipments: `fuel_billable_lb = MAX(billable_weight_lb, 1.0)`
+   - `fuel_amount = fuel_billable_lb × fuel_per_lb`
+8. **Apply markup** per strategy:
+   - RATE_CARD type: quoted = client rate card cell directly
+   - FIXED_AMOUNT: quoted = base_cost + markup_amount
+   - FIXED_PERCENTAGE compound: quoted = (base + fuel) × (1 + markup%)
+   - FIXED_PERCENTAGE additive: quoted = (base × (1 + markup%)) + fuel
+   - TIERED: apply tier rules per (zone, weight, carrier, service)
+9. **Repeat steps 1-8 for each selected Cactus carrier.**
+10. **Pick winner.** Lowest quoted_rate where rating_status = OK.
+    Ties broken by carrier preference (DHL > GOFO).
+    Tied shipments flagged for manual review.
+
+### Multi-Carrier Coverage Handling
+- GOFO Regional has restricted ZIP coverage (~70% of US, 8,361 ZIPs).
+- Non-serviceable destinations get rating_status = NO_COVERAGE for that carrier.
+- If user selected multiple Cactus carriers, shipment falls through to
+  next eligible carrier (e.g., GOFO Standard, DHL).
+- If only GOFO Regional selected, NO_COVERAGE shipments are not rated.
+- Coverage gap is disclosed in PDF methodology footnote.
+
+### DIM Factor Reference
+- DHL eCom Domestic: 139 (verify per rate card upload)
+- DHL eCom International / SmartMail Plus: 166
+- GOFO Standard: 166
+- GOFO Regional: 194
+- USPS, UPS, FedEx (when added): 139
+
+DIM factors live on `analysis_rate_cards.dim_factor`. Set at card upload.
+
+### Run Lifecycle
+- Status flow: DRAFT → READY_TO_RATE → RATING → COMPLETE / FAILED / ARCHIVED
+- Re-rate: edits to mappings create a new run with `parent_run_id` linking
+  back to the original. Both versions queryable; old runs immutable.
+- Soft-delete via `deleted_at` timestamp. Runs persist forever for audit.
+
+### Outputs (3 deliverables per run)
+1. **Client-facing PDF** (one page, polished, no margin/cost data exposed)
+   - Hero metrics: total savings, savings %, packages analyzed, avg/package
+   - Annualized projection (with caveat language)
+   - Savings by service breakdown
+   - Domestic savings by zone breakdown
+   - Top 3 destination lanes (origin ZIP3 → dest ZIP3, by shipment volume)
+   - Top 5 most common package weights (with shipment count + spend)
+   - DIM-billed callout (count + % of packages billed on dimensional weight)
+   - International callout (when applicable)
+   - Dynamic methodology footnote tailored to run parameters
+   - Cactus logo header + Forest title bar (brand-aligned)
+
+2. **Per-shipment CSV (verification)**
+   - Source CSV columns + Cactus quoted rate + savings + status flags
+   - Safe to share with prospect for audit
+   - DOES NOT include Cactus base cost or margin
+
+3. **Internal margin view (Cactus eyes only)**
+   - Per-shipment: base cost, markup applied, quoted, margin, savings
+   - Aggregations: margin by service, by zone, by weight band
+   - Lane analysis: full sortable ranked table of all (origin ZIP3 → dest ZIP3) pairs
+     with shipment count, total spend, total savings, total margin
+   - DIM-billed vs actual-weight-billed shipment counts
+   - Stale data flag (shipments > 18 months old)
+   - Peak season flag (data includes Oct–Dec)
+   - Tied-rate flag (shipments where multiple carriers quoted same rate)
+
+### Methodology Footnote — Dynamic Generation
+Footnote text generated at run completion and stored on the run record
+(`pld_analysis_runs.methodology_footnote_text`). Reproducible — re-rendering
+the PDF months later produces identical footnote. Components flex based on
+run parameters: comparison basis (full vs base-only), period framing,
+carriers compared, multi-carrier optimization note, coverage gap disclosure,
+exclusions, rounding note, annualization caveat.
+
+### Reference Data Sources
+- DHL fuel tier table: published by DHL, manually loaded per effective_date
+- Diesel price: US Energy Information Administration (EIA) — automated
+  weekly fetch via Supabase Edge Function (Mondays, 7 AM ET)
+- GOFO Regional zones: published by GOFO, manually loaded per matrix_version
+- ZIP3 centroids: US Census ZCTA data, seeded at migration time
+- Rate cards: per-carrier published files, admin upload via Alamo
+
+### Annualization Logic
+Sample window detected from min/max ship_date across run:
+- 1 day → ×260 (working days/year)
+- 2-7 days → ×52 (weekly cycles)
+- 8-31 days → ×12 (monthly cycles)
+- 32-92 days → ×4 (quarterly)
+- 93-365 days → projected to full year via ratio
+- >365 days → no annualization, show actual
+
+### Two-Test Regression Framework
+Test A (binding): `fuel_treatment_mode = 'base_only'` reproduces the
+exact $1,556.12 savings figure from the manually-built 5 Logistics analysis.
+Same code paths, fuel zeroed out. Per-shipment CSV must match byte-for-byte
+(modulo column ordering).
+
+Test B (sanity): `fuel_treatment_mode = 'full'` runs the same data through
+the full fuel-aware engine. Numbers differ from Test A but should be
+directionally similar. Validates fuel-on-both-sides math is sound.
 
 ---
 
