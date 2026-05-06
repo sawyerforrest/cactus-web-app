@@ -38,10 +38,12 @@ const OUTPUT_ZONES = [
   'Zone 6', 'Zone 7', 'Zone 8', 'Zone 11', 'Zone 12', 'Zone 13',
 ] as const
 
-// Zones where DHL Domestic v1 has known placeholder NULLs (SLC over-1lb
-// pending DHL update — see spec § 0). Used to softly de-alarm the null
-// counter for these zones since they're expected.
-const EXPECTED_NULL_ZONES = new Set<string>(['Zone 11', 'Zone 12', 'Zone 13'])
+// (Removed EXPECTED_NULL_ZONES soft-de-alarm. Per Pause 3 patch:
+// any non-zero null count gets the Bloom alarm color. The 2,160 nulls
+// from DHL Domestic v1 are intentional — Expedited Max doesn't ship
+// to AK/HI/PR/territories so its Zone 11/12/13 columns are all null —
+// but the alarm still fires because nulls are notable. The breakdown
+// subtext shows where they live so the operator can confirm.)
 
 interface StagePreviewTableProps {
   uploadSessionId: string
@@ -87,13 +89,9 @@ export function StagePreviewTable({
 
 function AggregateSanityBar({ summary }: { summary: ParseSummary }) {
   const nullCount = Object.values(summary.nullCellsByZone).reduce((a, b) => a + b, 0)
-  const unexpectedNullZones = Object.entries(summary.nullCellsByZone)
-    .filter(([z, n]) => n > 0 && !EXPECTED_NULL_ZONES.has(z))
-    .map(([z]) => z)
-
   const unknownDcAlarm = summary.unknownDcs.length > 0
   const unknownProdAlarm = summary.unknownProducts.length > 0
-  const nullAlarm = unexpectedNullZones.length > 0
+  const nullAlarm = nullCount > 0
 
   return (
     <div style={{

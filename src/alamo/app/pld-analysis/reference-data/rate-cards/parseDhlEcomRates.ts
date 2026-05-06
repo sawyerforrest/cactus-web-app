@@ -42,11 +42,16 @@ import type { ParseSummary } from './types'
 // Constants from spec
 // ----------------------------------------------------------------------
 
+// Actual workbook column headers verified against
+// dhl_ecommerce_cactus_base_rates_2026.xlsx (sheet "ALL DC RATES",
+// row 2). Row 1 carries an 'Effective Date' label in column A as
+// metadata; the real headers live in row 2 — findHeaderRow's scan
+// transparently skips the metadata row.
 const REQUIRED_HEADERS = [
-  'DC code',
+  'Distribution Center',
   'Product',
-  'Weight value',
-  'Weight unit',
+  'Weight Break',
+  'Unit',
   'Zone 1&2',
   'Zone 3',
   'Zone 4',
@@ -72,7 +77,10 @@ const ZONE_EXPANSIONS: ReadonlyArray<{ source: RequiredHeader; outputs: readonly
   { source: 'Zone 11-13', outputs: ['Zone 11', 'Zone 12', 'Zone 13'] },
 ]
 
-const HEADER_SEARCH_ROWS = 10
+// Scan first 20 rows for the header to tolerate any future DHL metadata
+// rows (today's file has 1 such row carrying the 'Effective Date' label;
+// 20 leaves headroom for them adding more without re-deploying the parser).
+const HEADER_SEARCH_ROWS = 20
 const HEADER_SEARCH_COLS = 20
 
 const EXPECTED_CARDS = 126
@@ -237,7 +245,30 @@ export async function parseDhlEcomRates(input: ParseInput): Promise<ParseResult>
   }
   const sheet = sheets[0]
 
-  // 3. Header row + column index map
+  // 3a. Auto-capture effective_date from a metadata row above the headers
+  //     if present. Looks for a row where col A is "Effective Date"
+  //     (case-insensitive) and col B carries a Date value or a date-
+  //     parseable string. Form-supplied effectiveDate (operator override)
+  //     takes precedence over the file-extracted value below.
+  let extractedEffectiveDate: string | null = null
+  for (let r = 1; r <= 5; r++) {
+    const colA = sheet.getCell(r, 1).value
+    if (colA && String(colA).trim().toLowerCase() === 'effective date') {
+      const colB = sheet.getCell(r, 2).value
+      if (colB instanceof Date) {
+        extractedEffectiveDate = colB.toISOString().slice(0, 10)
+      } else if (colB !== null && colB !== undefined) {
+        const parsed = Date.parse(String(colB))
+        if (!Number.isNaN(parsed)) {
+          extractedEffectiveDate = new Date(parsed).toISOString().slice(0, 10)
+        }
+      }
+      break
+    }
+  }
+  const resolvedEffectiveDate = effectiveDate ?? extractedEffectiveDate ?? null
+
+  // 3b. Header row + column index map
   const hdrOrErr = findHeaderRow(sheet)
   if ('error' in hdrOrErr) return { ok: false, error: hdrOrErr.error }
   const { headerRow, cols } = hdrOrErr
@@ -245,23 +276,34 @@ export async function parseDhlEcomRates(input: ParseInput): Promise<ParseResult>
   // 4. Walk data rows
   const dataRows: DataRow[] = []
   const lastRow = sheet.rowCount
-  const dcColumn = cols['DC code']
+  const dcColumn = cols['Distribution Center']
   const productColumn = cols['Product']
-  const weightValueColumn = cols['Weight value']
-  const weightUnitColumn = cols['Weight unit']
+  const weightBreakColumn = cols['Weight Break']
+  const unitColumn = cols['Unit']
 
   for (let r = headerRow + 1; r <= lastRow; r++) {
     const row = sheet.getRow(r)
     const dcCode = normalizeCell(row.getCell(dcColumn).value)
     if (dcCode === '') continue  // tolerate trailing blank rows
     const product = normalizeCell(row.getCell(productColumn).value)
-    const weightValue = toNumberOrNull(row.getCell(weightValueColumn).value)
-    const weightUnit = normalizeCell(row.getCell(weightUnitColumn).value)
+    const weightValue = toNumberOrNull(row.getCell(weightBreakColumn).value)
+    const rawUnit = normalizeCell(row.getCell(unitColumn).value)
 
-    if (product === '' || weightValue === null || weightUnit === '') {
+    if (product === '' || weightValue === null || rawUnit === '') {
       return {
         ok: false,
-        error: `Row ${r}: incomplete required data (DC="${dcCode}", Product="${product}", Weight value="${weightValue ?? '(null)'}", Weight unit="${weightUnit}").`,
+        error: `Row ${r}: incomplete required data (Distribution Center="${dcCode}", Product="${product}", Weight Break="${weightValue ?? '(null)'}", Unit="${rawUnit}").`,
+      }
+    }
+
+    // Normalize unit to lowercase for storage. DHL ships uppercase
+    // ('LB'/'OZ'); the rating engine downstream expects lowercase
+    // canonical values.
+    const normUnit = rawUnit.toLowerCase()
+    if (normUnit !== 'lb' && normUnit !== 'oz') {
+      return {
+        ok: false,
+        error: `Row ${r}: unknown weight unit "${rawUnit}". Expected LB or OZ.`,
       }
     }
 
@@ -272,7 +314,7 @@ export async function parseDhlEcomRates(input: ParseInput): Promise<ParseResult>
       zoneRates.set(exp.source, val)
     }
 
-    dataRows.push({ dcCode, product, weightValue, weightUnit, zoneRates, rowNum: r })
+    dataRows.push({ dcCode, product, weightValue, weightUnit: normUnit, zoneRates, rowNum: r })
   }
 
   if (dataRows.length === 0) {
@@ -358,7 +400,7 @@ export async function parseDhlEcomRates(input: ParseInput): Promise<ParseResult>
       fulfillment_mode: 'na' as const,
       purpose: 'CACTUS_BASE_COST',
       lead_id: null,
-      effective_date: effectiveDate,
+      effective_date: resolvedEffectiveDate,
       deprecated_date: deprecatedDate,
       dim_factor: dimFactor,
       source: filename,
