@@ -3,11 +3,10 @@
 // PURPOSE: Rate Cards screen — server component, fetches the status
 // aggregate function output and renders the client orchestrator.
 //
-// PAUSE 2 SCOPE: scaffold only. The status aggregate returns 0 rows
-// on an empty DB so all 5 cards render in the "not loaded" state;
-// the uploader posts to a parser-stub Server Action that returns an
-// "implementation pending" inline error. Per-carrier parsers and
-// the commit pipeline land at Pause 3+.
+// PAUSE 3 SCOPE: DHL Domestic flow wired end-to-end. GOFO modes still
+// stubbed (Pauses 4 / 5). After commit/cancel the action redirects
+// here with a ?status=success|error|info&msg=... query param which
+// renders as a flash banner above the parser UI.
 //
 // Status function: analysis_rate_cards_status_aggregate() (deployed
 // in v1.10.0-029, SECURITY DEFINER, GRANT EXECUTE TO authenticated/
@@ -19,7 +18,7 @@
 import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
-import { ChevronRight, ChevronLeft } from 'lucide-react'
+import { ChevronRight, ChevronLeft, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { RateCardsParser } from './RateCardsParser'
 import type { StatusAggregateRow } from './types'
 
@@ -35,12 +34,19 @@ async function loadStatus(): Promise<StatusAggregateRow[]> {
   return (data ?? []) as StatusAggregateRow[]
 }
 
-export default async function RateCardsPage() {
+interface PageProps {
+  searchParams: Promise<{ status?: string; msg?: string }>
+}
+
+export default async function RateCardsPage({ searchParams }: PageProps) {
+  const params = await searchParams
+
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
   const statusRows = await loadStatus()
+  const flash = params.status ? { kind: params.status, msg: params.msg ?? '' } : null
 
   return (
     <div style={{
@@ -86,8 +92,49 @@ export default async function RateCardsPage() {
             workbooks.
           </div>
 
+          {flash ? <Flash kind={flash.kind} msg={flash.msg} /> : null}
+
           <RateCardsParser statusRows={statusRows} />
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Flash({ kind, msg }: { kind: string; msg: string }) {
+  const isError = kind === 'error'
+  const isInfo = kind === 'info'
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10,
+      padding: '10px 14px',
+      background: isError
+        ? 'var(--cactus-bloom-bg)'
+        : isInfo
+          ? 'var(--cactus-sand)'
+          : 'var(--cactus-mint)',
+      border: `0.5px solid ${
+        isError
+          ? 'var(--cactus-bloom-border)'
+          : isInfo
+            ? 'var(--cactus-border)'
+            : '#C5DBC0'
+      }`,
+      borderRadius: 8,
+      fontSize: 12,
+      color: isError
+        ? 'var(--cactus-bloom-deep)'
+        : isInfo
+          ? 'var(--cactus-muted)'
+          : 'var(--cactus-forest)',
+      marginBottom: 16,
+    }}>
+      {isError ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+      <div>
+        <div style={{ fontWeight: 500 }}>
+          {isError ? 'Error' : isInfo ? 'Heads up' : 'Success'}
+        </div>
+        <div style={{ marginTop: 2 }}>{msg}</div>
       </div>
     </div>
   )

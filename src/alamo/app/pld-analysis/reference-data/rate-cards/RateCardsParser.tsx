@@ -23,7 +23,7 @@
 import { useState } from 'react'
 import { Layers } from 'lucide-react'
 import { StatusCards } from './StatusCards'
-import { UploaderPanel } from './UploaderPanel'
+import { DhlUploaderPanel, StubUploaderPanel } from './UploaderPanel'
 import type { ModeTab } from './scopes'
 import type { StatusAggregateRow } from './types'
 
@@ -126,25 +126,20 @@ function Tab({
 
 function UploaderArea({ mode }: { mode: ModeTab }) {
   if (mode === 'dhl-ecom-domestic') {
-    return (
-      <div style={{ display: 'flex' }}>
-        <UploaderPanel
-          mode="dhl-ecom-domestic"
-          panelLabel="DHL eCom Domestic rate card"
-        />
-      </div>
-    )
+    // DHL: one wired uploader. Renders the StagePreviewTable inline on
+    // successful parse (its own internal state machine).
+    return <DhlUploaderPanel />
   }
 
-  // Both GOFO modes render two panels side-by-side
+  // GOFO modes (Pauses 4 / 5 not yet wired): two stub panels side-by-side
   return (
     <div style={{
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
       gap: 12,
     }}>
-      <UploaderPanel mode={mode} fulfillment_mode="pickup" panelLabel="Pickup" />
-      <UploaderPanel mode={mode} fulfillment_mode="dropoff" panelLabel="Dropoff" />
+      <StubUploaderPanel mode={mode} fulfillment_mode="pickup" panelLabel="Pickup" />
+      <StubUploaderPanel mode={mode} fulfillment_mode="dropoff" panelLabel="Dropoff" />
     </div>
   )
 }

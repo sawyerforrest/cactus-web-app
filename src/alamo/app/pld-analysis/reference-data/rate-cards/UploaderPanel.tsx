@@ -1,15 +1,22 @@
 // ==========================================================
 // FILE: src/alamo/app/pld-analysis/reference-data/rate-cards/UploaderPanel.tsx
-// PURPOSE: Per-mode (and for GOFO, per-fulfillment) rate-card uploader.
+// PURPOSE: Per-mode rate-card uploader. Two exported variants:
 //
-// Owns its own useActionState hook so each panel instance carries
-// independent file/notes/error state. For GOFO modes the parent
-// renders two of these side-by-side (Pickup + Dropoff); each posts
-// to the same Server Action stub but with its own fulfillment_mode.
+//   StubUploaderPanel — Pause 2 carry-over for GOFO modes. Posts to
+//     parseRateCardStub which returns "parser not yet implemented"
+//     until Pauses 4 / 5 wire the GOFO parsers. Identical UI to Pause 2.
 //
-// PAUSE 2 SCOPE: file picker + notes textarea + Parse button +
-// inline error display. The Server Action returns a "parser not yet
-// implemented" message; no staging writes, no preview, no commit.
+//   DhlUploaderPanel — Pause 3 wired uploader for DHL Domestic. Posts to
+//     parseDhlEcomRateCard. On status='parsed' renders the
+//     StagePreviewTable below the form (which itself owns the Cancel +
+//     Commit forms). On status='error' renders the inline error.
+//
+// Each panel instance owns its own useActionState hook so file/notes
+// state is independent across panels (relevant for GOFO modes which
+// render two side-by-side panels for Pickup + Dropoff).
+//
+// RateCardsParser dispatches: DHL mode → one DhlUploaderPanel; GOFO
+// modes → two StubUploaderPanels.
 // ==========================================================
 
 'use client'
@@ -17,23 +24,32 @@
 import { useActionState, useId, useState } from 'react'
 import { Upload, AlertCircle } from 'lucide-react'
 import { SubmitButton } from '@/components/SubmitButton'
-import { parseRateCardStub } from './actions'
-import { initialParseStubState, type ParseStubState } from './types'
+import {
+  parseRateCardStub,
+  parseDhlEcomRateCard,
+} from './actions'
+import {
+  initialParseState,
+  initialParseStubState,
+  type ParseState,
+  type ParseStubState,
+} from './types'
 import type { FulfillmentMode, ModeTab } from './scopes'
+import { StagePreviewTable } from './StagePreviewTable'
 
 const NOTES_MAX_CHARS = 500
 
-interface UploaderPanelProps {
-  mode: ModeTab
-  /** Required for GOFO modes; omitted for DHL Domestic (which has
-   *  fulfillment_mode='na' on the underlying scope). */
-  fulfillment_mode?: Exclude<FulfillmentMode, 'na'>
-  /** Heading shown above the file picker. e.g. "Pickup" / "Dropoff" /
-   *  "DHL eCom Domestic rate card". */
+// =====================
+// Stub uploader (GOFO modes — Pause 2 holdover)
+// =====================
+
+interface StubUploaderPanelProps {
+  mode: Exclude<ModeTab, 'dhl-ecom-domestic'>
+  fulfillment_mode: Exclude<FulfillmentMode, 'na'>
   panelLabel: string
 }
 
-export function UploaderPanel({ mode, fulfillment_mode, panelLabel }: UploaderPanelProps) {
+export function StubUploaderPanel({ mode, fulfillment_mode, panelLabel }: StubUploaderPanelProps) {
   const [state, formAction] = useActionState<ParseStubState, FormData>(
     parseRateCardStub,
     initialParseStubState,
@@ -51,50 +67,12 @@ export function UploaderPanel({ mode, fulfillment_mode, panelLabel }: UploaderPa
         {panelLabel}
       </div>
 
-      <form action={formAction} key={`${mode}-${fulfillment_mode ?? 'na'}`}>
-        {/* Hidden inputs carry mode context for the Pause-3 parser dispatch */}
+      <form action={formAction} key={`${mode}-${fulfillment_mode}`}>
         <input type="hidden" name="mode" value={mode} />
-        {fulfillment_mode ? (
-          <input type="hidden" name="fulfillment_mode" value={fulfillment_mode} />
-        ) : null}
+        <input type="hidden" name="fulfillment_mode" value={fulfillment_mode} />
 
-        <div style={{ marginBottom: 10 }}>
-          <label htmlFor={fileId} style={labelStyle}>Source workbook (.xlsx)</label>
-          <input
-            id={fileId}
-            name="file"
-            type="file"
-            accept=".xlsx"
-            required
-            onChange={e => setHasFile(e.target.files !== null && e.target.files.length > 0)}
-            style={{
-              ...inputStyle,
-              border: '0.5px dashed var(--cactus-border-mid)',
-              padding: '7px 10px',
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 10 }}>
-          <label htmlFor={notesId} style={labelStyle}>
-            Notes <span style={{ textTransform: 'none', color: 'var(--cactus-hint)', letterSpacing: 0 }}>
-              ({notesLen} / {NOTES_MAX_CHARS})
-            </span>
-          </label>
-          <textarea
-            id={notesId}
-            name="notes"
-            maxLength={NOTES_MAX_CHARS}
-            rows={3}
-            placeholder="Optional context — e.g., 'v1 placeholder pending DHL SLC over-1lb update'"
-            onChange={e => setNotesLen(e.target.value.length)}
-            style={{
-              ...inputStyle,
-              resize: 'vertical',
-              fontFamily: 'var(--font-sans)',
-            }}
-          />
-        </div>
+        <FileInput id={fileId} onHasFileChange={setHasFile} />
+        <NotesInput id={notesId} onLenChange={setNotesLen} length={notesLen} />
 
         <SubmitButton
           style={{
@@ -109,13 +87,133 @@ export function UploaderPanel({ mode, fulfillment_mode, panelLabel }: UploaderPa
           Parse
         </SubmitButton>
 
-        {state.status === 'error' && state.error ? (
-          <div style={errorBoxStyle}>
-            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div>{state.error}</div>
-          </div>
-        ) : null}
+        {state.status === 'error' && state.error ? <ErrorBox message={state.error} /> : null}
       </form>
+    </div>
+  )
+}
+
+// =====================
+// DHL uploader — Pause 3 wired
+// =====================
+
+export function DhlUploaderPanel() {
+  const [state, formAction] = useActionState<ParseState, FormData>(
+    parseDhlEcomRateCard,
+    initialParseState,
+  )
+  const fileId = useId()
+  const notesId = useId()
+
+  const [hasFile, setHasFile] = useState(false)
+  const [notesLen, setNotesLen] = useState(0)
+
+  // Once parsed, render the preview table below the form. The form is
+  // intentionally still rendered (disabled visually by leaving it idle)
+  // so the panel header context stays put — but cancel/commit happen
+  // inside StagePreviewTable, not on this form.
+  if (state.status === 'parsed') {
+    return (
+      <div style={panelStyleWide}>
+        <div style={panelHeadingStyle}>
+          <Upload size={14} color="var(--cactus-forest)" />
+          DHL eCom Domestic — preview staged
+        </div>
+        <StagePreviewTable
+          uploadSessionId={state.uploadSessionId}
+          summary={state.summary}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div style={panelStyleWide}>
+      <div style={panelHeadingStyle}>
+        <Upload size={14} color="var(--cactus-forest)" />
+        DHL eCom Domestic rate card
+      </div>
+
+      <form action={formAction}>
+        <input type="hidden" name="mode" value="dhl-ecom-domestic" />
+
+        <FileInput id={fileId} onHasFileChange={setHasFile} />
+        <NotesInput id={notesId} onLenChange={setNotesLen} length={notesLen} />
+
+        <SubmitButton
+          style={{
+            ...primaryButtonStyle,
+            background: hasFile ? 'var(--cactus-forest)' : 'var(--cactus-hint)',
+            cursor: hasFile ? 'pointer' : 'not-allowed',
+          }}
+          disabled={!hasFile}
+          pendingLabel="Parsing 18 DCs × 7 products…"
+        >
+          <Upload size={12} />
+          Parse
+        </SubmitButton>
+
+        {state.status === 'error' ? <ErrorBox message={state.error} /> : null}
+      </form>
+    </div>
+  )
+}
+
+// =====================
+// Shared form sub-components
+// =====================
+
+function FileInput({ id, onHasFileChange }: { id: string; onHasFileChange: (b: boolean) => void }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label htmlFor={id} style={labelStyle}>Source workbook (.xlsx)</label>
+      <input
+        id={id}
+        name="file"
+        type="file"
+        accept=".xlsx"
+        required
+        onChange={e => onHasFileChange(e.target.files !== null && e.target.files.length > 0)}
+        style={{
+          ...inputStyle,
+          border: '0.5px dashed var(--cactus-border-mid)',
+          padding: '7px 10px',
+        }}
+      />
+    </div>
+  )
+}
+
+function NotesInput({ id, length, onLenChange }: { id: string; length: number; onLenChange: (n: number) => void }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label htmlFor={id} style={labelStyle}>
+        Notes <span style={{ textTransform: 'none', color: 'var(--cactus-hint)', letterSpacing: 0 }}>
+          ({length} / {NOTES_MAX_CHARS})
+        </span>
+      </label>
+      <textarea
+        id={id}
+        name="notes"
+        maxLength={NOTES_MAX_CHARS}
+        rows={3}
+        placeholder="Optional context — e.g., 'v1 placeholder pending DHL SLC over-1lb update'"
+        onChange={e => onLenChange(e.target.value.length)}
+        style={{
+          ...inputStyle,
+          resize: 'vertical',
+          fontFamily: 'var(--font-sans)',
+        }}
+      />
+    </div>
+  )
+}
+
+function ErrorBox({ message }: { message: string }) {
+  return (
+    <div style={errorBoxStyle}>
+      <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div>{message}</div>
     </div>
   )
 }
@@ -131,6 +229,13 @@ const panelStyle: React.CSSProperties = {
   padding: 18,
   flex: '1 1 0',
   minWidth: 0,
+}
+
+// Wider variant for the DHL panel which embeds the StagePreviewTable
+// (12-column cell table needs the full content width to render readably)
+const panelStyleWide: React.CSSProperties = {
+  ...panelStyle,
+  flex: '1 1 100%',
 }
 
 const panelHeadingStyle: React.CSSProperties = {
