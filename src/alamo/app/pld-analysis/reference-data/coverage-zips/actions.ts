@@ -87,11 +87,11 @@ export async function previewGofoRegionalUpload(
       effectiveDate,
     }
   }
-  if (fileEntry.size > 10 * 1024 * 1024) {
+  if (fileEntry.size > 25 * 1024 * 1024) {
     return {
       ...initialPreviewState,
       status: 'error',
-      errors: ['File exceeds 10MB. The GOFO Regional ZIP list is typically ~120KB; check that this is the right file.'],
+      errors: ['File exceeds 25MB. Verify the upload is the GOFO Regional Coverage workbook.'],
       effectiveDate,
       fileName: fileEntry.name,
     }

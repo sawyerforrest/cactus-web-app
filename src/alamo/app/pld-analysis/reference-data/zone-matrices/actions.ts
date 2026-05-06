@@ -117,11 +117,11 @@ export async function previewDhlEcomZones(
         errors: [`File "${f.name}" is not a .xlsx. Only .xlsx accepted.`],
       }
     }
-    if (f.size > 10 * 1024 * 1024) {
+    if (f.size > 25 * 1024 * 1024) {
       return {
         ...initialPreviewState,
         status: 'error',
-        errors: [`File "${f.name}" exceeds 10MB. DHL zone files are typically a few KB; check the upload.`],
+        errors: [`File "${f.name}" exceeds 25MB. Verify the upload is a DHL eCommerce zones .xlsx file.`],
       }
     }
   }
@@ -407,8 +407,8 @@ function validateGofoFormShape(formData: FormData): {
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
       errors.push(`File "${file.name}" is not a .xlsx. Only .xlsx accepted.`)
     }
-    if (file.size > 10 * 1024 * 1024) {
-      errors.push(`File "${file.name}" exceeds 10MB. The GOFO workbook is typically a few MB; check the upload.`)
+    if (file.size > 25 * 1024 * 1024) {
+      errors.push(`File "${file.name}" exceeds 25MB. Verify the upload is the GOFO Standard zones workbook.`)
     }
   }
 
