@@ -14,30 +14,35 @@
 //      commit_dhl_ecom_das_zips_upload() PG function for the atomic
 //      TRUNCATE + bulk INSERT, deletes the stage file on success.
 //
-// PAUSE POINT #1 SCOPE: both actions are STUBS. The migrations are
-// applied and the screen shell renders empty-state, but the parser
-// at lib/pld-analysis/dhl-das-zips-parser.ts lands at pause point #2.
-// Today's stubs surface info-flashes so the form is exercisable
-// end-to-end before the parser ships.
-//
 // Stage path namespacing: pld-uploads/dhl-das-zips/<upload_uuid>/
 // — NOT under zone-matrices/. DAS isn't a zone matrix; the path
 // reflects the data's nature.
+//
+// PAUSE POINT #2 SCOPE: previewDhlDasZips is fully wired. Commit stays
+// stubbed until pause point #4 — Senior Architect verifies the rendered
+// PreviewPanel against the real workbook before commit lands.
 // ==========================================================
 
 'use server'
 
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createServerSupabaseClient, createAdminSupabaseClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import {
+  parseDhlDasZipsFile,
+  type FileBuffer,
+} from '@/lib/pld-analysis/dhl-das-zips-parser'
 import {
   initialPreviewState,
   type PreviewState,
 } from './types'
 
 const ROUTE = '/pld-analysis/reference-data/dhl-das-zips'
+const BUCKET = 'pld-uploads'
+const PATH_PREFIX = 'dhl-das-zips'
+const STAGE_FILENAME = 'dhl-das-zip-list.xlsx'
 
 // =============================================================
-// Stage 1: previewDhlDasZips (STUB until pause-point #2)
+// Stage 1: previewDhlDasZips
 // =============================================================
 
 export async function previewDhlDasZips(
@@ -55,6 +60,9 @@ export async function previewDhlDasZips(
     }
   }
 
+  // Form-shape validation: file present, .xlsx extension, under 25MB cap
+  // (framework body-size limits are at 25MB after the GOFO Standard
+  // build's middleware/server-action bumps).
   const fileEntry = formData.get('file')
   const file = fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : null
 
@@ -80,27 +88,81 @@ export async function previewDhlDasZips(
     }
   }
 
-  // STUB until pause-point #2. Surface an info-flash so operators see
-  // the form posts and the file shape passed validation.
-  // Replace this block with: read buffer → parseDhlEcomDasZipsFile →
-  // stage to Storage → return preview state.
+  // Read buffer
+  let buffer: ArrayBuffer
+  try {
+    buffer = await file.arrayBuffer()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return {
+      ...initialPreviewState,
+      status: 'error',
+      errors: [`Failed to read "${file.name}": ${msg}`],
+    }
+  }
+
+  // Parse — auto-resolves effective date from cell A2, validates sheet
+  // name, header row, ZIP shape, no dupes, sanity bounds.
+  const result = await parseDhlDasZipsFile({ name: file.name, buffer })
+
+  if (!result.ok || !result.summary) {
+    return {
+      ...initialPreviewState,
+      status: 'error',
+      errors: result.errors,
+      warnings: result.warnings,
+    }
+  }
+
+  // Stage to Storage. Single file under upload_uuid namespace, mirroring
+  // the established pattern. Path is dhl-das-zips/<uuid>/ — NOT under
+  // zone-matrices/ since DAS isn't a zone matrix; the daily cron sweep
+  // at pld-uploads-cleanup-stale walks the entire pld-uploads bucket
+  // regardless, so orphans here get caught uniformly.
+  const admin = createAdminSupabaseClient()
+  const uploadUuid = crypto.randomUUID()
+  const stagePath = `${PATH_PREFIX}/${uploadUuid}/${STAGE_FILENAME}`
+  const upload = await admin.storage.from(BUCKET).upload(stagePath, buffer, {
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    upsert: false,
+  })
+  if (upload.error) {
+    return {
+      ...initialPreviewState,
+      status: 'error',
+      errors: [`Stage upload failed: ${upload.error.message}. Re-try the upload.`],
+      warnings: result.warnings,
+    }
+  }
+
   return {
-    ...initialPreviewState,
-    status: 'error',
-    errors: [
-      `Parser not yet wired. File "${file.name}" (${file.size.toLocaleString('en-US')} bytes) accepted. Real parse + preview lands in the next commit per pause-point sequencing.`,
-    ],
+    status: 'preview',
+    errors: [],
+    warnings: result.warnings,
+    summary: result.summary,
+    firstRows: result.firstRows,
+    stagePath,
+    uploadUuid,
   }
 }
 
 // =============================================================
-// Stage 2: commitDhlDasZips (STUB until pause-point #4)
+// Stage 2: commitDhlDasZips (STUB until pause point #4)
 // =============================================================
+//
+// The v1.10.0-027 PG function commit_dhl_ecom_das_zips_upload(p_rows jsonb)
+// is already applied and verified — this stub stays in place only because
+// the spec sequencing has Senior Architect verifying preview output against
+// the real workbook BEFORE commit wiring lands. Once greenlit, the body
+// mirrors commitGofoStandardZones with single-file specifics:
+// re-fetch stage file → re-parse via parseDhlDasZipsFile → validate
+// re-parse summary matches preview → call rpc('commit_dhl_ecom_das_zips_upload')
+// → delete stage file on success → redirect with success.
 
 export async function commitDhlDasZips(_formData: FormData): Promise<void> {
   redirect(
     `${ROUTE}?status=info&msg=${encodeURIComponent(
-      'DHL DAS ZIPs commit wiring lands at pause-point #4.',
+      'DHL DAS ZIPs commit wiring lands at pause-point #4. The parsed preview verifies against the spec; commit awaits Senior Architect signoff.',
     )}`,
   )
 }
