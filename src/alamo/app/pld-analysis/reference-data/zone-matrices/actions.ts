@@ -565,23 +565,158 @@ export async function previewGofoStandardZones(
 }
 
 // =============================================================
-// GOFO Standard — Stage 2: commitGofoStandardZones (STUB until pause-point #4)
+// GOFO Standard — Stage 2: commitGofoStandardZones
 // =============================================================
 //
-// The v1.10.0-025 PG function commit_gofo_standard_zones_upload(p_rows jsonb)
-// is already applied and verified — this stub stays in place only because
-// the spec sequencing has Senior Architect verifying the preview output
-// against the real workbook BEFORE commit wiring lands. Once greenlit,
-// the body mirrors commitDhlEcomZones: re-fetch single stage file by
-// uploadUuid, re-parse via parseGofoStandardZonesFile, validate the
-// re-parse summary matches preview's expected counts, call
-// rpc('commit_gofo_standard_zones_upload', { p_rows: result.zoneMatrixRows }),
-// delete the stage file on success, redirect with success.
+// Mirrors commitDhlEcomZones flow with single-file specifics:
+//   1. Validate auth + form shape (uploadUuid, expectedRows, expectedTabs,
+//      effectiveDate, matrixVersion).
+//   2. Re-fetch the single staged file from
+//      pld-uploads/zone-matrices/<upload_uuid>/gofo-standard.xlsx.
+//   3. Re-parse via the same pure parser used at preview time — single
+//      source of truth for the row data; rules out tampering between
+//      preview and commit.
+//   4. Validate the re-parse summary exactly matches the preview values
+//      threaded through the hidden form inputs. Any drift aborts before
+//      the DB write.
+//   5. Call rpc('commit_gofo_standard_zones_upload', { p_rows }) for the
+//      atomic scoped-DELETE + bulk INSERT. PG function body is one
+//      transaction — if the INSERT fails, the DELETE rolls back too and
+//      the prior active set survives.
+//   6. Cleanup layer 1: remove the stage file. (Layer 2 is the daily
+//      pld-uploads-cleanup-stale cron — orphans get swept regardless.)
+//   7. Redirect with success flash.
 
-export async function commitGofoStandardZones(_formData: FormData): Promise<void> {
+export async function commitGofoStandardZones(formData: FormData): Promise<void> {
+  // Auth
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    commitErrorRedirect('Not authenticated.')
+  }
+
+  // Parse hidden form inputs from the preview panel
+  const uploadUuid = String(formData.get('upload_uuid') ?? '').trim()
+  const expectedRows = parseInt(String(formData.get('expected_rows') ?? '0'), 10)
+  const expectedTabs = parseInt(String(formData.get('expected_tabs') ?? '0'), 10)
+  const effectiveDate = String(formData.get('effective_date') ?? '').trim()
+  const matrixVersion = String(formData.get('matrix_version') ?? '').trim()
+
+  // UUID v4 shape check — defensive against form tampering / replay against
+  // a different bucket prefix.
+  if (!/^[0-9a-f-]{36}$/i.test(uploadUuid)) {
+    commitErrorRedirect('Missing or malformed upload UUID. Re-upload the file.')
+  }
+  if (!Number.isInteger(expectedRows) || expectedRows <= 0) {
+    commitErrorRedirect('Missing expected row count. Re-upload the file.')
+  }
+  if (!Number.isInteger(expectedTabs) || expectedTabs !== CANONICAL_GOFO_HUB_CODES.length) {
+    commitErrorRedirect(`Expected tab count must be ${CANONICAL_GOFO_HUB_CODES.length}.`)
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate)) {
+    commitErrorRedirect('Missing or malformed effective date. Re-upload the file.')
+  }
+  if (matrixVersion !== effectiveDate) {
+    commitErrorRedirect('matrix_version drift detected. Re-upload the file.')
+  }
+
+  const admin = createAdminSupabaseClient()
+
+  // Re-fetch the single staged file
+  const stagePath = `${PATH_PREFIX}/${uploadUuid}/gofo-standard.xlsx`
+  const dl = await admin.storage.from(BUCKET).download(stagePath)
+  if (dl.error || !dl.data) {
+    commitErrorRedirect(
+      `Stage file missing at ${stagePath}. The file may have been swept by the daily cleanup cron, or the upload session expired. Re-upload to retry.`,
+    )
+  }
+
+  let buffer: ArrayBuffer
+  try {
+    buffer = await dl.data!.arrayBuffer()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    commitErrorRedirect(`Failed to read stage file: ${msg}`)
+  }
+
+  // Re-load hub lookup + re-parse with the same parser as preview.
+  let hubLookup: HubLookup
+  try {
+    hubLookup = await loadHubLookup()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    commitErrorRedirect(`Failed to load gofo_hubs lookup: ${msg}`)
+  }
+
+  // Synthetic filename — the staged bytes are byte-identical to the upload;
+  // only the displayable name changes here.
+  const result = await parseGofoStandardZonesFile(
+    { name: 'gofo-standard.xlsx', buffer: buffer! },
+    hubLookup!,
+    effectiveDate,
+  )
+
+  if (!result.ok || !result.summary) {
+    const detail = result.errors.slice(0, 3).join('; ')
+    commitErrorRedirect(
+      `Re-parse failed at commit time: ${detail}. Aborting write. Re-upload to retry.`,
+    )
+  }
+
+  // Defensive: confirm re-parse summary matches preview's expected counts.
+  // Any drift means the staged file was tampered with or the parser changed
+  // between preview and commit — abort and preserve prior data.
+  if (result.summary!.totalRows !== expectedRows) {
+    commitErrorRedirect(
+      `Re-parse mismatch: expected ${expectedRows} rows, got ${result.summary!.totalRows}. Aborting write.`,
+    )
+  }
+  if (result.summary!.totalTabs !== expectedTabs) {
+    commitErrorRedirect(
+      `Re-parse mismatch: expected ${expectedTabs} tabs, got ${result.summary!.totalTabs}. Aborting write.`,
+    )
+  }
+  if (result.summary!.effectiveDate !== effectiveDate) {
+    commitErrorRedirect(
+      `Re-parse mismatch: effective_date drifted from ${effectiveDate} to ${result.summary!.effectiveDate}. Aborting write.`,
+    )
+  }
+  if (result.summary!.matrixVersion !== matrixVersion) {
+    commitErrorRedirect(
+      `Re-parse mismatch: matrix_version drifted from ${matrixVersion} to ${result.summary!.matrixVersion}. Aborting write.`,
+    )
+  }
+
+  // Atomic scoped DELETE + INSERT via the v1.10.0-025 SECURITY DEFINER
+  // function. Function body is one transaction; if either statement fails,
+  // both roll back and the prior active set survives.
+  const rpc = await admin.rpc('commit_gofo_standard_zones_upload', {
+    p_rows: result.zoneMatrixRows,
+  })
+
+  if (rpc.error) {
+    commitErrorRedirect(
+      `Database write failed: ${rpc.error.message}. Prior data preserved (transaction rolled back). Re-upload to retry.`,
+    )
+  }
+
+  const written = (rpc.data ?? {}) as { matrix_rows_written?: number }
+  const matrixWritten = written.matrix_rows_written ?? 0
+  if (matrixWritten !== expectedRows) {
+    commitErrorRedirect(
+      `DB function reported ${matrixWritten} rows written, expected ${expectedRows}. Investigate.`,
+    )
+  }
+
+  // Cleanup layer 1: remove the single stage file. Layer 2 (daily cron
+  // pld-uploads-cleanup-stale) sweeps any orphans regardless. We don't
+  // fail the commit on a delete error; cron catches stragglers.
+  await admin.storage.from(BUCKET).remove([stagePath]).catch(() => undefined)
+
+  revalidatePath(ROUTE)
   redirect(
-    `${ROUTE}?status=info&msg=${encodeURIComponent(
-      'GOFO Standard commit wiring lands at pause-point #4. The parsed preview verifies against the spec; commit awaits Senior Architect signoff.',
+    `${ROUTE}?status=success&msg=${encodeURIComponent(
+      `Committed: ${matrixWritten.toLocaleString('en-US')} GOFO Standard zone matrix rows across ${expectedTabs} hubs written atomically. Effective ${effectiveDate}.`,
     )}`,
   )
 }
