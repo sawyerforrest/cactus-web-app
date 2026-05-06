@@ -67,6 +67,8 @@ interface RefDataStatus {
   gofo_standard_zones_total: number         // scoped to GOFO/Standard
   gofo_standard_zones_hubs: number          // distinct origin_zip3 for GOFO/Standard
   gofo_standard_zones_effective: string | null // latest effective_date for GOFO/Standard
+  dhl_das_zips_total: number                // active set count from dhl_ecom_das_zips
+  dhl_das_zips_effective: string | null      // latest effective_date from dhl_ecom_das_zips
 }
 
 async function loadStatus(): Promise<RefDataStatus> {
@@ -94,6 +96,8 @@ async function loadStatus(): Promise<RefDataStatus> {
     coverageZips,
     rateCards,
     rateCardCells,
+    dhlDasZipsCount,
+    dhlDasZipsLatestEffective,
   ] = await Promise.all([
     admin.from('zip3_centroids').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('gofo_hub_proximity').select('*', { count: 'exact', head: false }).limit(0),
@@ -128,6 +132,11 @@ async function loadStatus(): Promise<RefDataStatus> {
     admin.from('service_coverage_zips').select('*', { count: 'exact', head: false }).limit(0),
     admin.from('analysis_rate_cards').select('*', { count: 'exact', head: false }).is('deleted_at', null).limit(0),
     admin.from('analysis_rate_card_cells').select('*', { count: 'exact', head: false }).limit(0),
+    // DHL DAS ZIPs: scoped to active set (deprecated_date IS NULL) so the
+    // count + effective date track the active list, not historical entries.
+    // Covered by the partial index from v1.10.0-026.
+    admin.from('dhl_ecom_das_zips').select('*', { count: 'exact', head: false }).is('deprecated_date', null).limit(0),
+    admin.from('dhl_ecom_das_zips').select('effective_date').is('deprecated_date', null).order('effective_date', { ascending: false }).limit(1),
   ])
 
   const hubRowList = (hubsRows.data ?? []) as Array<{ hub_code: string }>
@@ -170,6 +179,8 @@ async function loadStatus(): Promise<RefDataStatus> {
     gofo_standard_zones_total: gofoStandardStatusRow?.total_rows ?? 0,
     gofo_standard_zones_hubs: gofoStandardStatusRow?.distinct_dcs ?? 0,
     gofo_standard_zones_effective: gofoStandardStatusRow?.latest_effective ?? null,
+    dhl_das_zips_total: dhlDasZipsCount.count ?? 0,
+    dhl_das_zips_effective: dhlDasZipsLatestEffective.data?.[0]?.effective_date ?? null,
   }
 }
 
@@ -362,6 +373,21 @@ export default async function ReferenceDataPage() {
               action={{
                 label: status.service_coverage_zips > 0 || status.gofo_regional_zone_matrix > 0 ? 'View / replace' : 'Upload XLSX',
                 href: '/pld-analysis/reference-data/coverage-zips',
+              }}
+            />
+            <Row
+              icon={<MapPin size={18} color="var(--cactus-forest)" />}
+              title="DHL DAS ZIPs"
+              loaded={status.dhl_das_zips_total > 0}
+              primary={
+                status.dhl_das_zips_total > 0
+                  ? `${fmtNumber(status.dhl_das_zips_total)} ZIP5s · Effective ${status.dhl_das_zips_effective ?? '—'}`
+                  : 'Not loaded'
+              }
+              secondary="DHL Delivery Area Surcharge ZIP5 flag list. DAS surcharge fires when destination ZIP5 is in this list."
+              action={{
+                label: status.dhl_das_zips_total > 0 ? 'Replace upload' : 'Upload XLSX',
+                href: '/pld-analysis/reference-data/dhl-das-zips',
               }}
               isLast
             />
