@@ -228,7 +228,7 @@ function DhlFilePickerForm({ formAction, errors, warnings }: DhlFilePickerFormPr
         column — no manual date picker needed.
       </div>
 
-      <form action={formAction} encType="multipart/form-data">
+      <form action={formAction}>
         <div>
           <label htmlFor={fileId} style={labelStyle}>Source files (select 18)</label>
           <input
@@ -329,7 +329,7 @@ function GofoFilePickerForm({
         <code style={{ fontFamily: 'var(--font-mono)' }}>remote 9</code>).
       </div>
 
-      <form action={formAction} encType="multipart/form-data">
+      <form action={formAction}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 12 }}>
           <div>
             <label htmlFor={fileId} style={labelStyle}>Source workbook (.xlsx)</label>

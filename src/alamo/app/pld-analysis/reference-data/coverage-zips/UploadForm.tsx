@@ -97,7 +97,7 @@ function FilePickerForm({
       {errors.length > 0 ? <ErrorList errors={errors} /> : null}
       {warnings.length > 0 ? <WarningList warnings={warnings} /> : null}
 
-      <form action={formAction} encType="multipart/form-data">
+      <form action={formAction}>
         <div style={{
           display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12,
           marginBottom: 12, alignItems: 'end',
