@@ -14,6 +14,9 @@ Read this file at the start of every session for full context on architecture, s
 - Database setup: `database/database-setup.sql`
 - Seed data: `database/seed-data.sql`
 - Carrier API docs: `docs/` (amazon-shipping, dhl-ecommerce, dhl-express, fedex, gofo, landmark-global, uniuni, ups, usps)
+- Migration patterns: `database/migrations/PATTERNS.md` — read before authoring any new migration
+- UI patterns: `docs/ui-patterns.md` — read before adding any form/button/interactive control that triggers a Server Action
+- Derived data dependencies: `docs/derived-data-dependencies.md` — read when modifying any reference data table
 
 ## Schema v1.6.0 — Critical Field Names (as of 2026-04-18)
 

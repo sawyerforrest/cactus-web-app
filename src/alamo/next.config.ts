@@ -21,12 +21,34 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // WHY: Default server action body limit is 1MB. UPS detail
-  // invoices with 4000+ rows exceed this. 10MB covers all
-  // realistic carrier invoice file sizes.
+  // WHY: Two distinct body-size limits in Next.js, BOTH must be raised
+  // — raising one without the other still yields "Request body exceeded
+  // 10MB" at the layer that wasn't bumped:
+  //
+  //   1. experimental.proxyClientMaxBodySize — caps the raw request body
+  //      at the middleware/proxy layer. Default 10MB. Hit FIRST; the
+  //      Server Action never sees the request if this trips. (Note: the
+  //      older `middlewareClientMaxBodySize` field also exists here in
+  //      Next 16.2.1 but is deprecated; the runtime warning may still
+  //      cite the old name.)
+  //   2. experimental.serverActions.bodySizeLimit — caps Server Action
+  //      payload AFTER it reaches the runtime. Default 1MB.
+  //
+  // Real workloads exceeding the defaults:
+  //   - UPS detail invoices with 4000+ rows
+  //   - PLD reference-data uploads, especially the GOFO Standard zone
+  //     workbook (8 tabs × 93,100 ZIP5 rows ≈ 6-8MB raw, larger after
+  //     multipart encoding) and future rate-card XLSXs
+  //
+  // 25MB on both gives comfortable headroom for the rate-card sets
+  // coming in sub-phase 2b (combined-multi-DC files could approach this).
+  // Per-file size guards inside individual Server Actions stay tighter
+  // (e.g. 10MB on each DHL Domestic per-DC file) so genuinely oversized
+  // uploads still fail fast with a user-friendly message.
   experimental: {
+    proxyClientMaxBodySize: '25mb',
     serverActions: {
-      bodySizeLimit: '10mb',
+      bodySizeLimit: '25mb',
     },
   },
 };
