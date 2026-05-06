@@ -21,8 +21,11 @@
 
 'use client'
 
+import { useState } from 'react'
+import Link from 'next/link'
 import { CheckCircle2, Circle } from 'lucide-react'
 import { RATE_CARD_SCOPES, isSameScope, type ScopeKey } from './scopes'
+import { getScopeSegment } from './scope-segments'
 import type { StatusAggregateRow } from './types'
 
 interface StatusCardsProps {
@@ -74,8 +77,22 @@ function NotLoadedCard({ scope }: { scope: ScopeKey }) {
 }
 
 function LoadedCard({ scope, row }: { scope: ScopeKey; row: StatusAggregateRow }) {
+  const [hover, setHover] = useState(false)
+  const segment = getScopeSegment(scope)
   return (
-    <div style={cardStyle}>
+    <Link
+      href={`/pld-analysis/reference-data/rate-cards/${segment}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...cardStyle,
+        textDecoration: 'none',
+        color: 'inherit',
+        cursor: 'pointer',
+        borderColor: hover ? 'var(--cactus-forest)' : 'var(--cactus-border)',
+        transition: 'border-color 0.12s ease',
+      }}
+    >
       <div style={cardLabelRowStyle}>
         <CheckCircle2 size={11} color="var(--cactus-forest)" />
         <span style={{
@@ -109,7 +126,7 @@ function LoadedCard({ scope, row }: { scope: ScopeKey; row: StatusAggregateRow }
           </div>
         ) : null}
       </div>
-    </div>
+    </Link>
   )
 }
 

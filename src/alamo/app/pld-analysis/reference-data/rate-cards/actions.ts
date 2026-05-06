@@ -38,7 +38,10 @@ import {
   type ParseStubState,
   type StagedCardDetail,
   type StagedCellRow,
+  type CellRow,
+  type CommittedCardSummary,
 } from './types'
+import type { ScopeKey } from './scopes'
 
 const ROUTE = '/pld-analysis/reference-data/rate-cards'
 const INDEX_ROUTE = '/pld-analysis/reference-data'
@@ -264,8 +267,14 @@ function compareCells(
 }
 
 function unitRank(u: string): number {
-  if (u === 'oz') return 0
-  if (u === 'lb') return 1
+  // Case-insensitive: staging stores lowercase ('oz'/'lb' from the
+  // Pause 3 patch's rawUnit.toLowerCase()); the canonical
+  // analysis_rate_card_cells.weight_unit is a USER-DEFINED enum with
+  // labels 'OZ'/'LB' (uppercase, verified 2026-05-06). Both flow
+  // through this comparator post-Pause-3.5.
+  const lower = u.toLowerCase()
+  if (lower === 'oz') return 0
+  if (lower === 'lb') return 1
   return 99
 }
 
@@ -343,5 +352,93 @@ export async function getStagedCardCells(
       cells,
     },
   }
+}
+
+// =============================================================
+// Read-side actions (Pause 3.5) — committed-card viewer
+// =============================================================
+//
+// Both functions use the authenticated Supabase client. Migration
+// v1.10.0-037 grants SELECT on analysis_rate_cards and
+// analysis_rate_card_cells to the authenticated role with a fully
+// permissive RLS policy, so reads work end-to-end without elevating
+// to service_role.
+
+/**
+ * Returns one CommittedCardSummary per committed (variant, service_level)
+ * pair within the given scope. Filter logic per scope:
+ *   - DHL Domestic: (carrier=DHL_ECOM, fulfillment_mode=na, purpose=
+ *     CACTUS_BASE_COST, lead_id IS NULL). Spans all 7 products.
+ *   - GOFO Standard / Regional: above + service_level filter to the
+ *     scope's service_level_group ('Standard' or 'Regional').
+ */
+export async function getCommittedCardsForScope(
+  scope: ScopeKey,
+): Promise<CommittedCardSummary[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  let q = supabase
+    .from('analysis_rate_cards')
+    .select('id, variant, service_level, effective_date, deprecated_date, dim_factor, card_version, source, notes, created_at')
+    .eq('carrier_code', scope.carrier_code)
+    .eq('fulfillment_mode', scope.fulfillment_mode)
+    .eq('purpose', 'CACTUS_BASE_COST')
+    .is('lead_id', null)
+
+  // GOFO scopes additionally filter on service_level (which IS the
+  // service_level_group for GOFO per the status function's CASE).
+  // DHL spans 7 products under one scope so no service_level filter.
+  if (scope.carrier_code === 'GOFO' && scope.service_level_group !== null) {
+    q = q.eq('service_level', scope.service_level_group)
+  }
+
+  const { data, error } = await q
+    .order('variant', { ascending: true })
+    .order('service_level', { ascending: true })
+
+  if (error || !data) return []
+
+  return data.map((r): CommittedCardSummary => ({
+    id: r.id as string,
+    variant: r.variant as string,
+    service_level: r.service_level as string,
+    effective_date: r.effective_date as string,
+    deprecated_date: (r.deprecated_date as string | null) ?? null,
+    dim_factor: r.dim_factor === null ? null : Number(r.dim_factor),
+    card_version: r.card_version as string,
+    source: (r.source as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    most_recent_upload: r.created_at as string,
+  }))
+}
+
+/** Returns the cells for one committed rate-card, sorted by the same
+ *  compareCells comparator used at stage-preview time. */
+export async function getCommittedCardCells(
+  rateCardId: string,
+): Promise<CellRow[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  if (!/^[0-9a-f-]{36}$/i.test(rateCardId)) return []
+
+  const { data, error } = await supabase
+    .from('analysis_rate_card_cells')
+    .select('zone, weight_value, weight_unit, rate')
+    .eq('rate_card_id', rateCardId)
+
+  if (error || !data) return []
+
+  return (data as Array<{ zone: string; weight_value: number | string; weight_unit: string; rate: number | string | null }>)
+    .map((c): CellRow => ({
+      zone: c.zone,
+      weight_value: typeof c.weight_value === 'string' ? Number(c.weight_value) : c.weight_value,
+      weight_unit: c.weight_unit,
+      rate: c.rate === null ? null : (typeof c.rate === 'string' ? Number(c.rate) : c.rate),
+    }))
+    .sort(compareCells)
 }
 

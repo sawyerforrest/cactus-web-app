@@ -97,17 +97,40 @@ export const initialParseStubState: ParseStubState = {
 // Stage card detail (single-card cell fetch for the StagePreviewTable)
 // =====================
 
-export interface StagedCellRow {
+/** Canonical cell-row shape for both staged and committed rate-card cells.
+ *  Used by CellTable (presentation) and actions.ts (data fetch). */
+export interface CellRow {
   zone: string
   weight_value: number
   weight_unit: string
   rate: number | null
 }
 
+/** Legacy alias kept for the existing import sites until they migrate to
+ *  the unambiguous `CellRow`. Same shape — no behavior change. */
+export type StagedCellRow = CellRow
+
 export interface StagedCardDetail {
   variant: string                          // DC code
   service_level: string                    // Product
   source: string | null
   notes: string | null
-  cells: StagedCellRow[]                   // sorted by weight_value ascending then zone
+  cells: CellRow[]                         // sorted by weight_unit asc, weight_value asc, zone asc
+}
+
+// =====================
+// Committed card summary (Pause 3.5 read-side)
+// =====================
+
+export interface CommittedCardSummary {
+  id: string                               // analysis_rate_cards.id (uuid)
+  variant: string                          // DC code or hub code
+  service_level: string                    // verbatim product / service-level name
+  effective_date: string                   // ISO date
+  deprecated_date: string | null
+  dim_factor: number | null
+  card_version: string
+  source: string | null
+  notes: string | null
+  most_recent_upload: string               // ISO timestamp = analysis_rate_cards.created_at
 }

@@ -22,6 +22,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { CheckCircle2, AlertCircle, X, Loader2, Layers } from 'lucide-react'
 import { SubmitButton } from '@/components/SubmitButton'
+import { CellTable } from './CellTable'
 import {
   commitDhlEcomRateCard,
   cancelDhlEcomStage,
@@ -267,48 +268,10 @@ function SelectedCardPreview({
 
   if (!detail) return null
 
-  return <CellTable detail={detail} sourceFromSummary={sourceFromSummary} />
-}
-
-// Visual-treatment helpers for the DHL preview's extended zones (11-13 =
-// territory zones HI/AK/PR/etc — used less often, prone to pricing gaps).
-// The mute-and-divider treatment reduces visual competition with Zones 1-8
-// during operator spot-checks. GOFO Standard / Regional previews (Pauses 4/5)
-// have no extended zones, so these helpers return false for every zone in
-// those flows and no special casing happens.
-const isExtendedZone = (zone: string): boolean => {
-  const num = parseInt(zone.replace(/^Zone\s+/, ''), 10)
-  return Number.isFinite(num) && num >= 11
-}
-const isFirstExtendedZone = (zone: string): boolean => zone === 'Zone 11'
-
-// Ink at ~20% — the column-boundary divider into Zone 11.
-const EXTENDED_DIVIDER = '0.5px solid rgba(13, 18, 16, 0.2)'
-
-function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; sourceFromSummary: string }) {
-  // Pivot: group cells by (weight_value, weight_unit), then for each row
-  // collect the 11-zone rate map. Sort rows by unit (oz before lb) then
-  // weight ascending — mirrors the actions.ts compareCells comparator
-  // so server-fetch order and client-pivot order agree.
-  const rows = useMemo(() => {
-    const byWeight = new Map<string, { weight_value: number; weight_unit: string; cells: Map<string, number | null> }>()
-    for (const c of detail.cells) {
-      const wkey = `${c.weight_unit}|${c.weight_value}`
-      let r = byWeight.get(wkey)
-      if (!r) {
-        r = { weight_value: c.weight_value, weight_unit: c.weight_unit, cells: new Map() }
-        byWeight.set(wkey, r)
-      }
-      r.cells.set(c.zone, c.rate)
-    }
-    const unitRank = (u: string) => (u === 'oz' ? 0 : u === 'lb' ? 1 : 99)
-    return [...byWeight.values()].sort((a, b) => {
-      const u = unitRank(a.weight_unit) - unitRank(b.weight_unit)
-      if (u !== 0) return u
-      return a.weight_value - b.weight_value
-    })
-  }, [detail])
-
+  // Card wrapper + header (variant · service_level + source/notes) is
+  // local to the stage preview; the actual table render lives in the
+  // shared CellTable so the committed-card viewer (Pause 3.5) renders
+  // the exact same pivot + visual treatment.
   return (
     <div style={cardStyle}>
       <div style={{ padding: 14, borderBottom: '0.5px solid var(--cactus-border)' }}>
@@ -323,70 +286,7 @@ function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; so
           {detail.notes ? ` · Notes: ${detail.notes}` : null}
         </div>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{
-          borderCollapse: 'collapse',
-          width: '100%',
-          fontSize: 12,
-          fontFamily: 'var(--font-sans)',
-        }}>
-          <thead>
-            <tr>
-              <th style={thStyle}>Weight</th>
-              {OUTPUT_ZONES.map(z => {
-                const ext = isExtendedZone(z)
-                const firstExt = isFirstExtendedZone(z)
-                return (
-                  <th key={z} style={{
-                    ...thStyle,
-                    textAlign: 'right',
-                    ...(ext ? { opacity: 0.6 } : null),
-                    ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
-                  }}>{z}</th>
-                )
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, idx) => (
-              <tr key={`${r.weight_value}|${r.weight_unit}`} style={{
-                background: idx % 2 === 0 ? 'transparent' : 'var(--cactus-sand)',
-              }}>
-                <td style={{ ...tdStyle, color: 'var(--cactus-muted)' }}>
-                  {r.weight_value} {r.weight_unit}
-                </td>
-                {OUTPUT_ZONES.map(z => {
-                  const v = r.cells.get(z)
-                  const ext = isExtendedZone(z)
-                  const firstExt = isFirstExtendedZone(z)
-                  // Null placeholder ("—") stays at hint color regardless —
-                  // already de-emphasized; double-dimming would push it
-                  // toward invisible.
-                  if (v === null || v === undefined) {
-                    return (
-                      <td key={z} style={{
-                        ...tdStyle,
-                        textAlign: 'right',
-                        color: 'var(--cactus-hint)',
-                        ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
-                      }}>—</td>
-                    )
-                  }
-                  // Non-null rate: extended-zone cells get the 60% mute.
-                  return (
-                    <td key={z} style={{
-                      ...tdStyle,
-                      textAlign: 'right',
-                      ...(ext ? { opacity: 0.6 } : null),
-                      ...(firstExt ? { borderLeft: EXTENDED_DIVIDER } : null),
-                    }}>${v.toFixed(2)}</td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <CellTable cells={detail.cells} />
     </div>
   )
 }
@@ -455,24 +355,6 @@ const cardStyle: React.CSSProperties = {
   border: '0.5px solid var(--cactus-border)',
   borderRadius: 10,
   overflow: 'hidden',
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  fontSize: 10, fontWeight: 500,
-  color: 'var(--cactus-muted)',
-  letterSpacing: '0.04em', textTransform: 'uppercase',
-  textAlign: 'left',
-  borderBottom: '0.5px solid var(--cactus-border)',
-  background: 'var(--cactus-sand)',
-  whiteSpace: 'nowrap',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  borderBottom: '0.5px solid var(--cactus-border)',
-  whiteSpace: 'nowrap',
-  fontVariantNumeric: 'tabular-nums',
 }
 
 const cancelButtonStyle: React.CSSProperties = {
