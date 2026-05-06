@@ -271,13 +271,14 @@ function SelectedCardPreview({
 }
 
 function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; sourceFromSummary: string }) {
-  // Pivot: group cells by weight_value, then for each weight build the
-  // 11-zone array. Both axes already sorted (weight asc, zone asc) by
-  // the action's order().
+  // Pivot: group cells by (weight_value, weight_unit), then for each row
+  // collect the 11-zone rate map. Sort rows by unit (oz before lb) then
+  // weight ascending — mirrors the actions.ts compareCells comparator
+  // so server-fetch order and client-pivot order agree.
   const rows = useMemo(() => {
     const byWeight = new Map<string, { weight_value: number; weight_unit: string; cells: Map<string, number | null> }>()
     for (const c of detail.cells) {
-      const wkey = `${c.weight_value}|${c.weight_unit}`
+      const wkey = `${c.weight_unit}|${c.weight_value}`
       let r = byWeight.get(wkey)
       if (!r) {
         r = { weight_value: c.weight_value, weight_unit: c.weight_unit, cells: new Map() }
@@ -285,7 +286,12 @@ function CellTable({ detail, sourceFromSummary }: { detail: StagedCardDetail; so
       }
       r.cells.set(c.zone, c.rate)
     }
-    return [...byWeight.values()].sort((a, b) => a.weight_value - b.weight_value)
+    const unitRank = (u: string) => (u === 'oz' ? 0 : u === 'lb' ? 1 : 99)
+    return [...byWeight.values()].sort((a, b) => {
+      const u = unitRank(a.weight_unit) - unitRank(b.weight_unit)
+      if (u !== 0) return u
+      return a.weight_value - b.weight_value
+    })
   }, [detail])
 
   return (

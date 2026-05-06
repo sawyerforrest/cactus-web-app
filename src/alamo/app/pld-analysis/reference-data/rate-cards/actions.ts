@@ -248,6 +248,32 @@ export async function cancelDhlEcomStage(formData: FormData): Promise<void> {
 // getStagedCardCells — typed-args Server Action used by the picker
 // =============================================================
 
+// Cell-sort comparator used by getStagedCardCells AND mirrored inside
+// StagePreviewTable's CellTable pivot. Order: weight_unit (oz before lb),
+// weight_value ascending, zone ascending (Zone 1, 2, 3, …, 8, 11, 12, 13).
+// File-scoped, not exported — 'use server' modules can only export async.
+function compareCells(
+  a: StagedCellRow,
+  b: StagedCellRow,
+): number {
+  const ua = unitRank(a.weight_unit)
+  const ub = unitRank(b.weight_unit)
+  if (ua !== ub) return ua - ub
+  if (a.weight_value !== b.weight_value) return a.weight_value - b.weight_value
+  return zoneRank(a.zone) - zoneRank(b.zone)
+}
+
+function unitRank(u: string): number {
+  if (u === 'oz') return 0
+  if (u === 'lb') return 1
+  return 99
+}
+
+function zoneRank(z: string): number {
+  const m = /^Zone\s+(\d+)$/.exec(z)
+  return m ? parseInt(m[1], 10) : 999
+}
+
 export async function getStagedCardCells(
   uploadSessionId: string,
   variant: string,
@@ -282,13 +308,17 @@ export async function getStagedCardCells(
     }
   }
 
+  // No .order() — supabase-js's chain can't express the unit-first
+  // composite (oz before lb, then weight ascending, then zone ascending).
+  // Sort in TS after fetch. Same comparator is mirrored in
+  // StagePreviewTable's CellTable pivot so the row order is stable across
+  // Server-fetch and client-re-pivot. Pause 4 / 5 GOFO preview queries
+  // should reuse this comparator (both flows have mixed oz/lb rows).
   const cellsRes = await admin
     .from('analysis_rate_card_cells_stage')
     .select('zone, weight_value, weight_unit, rate')
     .eq('upload_session_id', uploadSessionId)
     .eq('parent_stage_row_id', parentRes.data.stage_row_id)
-    .order('weight_value', { ascending: true })
-    .order('zone', { ascending: true })
 
   if (cellsRes.error) {
     return { ok: false, error: `Stage cell fetch failed: ${cellsRes.error.message}` }
@@ -301,6 +331,7 @@ export async function getStagedCardCells(
       weight_unit: c.weight_unit,
       rate: c.rate === null ? null : (typeof c.rate === 'string' ? Number(c.rate) : c.rate),
     }))
+    .sort(compareCells)
 
   return {
     ok: true,
